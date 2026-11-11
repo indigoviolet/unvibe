@@ -44,6 +44,7 @@ import {
   writeReviewRows,
 } from "../ingest/index.js";
 import { transaction } from "../store/index.js";
+import { guidePick } from "../settings/index.js";
 import type { ServiceContext } from "./context.js";
 import type { RouteDeps } from "./deps.js";
 import { listAllRepos } from "./repos.js";
@@ -1112,9 +1113,10 @@ export async function registerReviews(
     try {
       const s = (deps as RouteDeps).settings?.get();
       if (s) {
-        provider = s.main.provider;
-        model = s.main.model;
-        effort = s.main.effort;
+        const guide = guidePick(s);
+        provider = guide.provider;
+        model = guide.model;
+        effort = guide.effort;
       }
     } catch {
       // Keep defaults.

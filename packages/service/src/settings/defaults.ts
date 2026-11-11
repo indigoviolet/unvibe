@@ -16,7 +16,9 @@
  *                    gpt-5.6-luna
  *
  * (Issue #349 removed the second-opinion role: personas each name their
- * own model, picked in Settings → Personas.)
+ * own model, picked in Settings → Personas. Issue #379: the main role
+ * lives in the fixed Guide persona — MAIN_PREF still picks its default
+ * while the personas list is unsaved.)
  *
  * Matching is on family plus highest version, not on literal strings: each
  * matcher takes the newest offered model in its family at or above its

@@ -1431,14 +1431,16 @@ test.describe("L3 demo guide reading", () => {
       await page.goto(`${s.origin}/settings?token=${s.token}`);
       await expect.soft(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible({ timeout: 30_000 });
       await page.getByRole("tab", { name: "Models" }).click();
-      await expect.soft(page.locator("#model-main")).toBeVisible({ timeout: 30_000 });
-      await page.locator("#prov-main").click();
+      // Issue #379: Models keeps only the small picker (same shared
+      // Select, same popup coverage as before).
+      await expect.soft(page.locator("#model-small")).toBeVisible({ timeout: 30_000 });
+      await page.locator("#prov-small").click();
       await popupTopmost("settings provider select");
       await closePopup();
-      await page.locator("#model-main").click();
+      await page.locator("#model-small").click();
       await popupTopmost("settings model select");
       await closePopup();
-      await page.locator("#effort-main").click();
+      await page.locator("#effort-small").click();
       await popupTopmost("settings effort select");
       await closePopup();
       // Settings theme picker (shared Select) on Appearance.

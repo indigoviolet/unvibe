@@ -18,6 +18,7 @@ import { SettingsStore } from "../src/settings/index.js";
 import type { ModelCatalog } from "../src/settings/index.js";
 import { parseModelId, resolveEffectiveSettings, selectDefaultModels } from "../src/settings/index.js";
 import { SharedContextService } from "../src/sharedctx/service.js";
+import { GUIDE_PERSONA_ID } from "@unvibe/shared";
 
 const CLAUDE_ISSUE = [
   "default",
@@ -196,7 +197,8 @@ describe("live settings defaults + validation", () => {
   const auth = { authorization: "Bearer tok" };
 
   // Effective-settings behaviour in terms of offered() results (issue
-  // #88, roles main/small only since #349): never-saved roles take live
+  // #88; #379: the main role lives in the fixed Guide persona): the
+  // never-saved small role and the unsaved personas list take live
   // picks when any listing is known; saved picks always stick; unknown
   // offerings keep stored values. Personas are stored data — GET returns
   // them as saved and PUT validates the whole list.
@@ -233,20 +235,47 @@ describe("live settings defaults + validation", () => {
     });
   }
 
+  /** Guide entry of a settings-shaped body (issue #379: the Guide owns the main role). */
+  function guideOf(body: { personas: { id: string; provider: string; model: string }[] }): {
+    provider: string;
+    model: string;
+  } {
+    const guide = body.personas.find((p) => p.id === GUIDE_PERSONA_ID);
+    if (!guide) throw new Error("no Guide persona in settings body");
+    return { provider: guide.provider, model: guide.model };
+  }
+
+  /** Point the seeded Guide at a model through the store (a saved list). */
+  function saveGuide(app: { ctx: { settings: SettingsStore } }, provider: string, model: string): void {
+    const seed = app.ctx.settings.get().personas;
+    const res = app.ctx.settings.update({
+      personas: seed.map((p) => (p.id === GUIDE_PERSONA_ID ? { ...p, provider, model } : p)),
+    });
+    expect(res.errors).toBeUndefined();
+  }
+
   it("GET fills never-saved roles from live lists; PUT rejects unoffered models", async () => {
     const { app } = await makeApp(liveCatalog());
     try {
       const get = await app.inject({ method: "GET", url: "/api/settings", headers: auth });
       expect(get.statusCode).toBe(200);
-      const body = get.json() as { main: { model: string }; small: { model: string } };
-      expect(body.main.model).toBe("claude-opus-5-5");
+      const body = get.json() as {
+        personas: { id: string; provider: string; model: string }[];
+        small: { model: string };
+      };
+      expect(guideOf(body).model).toBe("claude-opus-5-5");
       expect(body.small.model).toBe("claude-haiku-5-5");
 
+      const seedPersonas = body.personas;
       const bad = await app.inject({
         method: "PUT",
         url: "/api/settings",
         headers: auth,
-        payload: { main: { provider: "claude", model: "opus-9", effort: "" } },
+        payload: {
+          personas: seedPersonas.map((p) =>
+            p.id === GUIDE_PERSONA_ID ? { ...p, model: "opus-9" } : p,
+          ),
+        },
       });
       expect(bad.statusCode).toBe(400);
       expect(JSON.stringify(bad.json())).toContain("not offered");
@@ -255,28 +284,33 @@ describe("live settings defaults + validation", () => {
         method: "PUT",
         url: "/api/settings",
         headers: auth,
-        payload: { main: { provider: "claude", model: "claude-sonnet-5-5", effort: "" } },
+        payload: {
+          personas: seedPersonas.map((p) =>
+            p.id === GUIDE_PERSONA_ID ? { ...p, model: "claude-sonnet-5-5" } : p,
+          ),
+        },
       });
       expect(ok.statusCode).toBe(200);
 
       // Saved roles stick even when the live list changes.
       const again = await app.inject({ method: "GET", url: "/api/settings", headers: auth });
-      expect((again.json() as typeof body).main.model).toBe("claude-sonnet-5-5");
+      expect(guideOf(again.json() as typeof body).model).toBe("claude-sonnet-5-5");
       expect((again.json() as typeof body).small.model).toBe("claude-haiku-5-5");
     } finally {
       await app.close();
     }
   });
 
-  it("a saved main on Codex sticks (no cross-provider recompute)", async () => {
-    const { app, ctx } = await makeApp(liveCatalog());
+  it("a saved Guide on Codex sticks (no cross-provider recompute)", async () => {
+    const built = await makeApp(liveCatalog());
+    const { app } = built;
     try {
-      ctx.settings.update({ main: { provider: "codex", model: "gpt-6-sol", effort: "" } });
+      saveGuide(built, "codex", "gpt-6-sol");
       const get = await app.inject({ method: "GET", url: "/api/settings", headers: auth });
       const body = get.json() as {
-        main: { provider: string; model: string };
+        personas: { id: string; provider: string; model: string }[];
       };
-      expect(body.main).toEqual({ provider: "codex", model: "gpt-6-sol", effort: "" });
+      expect(guideOf(body)).toEqual({ provider: "codex", model: "gpt-6-sol" });
     } finally {
       await app.close();
     }
@@ -291,27 +325,28 @@ describe("live settings defaults + validation", () => {
     try {
       const get = await app.inject({ method: "GET", url: "/api/settings", headers: auth });
       const body = get.json() as {
-        main: { provider: string; model: string };
+        personas: { id: string; provider: string; model: string }[];
         small: { provider: string; model: string };
       };
-      expect(body.main).toEqual({ provider: "claude", model: "claude-opus-5-5", effort: "" });
+      expect(guideOf(body)).toEqual({ provider: "claude", model: "claude-opus-5-5" });
       expect(body.small).toEqual({ provider: "claude", model: "claude-haiku-5-5", effort: "" });
     } finally {
       await app.close();
     }
   });
 
-  it("a saved main sticks when only its provider answers", async () => {
-    const { app, ctx } = await makeApp(
+  it("a saved Guide sticks when only its provider answers", async () => {
+    const built = await makeApp(
       stubCatalog({ codex: { models: [...CODEX_ISSUE], defaultId: null } }),
     );
+    const { app } = built;
     try {
-      ctx.settings.update({ main: { provider: "codex", model: "gpt-6-sol", effort: "" } });
+      saveGuide(built, "codex", "gpt-6-sol");
       const get = await app.inject({ method: "GET", url: "/api/settings", headers: auth });
       const body = get.json() as {
-        main: { provider: string; model: string };
+        personas: { id: string; provider: string; model: string }[];
       };
-      expect(body.main).toEqual({ provider: "codex", model: "gpt-6-sol", effort: "" });
+      expect(guideOf(body)).toEqual({ provider: "codex", model: "gpt-6-sol" });
     } finally {
       await app.close();
     }
@@ -326,42 +361,47 @@ describe("live settings defaults + validation", () => {
     try {
       const get = await app.inject({ method: "GET", url: "/api/settings", headers: auth });
       const body = get.json() as {
-        main: { provider: string; model: string };
+        personas: { id: string; provider: string; model: string }[];
         small: { provider: string; model: string };
       };
-      expect(body.main).toEqual({ provider: "claude", model: "claude-opus-5-5", effort: "" });
+      expect(guideOf(body)).toEqual({ provider: "claude", model: "claude-opus-5-5" });
       expect(body.small).toEqual({ provider: "claude", model: "claude-haiku-5-5", effort: "" });
     } finally {
       await app.close();
     }
   });
 
-  it("a saved main on a missing provider sticks", async () => {
-    // The user saved a Claude main, then Claude went away (listing null)
+  it("a saved Guide on a missing provider sticks", async () => {
+    // The user saved a Claude Guide, then Claude went away (listing null)
     // while Codex answers: too uncertain to recompute, stored stands.
-    const { app, ctx } = await makeApp(
+    const built = await makeApp(
       stubCatalog({ codex: { models: ["gpt-6.1-sol"], defaultId: null } }),
     );
+    const { app } = built;
     try {
-      ctx.settings.update({ main: { provider: "claude", model: "claude-opus-5", effort: "" } });
+      saveGuide(built, "claude", "claude-opus-5");
       const get = await app.inject({ method: "GET", url: "/api/settings", headers: auth });
       const body = get.json() as {
-        main: { provider: string; model: string };
+        personas: { id: string; provider: string; model: string }[];
       };
-      expect(body.main).toEqual({ provider: "claude", model: "claude-opus-5", effort: "" });
+      expect(guideOf(body)).toEqual({ provider: "claude", model: "claude-opus-5" });
     } finally {
       await app.close();
     }
   });
 
-  it("PUT validates personas: empty main is rejected", async () => {
-    const { app } = await makeApp(liveCatalog());
+  it("PUT validates personas: an empty Guide model is rejected", async () => {
+    const built = await makeApp(liveCatalog());
+    const { app } = built;
     try {
+      const seed = built.ctx.settings.get().personas;
       const badMain = await app.inject({
         method: "PUT",
         url: "/api/settings",
         headers: auth,
-        payload: { main: { provider: "claude", model: "" } },
+        payload: {
+          personas: seed.map((p) => (p.id === GUIDE_PERSONA_ID ? { ...p, model: "" } : p)),
+        },
       });
       expect(badMain.statusCode).toBe(400);
     } finally {
@@ -374,10 +414,10 @@ describe("live settings defaults + validation", () => {
     try {
       const get = await app.inject({ method: "GET", url: "/api/settings", headers: auth });
       const body = get.json() as {
-        main: { model: string };
+        personas: { id: string; provider: string; model: string }[];
         small: { model: string };
       };
-      expect(body.main.model).toBe("claude-opus-5-5");
+      expect(guideOf(body).model).toBe("claude-opus-5-5");
       expect(body.small.model).toBe("claude-haiku-5-5");
     } finally {
       await app.close();
@@ -394,10 +434,10 @@ describe("live settings defaults + validation", () => {
     try {
       const get = await app.inject({ method: "GET", url: "/api/settings", headers: auth });
       const body = get.json() as {
-        main: { model: string };
+        personas: { id: string; provider: string; model: string }[];
       };
       // Unfillable roles keep the stored (static) pick; readiness reports it.
-      expect(body.main.model).toBe("claude-opus-5-5");
+      expect(guideOf(body).model).toBe("claude-opus-5-5");
     } finally {
       await app.close();
     }
@@ -408,11 +448,11 @@ describe("live settings defaults + validation", () => {
     migrate(db);
     const settings = new SettingsStore(db);
     const resolved = await resolveEffectiveSettings({ settings, models: liveCatalog() });
-    expect(resolved.main).toEqual({ provider: "claude", model: "claude-opus-5-5", effort: "" });
+    expect(guideOf(resolved)).toEqual({ provider: "claude", model: "claude-opus-5-5" });
     expect(resolved.small).toEqual({ provider: "claude", model: "claude-haiku-5-5", effort: "" });
     // Nothing persisted: no role counts as saved and stored values stand.
     expect(settings.savedKeys()).toEqual([]);
-    expect(settings.get().main).toEqual({ provider: "claude", model: "claude-opus-5-5", effort: "" });
+    expect(guideOf(settings.get()).model).toBe("claude-opus-5-5");
   });
 });
 

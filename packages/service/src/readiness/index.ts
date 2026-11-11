@@ -15,7 +15,7 @@ import type { ReadinessResponse, Settings } from "@unvibe/shared";
 import type { AgentRunner } from "@unvibe/shared";
 import type { CommandRunner } from "../exec/index.js";
 import { probeEffectivePath } from "../diagnostics/path-probe.js";
-import { resolveEffectiveSettings } from "../settings/index.js";
+import { guidePick, resolveEffectiveSettings } from "../settings/index.js";
 import type { ModelCatalog, SettingsSource } from "../settings/index.js";
 import {
   agentCheck,
@@ -74,7 +74,7 @@ export async function getReadiness(deps: ReadinessDeps, opts: { force?: boolean 
   // Same effective settings as GET /api/settings: saved picks win, unsaved
   // roles take live defaults. Never throws (falls back to stored).
   const settings: Settings = await resolveEffectiveSettings({ settings: deps.settings, models: deps.models ?? null });
-  const key = JSON.stringify([settings.main, settings.small]);
+  const key = JSON.stringify([guidePick(settings), settings.small]);
   const now = Date.now();
   if (!opts.force && cache && now - cache.at < READINESS_CACHE_MS && cache.key === key) {
     return { ...cache.response, cached: true };
@@ -115,7 +115,7 @@ export async function getReadiness(deps: ReadinessDeps, opts: { force?: boolean 
 
   const roles: AgentRole[] = ["main", "small"];
   const picks: Record<AgentRole, { provider: string; model: string }> = {
-    main: settings.main,
+    main: guidePick(settings),
     small: settings.small,
   };
   const agentChecks = await Promise.all(

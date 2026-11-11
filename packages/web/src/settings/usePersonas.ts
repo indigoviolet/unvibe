@@ -10,6 +10,7 @@
  */
 import { useEffect, useState } from "react";
 import type { Persona } from "@unvibe/shared";
+import { GUIDE_PERSONA_ID } from "@unvibe/shared";
 import { api } from "../api/client.js";
 
 let cached: Persona[] | null = null;
@@ -21,7 +22,9 @@ function load(): Promise<Persona[]> {
     inflight = api
       .settings()
       .then((s) => {
-        cached = (s.personas ?? []).filter((p) => p.enabled);
+        // Issue #379: the Guide is the main agent, never a run choice —
+        // the card menu, tabs and avatars only see the other personas.
+        cached = (s.personas ?? []).filter((p) => p.enabled && p.id !== GUIDE_PERSONA_ID);
         return cached;
       })
       .catch(() => [] as Persona[])
