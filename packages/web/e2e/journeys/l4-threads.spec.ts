@@ -1915,10 +1915,16 @@ test.describe("L4 threads on the demo (fast replay)", () => {
       const turns = mine.locator(':scope > .turn');
       await expect.soft(turns).toHaveCount(3, { timeout: 30_000 });
       const second = turns.nth(1);
-      await second.hover();
       // "Delete reply" is the per-reply name (#364: distinct from the
-      // thread-level "Delete thread"). No confirm appears.
-      await second.getByRole("button", { name: "Delete reply" }).first().click();
+      // thread-level "Delete thread"). No confirm appears. The toolbar
+      // reveals on hover only, so re-hover inside the retry: content
+      // shifting under a stationary mouse leaves a revealed-then-hidden
+      // button failing the click (issue #380).
+      const secondDel = second.getByRole("button", { name: "Delete reply" }).first();
+      await expect(async () => {
+        await second.hover();
+        await secondDel.click({ timeout: 2_000 });
+      }).toPass({ timeout: 15_000 });
       await expect
         .soft.poll(
           async () =>
@@ -1963,12 +1969,19 @@ test.describe("L4 threads on the demo (fast replay)", () => {
         // turn carries a second, hidden one on its question row.
         const turn = mine.locator(`:scope > .turn[data-turn="${victim}"]`);
         await expect(turn).toBeVisible({ timeout: 15_000 });
-        await turn.hover();
-        await turn
+        // Target the server's victim by id (the DOM can lag the last
+        // patch), and only a Delete the hover actually revealed: an ask
+        // turn carries a second, hidden one on its question row. Re-hover
+        // inside the retry (same reason as above): a shift under a
+        // stationary mouse hides the button again.
+        const turnDel = turn
           .getByRole("button", { name: "Delete reply" })
           .filter({ visible: true })
-          .first()
-          .click({ timeout: 15_000 });
+          .first();
+        await expect(async () => {
+          await turn.hover();
+          await turnDel.click({ timeout: 2_000 });
+        }).toPass({ timeout: 15_000 });
         // Either its tombstone appears, or (last live turn) the thread goes.
         await expect
           .soft.poll(async () => {
