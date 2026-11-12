@@ -66,6 +66,7 @@ export {
   cardToMarkdown,
   citationToMarkdown,
   contextFromSnapshot,
+  guideToMarkdown,
   htmlInlineToMarkdown,
   replyToMarkdown,
   tableHtmlToMarkdown,
@@ -75,5 +76,6 @@ export type {
   CopyMarkdownContext,
   CopyMarkdownPage,
   CopyMarkdownRepo,
+  GuideCardInput,
 } from "./copy-markdown.js";
 export type { BlockSnapshot } from "./blocks.js";
