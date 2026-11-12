@@ -89,19 +89,19 @@ test("copy as Markdown toolbar icon with tooltip (1440-light)", async ({ page })
   await page.screenshot({ path: path.join(SHOTS, "copy-markdown-1440-light.png") });
 });
 
-// ---- guide copy (#384): the header's copy icon with its tooltip ----
+// ---- guide copy (#384): the top bar's copy icon with its tooltip ----
 test("guide copy icon with tooltip (1440-light)", async ({ page }) => {
   if (!svc) throw new Error("service not running");
   test.setTimeout(240_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
   await expect(page.locator("#C-central")).toBeVisible({ timeout: 60_000 });
-  const button = page.locator("[data-copy-guide]");
+  const button = page.locator("#reviewbar [data-copy-guide]");
   await expect(button).toBeVisible();
   await hoverFresh(page, button);
   await expect(page.locator("#tip")).toContainText("Copy guide as Markdown", { timeout: 10_000 });
   await checkLayout(page, "guide-copy");
-  // Full page: the frame must show where the icon sits in the header.
+  // Full page: the frame must show where the icon sits in the top bar.
   await page.screenshot({ path: path.join(SHOTS, "guide-copy-1440-light.png"), fullPage: true });
 });
 

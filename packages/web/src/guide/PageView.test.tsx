@@ -130,11 +130,10 @@ describe("page header title row (#240: no bookmark, #326: no collapse control)",
     const row = document.querySelector(".title-row");
     expect(row).not.toBeNull();
     expect(row?.querySelector("h1.title")).toHaveTextContent("b");
-    // #326: Collapse threads moved to the review top bar — no collapse
-    // control beside the title. #384: the only button in the row is the
-    // guide copy control.
-    expect(row?.querySelectorAll("button")).toHaveLength(1);
-    expect(row?.querySelector("[data-copy-guide]")).not.toBeNull();
+    // #326: Collapse threads moved to the review top bar — the title
+    // gets the full width, no button beside it. (#384's guide copy
+    // control lives in the review top bar, not here.)
+    expect(row?.querySelectorAll("button")).toHaveLength(0);
     expect(document.querySelector('[data-testid="collapse-threads"]')).toBeNull();
     expect(screen.queryByRole("button", { name: "Collapse threads" })).toBeNull();
   });

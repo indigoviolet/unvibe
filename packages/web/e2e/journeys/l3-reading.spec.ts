@@ -2165,21 +2165,21 @@ test.describe("L3 demo guide reading", () => {
     });
   });
 
-  test("guide header copies the whole guide as Markdown (#384)", async ({ page, context }) => {
+  test("review top bar copies the whole guide as Markdown (#384)", async ({ page, context }) => {
     test.setTimeout(180_000);
     const s = service();
     await context.grantPermissions(["clipboard-read", "clipboard-write"]).catch(() => {});
     await openReview(page, readReview);
 
-    await test.step("the guide header carries a Copy guide as Markdown control with a tooltip", async () => {
-      const button = page.locator("[data-copy-guide]");
+    await test.step("the review top bar carries a Copy guide as Markdown control with a tooltip", async () => {
+      const button = page.locator("#reviewbar [data-copy-guide]");
       await expect.soft(button).toBeVisible();
       await hoverFresh(page, button);
       await expect.soft(page.locator("#tip")).toContainText("Copy guide as Markdown", { timeout: 10_000 });
     });
 
     await test.step("clicking it copies the title, every card heading in order, and a citation", async () => {
-      await page.locator("[data-copy-guide]").click();
+      await page.locator("#reviewbar [data-copy-guide]").click();
       await expect.soft(page.locator("#toast")).toContainText("Copied as Markdown", { timeout: 10_000 });
       const clip = await page.evaluate(() => navigator.clipboard.readText()).catch(() => "");
       // The review title as `#`.
