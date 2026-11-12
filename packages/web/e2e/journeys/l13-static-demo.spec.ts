@@ -402,6 +402,10 @@ test.describe("static-demo sync", () => {
   test.beforeAll(async () => {
     syncDataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-demo-sync-data-"));
     syncSvc = await startService(syncDataDir, { agent: "replay" });
+    // The static demo bakes the full recording, go-deeper cards written;
+    // the replay service writes them only with the setting on (off by
+    // default since #389).
+    await apiJson(syncSvc, "PUT", "/api/settings", { autoGoDeeper: true });
     if (!syncSvc) throw new Error("no service");
     const created = await apiJson(syncSvc, "POST", "/api/reviews", { repoId: "demo" });
     syncReviewId = (created.json as { review: { id: string } }).review.id;
