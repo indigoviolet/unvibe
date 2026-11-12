@@ -351,21 +351,21 @@ test.describe("J349b persona versions", () => {
     const ring = await card.evaluate((el) => getComputedStyle(el).boxShadow);
     expect(ring).toContain(PERSONA_RGB);
 
-    // The depth stepper's dots (not the icons) on the persona tab:
-    // deeper rewrites the variant, never the Guide version.
+    // Help me understand on the persona tab: a slower rewrite of the
+    // variant, never the Guide version.
     const variantTextBefore = await card.locator(".prose, .lst").first().innerText();
-    await card.getByRole("button", { name: "Deeper" }).click();
+    await card.getByRole("button", { name: "Help me understand" }).click();
     {
       const deadline = Date.now() + 90_000;
       for (;;) {
         const variants = await centralVariants(svc, reviewId);
-        if (variants[PERSONA_ID]?.level === "deep") break;
-        if (Date.now() > deadline) throw new Error("persona depth never landed");
+        if ((variants[PERSONA_ID]?.revision ?? 0) >= 2) break;
+        if (Date.now() > deadline) throw new Error("persona rewrite never landed");
         await new Promise((r) => setTimeout(r, 500));
       }
     }
-    const afterDepth = (await centralVariants(svc, reviewId))[PERSONA_ID];
-    expect(afterDepth.revision).toBeGreaterThanOrEqual(2);
+    const afterSlower = (await centralVariants(svc, reviewId))[PERSONA_ID];
+    expect(afterSlower.revision).toBeGreaterThanOrEqual(2);
     await expect(card.locator(".prose, .lst").first()).not.toHaveText(variantTextBefore, { timeout: 15_000 });
     // Back on Guide: the variant rewrite left it untouched.
     await tabs.locator('[data-version-tab="guide"]').click();
