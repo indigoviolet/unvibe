@@ -171,6 +171,7 @@ describe("guide copy (#384)", () => {
       {
         type: "list",
         id: "b1",
+        ordered: false,
         items: [{ html: 'Run it<pre><code class="language-sh">make test</code></pre>', citations: [] }],
         citations: [],
       },
