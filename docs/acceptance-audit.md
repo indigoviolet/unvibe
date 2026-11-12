@@ -4295,6 +4295,34 @@ one-variant union today).
   green; journey/tour runs pending the v0.0.18 gate. Full gates not yet
   run.
 
+## Addendum: #384 (branch `feat/384-copy-guide`)
+
+- **Copy guide as Markdown (§4.4):** one copy icon in the review top
+  bar with the other review-level icon buttons (Refresh / Debug; same
+  icon, tooltip shape and "Copied as Markdown" toast as the card
+  control), hidden wherever there is no guide (document reviews,
+  loading / failed / empty opens). It copies the whole root guide:
+  then each main root card in guide order with its heading as `##` and
+  its Guide-version prose at that card's shown depth. A pure converter
+  (`guideToMarkdown`, next to #377's in
+  `packages/shared/src/content/copy-markdown.ts`) reuses the card block
+  rendering with a guide flag: citations stay exactly as #377 renders
+  them (head-commit permalinks on PR reviews, `path:lines` otherwise);
+  diagrams become `_[Diagram: <caption>]_` / `_[Diagram]_`;
+  code blocks (including fences embedded in list items), finding and
+  comment links, follow-ups, the plotlines list, answers and "Updated
+  since…" addenda are left out; collapsed cards copy at their level,
+  pending (Generate) cards are skipped, and cards left with no prose
+  render no heading. The output never contains `[[…]]` tokens or code
+  fences. No new settings, jobs or agent calls. Additive only, so
+  `DATA_FORMAT` stays 7.
+  Evidence: `packages/shared/test/copy-markdown-384.test.ts` (12 tests;
+  `copy-markdown-377.test.ts` passes unchanged), journey steps in
+  `l3-reading` (header icon, tooltip, title/headings/citation,
+  no-fence/no-token asserts), tour frame
+  `packages/web/visual-tour/guide-copy-1440-light.png` (git-ignored,
+  header icon + tooltip, full page at 1440 light).
+
 ## Addendum: #383 — progressive start-page loading (branch `feat/383-progressive-start`)
 
 - **Progressive lists (§4.2):** the three PR/branch list calls land

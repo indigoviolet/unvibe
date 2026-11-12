@@ -247,11 +247,14 @@ export function tableHtmlToMarkdown(html: string): string {
  * and nested lists (which the parser embeds as HTML inside the item)
  * become their own lines; the item's own text stays on the first line.
  */
-function listItemToLines(html: string): string[] {
+function listItemToLines(html: string, guide = false): string[] {
   const chunks: string[] = [];
   let s = html;
   s = s.replace(/<pre><code(?: class="language-([^"]*)")?>([\s\S]*?)<\/code><\/pre>/gi,
     (_m, lang: string | undefined, code: string) => {
+      // Issue #384: no code blocks in guide copy — strip them even
+      // when embedded in a list item (card copy keeps them).
+      if (guide) return "";
       chunks.push(`\`\`\`${lang ?? ""}\n${decodeEntities(stripTags(code)).replace(/\n$/, "")}\n\`\`\``);
       return `\uFFFC${chunks.length - 1}\uFFFC`;
     });
@@ -273,6 +276,13 @@ function listItemToLines(html: string): string[] {
 }
 
 export interface BlockMarkdownOptions {
+  /**
+   * Issue #384: whole-guide copy. Skips non-prose blocks (code,
+   * finding/comment links, follow-ups), renders diagrams as
+   * placeholders, and strips code fences embedded in list items.
+   * Card copy (#377) never sets this.
+   */
+  guide?: boolean;
   /** Page lookup for finding-link blocks (title/confidence/summary). */
   findPage?: (pageId: string) => CopyMarkdownPage | null;
   /**
@@ -303,7 +313,7 @@ function blockToLines(block: Block, level: DepthLevel, ctx: CopyMarkdownContext,
       const start = block.ordered ? (block.start ?? 1) : 1;
       const lines: string[] = [];
       block.items.forEach((item, i) => {
-        const itemLines = listItemToLines(item.html);
+        const itemLines = listItemToLines(item.html, opts.guide ?? false);
         const marker = block.ordered ? `${start + i}.` : "-";
         const cites = citeParenthetical(item.citations, ctx);
         lines.push(`${marker} ${itemLines[0]}${cites}`.trimEnd());
@@ -327,12 +337,21 @@ function blockToLines(block: Block, level: DepthLevel, ctx: CopyMarkdownContext,
       return out;
     }
     case "code": {
+      // Issue #384: no code blocks in guide copy (card copy keeps them).
+      if (opts.guide) return [];
       const out = [`\`\`\`${block.language ?? ""}\n${block.code}\n\`\`\``];
       const cites = citeParenthetical(block.citations, ctx).trim();
       if (cites) out.push("", cites);
       return out;
     }
     case "diagram": {
+      // Issue #384: a placeholder in place of each diagram (card copy
+      // keeps the fenced d2 source).
+      if (opts.guide) {
+        const label = block.caption ? htmlInlineToMarkdown(block.caption) : "";
+        const text = label ? `_[Diagram: ${label}]_` : `_[Diagram]_`;
+        return [`${text}${citeParenthetical(block.citations, ctx)}`.trim()];
+      }
       const out = [`\`\`\`d2\n${block.source}\n\`\`\``];
       if (block.caption) {
         const cap = htmlInlineToMarkdown(block.caption);
@@ -353,6 +372,8 @@ function blockToLines(block: Block, level: DepthLevel, ctx: CopyMarkdownContext,
       return lines;
     }
     case "finding-link": {
+      // Issue #384: no finding pages in guide copy.
+      if (opts.guide) return [];
       const page = opts.findPage?.(block.pageId);
       const confidence = page?.confidence ? ` · ${page.confidence} confidence` : "";
       const title = page?.title ?? block.pageId;
@@ -360,9 +381,13 @@ function blockToLines(block: Block, level: DepthLevel, ctx: CopyMarkdownContext,
       return [`**Agent finding${confidence}:** ${title}${summary}`];
     }
     case "comment-link": {
+      // Issue #384: no comments in guide copy.
+      if (opts.guide) return [];
       return [`Suggested review comment on ${citationToMarkdown(block.diffRef, ctx)}`];
     }
     case "follow-up": {
+      // Issue #384: no follow-ups in guide copy.
+      if (opts.guide) return [];
       if (block.items.length === 0) return [];
       const lines = ["**Follow up:**"];
       for (const item of block.items) {
@@ -435,6 +460,40 @@ export function cardToMarkdown(
     parts.push(aparts.join("\n\n"));
   }
   return parts.length > 0 ? `## ${title}\n\n${parts.join("\n\n")}\n` : `## ${title}\n`;
+}
+
+/** One main guide card's Guide-version body for whole-guide copy. */
+export interface GuideCardInput {
+  title: string | null;
+  blocks: Block[];
+  level: DepthLevel;
+}
+
+/**
+ * The whole guide as shown → Markdown (issue #384): the review title as
+ * a `#` heading, then each main guide card in guide order with its
+ * heading as `##` and its Guide-version prose blocks at that card's
+ * shown depth. Citations render exactly as #377's card copy does
+ * (permalinks on PR reviews, `path:lines` otherwise); diagrams become
+ * placeholders; code blocks, expansions, comments, threads, finding
+ * pages, the plotlines list and "Updated since…" addenda are left out.
+ * Cards with no prose left after filtering render no heading. Callers
+ * pass only main cards (pending cards skipped, collapsed cards kept).
+ * Pure.
+ */
+export function guideToMarkdown(
+  title: string,
+  cards: GuideCardInput[],
+  ctx: CopyMarkdownContext,
+  opts: BlockMarkdownOptions = {},
+): string {
+  const parts = [`# ${title}`];
+  for (const card of cards) {
+    const body = blocksToMarkdown(card.blocks, card.level, ctx, { ...opts, guide: true });
+    if (!body) continue;
+    parts.push(`## ${displayCardTitle(card.title, card.blocks)}\n\n${body.replace(/\n$/, "")}`);
+  }
+  return `${parts.join("\n\n")}\n`;
 }
 
 /**

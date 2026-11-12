@@ -56,6 +56,7 @@ import { useNavigate } from "react-router";
 import { useState } from "react";
 import { jobCounts } from "./jobCounts.js";
 import { RedoGuideButton } from "./RedoGuideButton.js";
+import { GuideCopyButton } from "../guide/GuideCopyButton.js";
 import { useReviewIdentity } from "./reviewIdentity.js";
 import { SubmitPanel } from "./SubmitPanel.js";
 import { STATIC_DEMO } from "../demo.js";
@@ -226,6 +227,9 @@ export function ReviewBar({
             <Icon name="bug" />
           </Link>
         ) : null}
+        {/* #384: guide copy lives with the other review actions (after
+            Debug, before Re-do); hidden wherever there is no guide. */}
+        <GuideCopyButton reviewId={reviewId} />
         {/* #345: re-do lives next to the other review actions (after
             Debug, before Collapse threads); hidden for the demo and for
             failed/empty opens, disabled while the review is opening. */}
