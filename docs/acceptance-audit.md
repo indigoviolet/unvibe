@@ -362,14 +362,13 @@ needed (that deviation is closed, not added).
    bundled-demo examples, so malformed `diff:` IDs (the 6 failures in
    the #124 re-measure) are less likely to need a repair turn
    (`prompts.test.ts` pins every concrete `diff:` example to the parser).
-- Depth −/+ stepper, 3 dots, in-place rewrite, underlying principle at
-  deepest, on-demand + kept — met (`actions/depth.ts`,
-  `actions-m4.test.ts` “depth round-trips”). While a depth change runs,
-  + and − keep their icons and are disabled, with no dots inside the
-  control, in both directions — one shared control for page cards and
-  conversation answers (issue #129; the target-pip pulse was dropped as
-  allowed — `guide/DepthControl.tsx`, `DepthControl.test.tsx`,
-  `depth-principle-service.spec.ts`).
+- Help me understand (replaces the depth stepper, #387): one icon button
+  per card toolbar rewrites the card more slowly than its current text —
+  repeatable and relative, no levels; undo steps back through the
+  presses. Applies to page cards, thread replies and persona variants;
+  card/guide copy copies the shown text. Stored `level` and per-level
+  paragraph text are gone (`DATA_FORMAT` 8).
+  Supersedes the depth-stepper verdict below.
 - Examples / Add diagram inserts, never duplicated — met
   (`actions/examples.ts`, `diagram.ts`, dedupe in apply; audit-10 adds
   upfront `reused:true` short-circuit so repeats cost no agent call —
@@ -433,7 +432,7 @@ needed (that deviation is closed, not added).
   bytes. Not fixed in app code (overriding the family would break D2's
   tight box layout); shorter labels + inline/overlay zoom are the
   mitigations.
-- Undo (depth/examples/diagram, no redo, comments/nested cards survive)
+- Undo (slower/examples/diagram, no redo, comments/nested cards survive)
   — met (`actions/undo.ts`, `actions-m4.test.ts`).
 - Read state removed as a feature (#136, owner decision): no Mark read
   control and no stored read state on any card (guide or
@@ -4353,3 +4352,34 @@ one-variant union today).
   stub `gh` holding the review-requested call; fast lists and kept
   Reviews render first, exactly one fetch per load). No tour frame: the
   visible page barely changes. Full gates not yet run.
+
+## Addendum: #387 — Help me understand replaces the depth stepper (branch `feat/387-help-me-understand`)
+
+- **One icon button, no levels (§4.4):** the − ●● + stepper, the
+  simple/standard/deep levels and the Underlying-principle block are gone.
+  Each press of "Help me understand" rewrites the card more slowly than
+  its current text (skipped steps filled in, terms defined at first use,
+  one concrete walk-through, smaller leaps, the "why" stated), never
+  shorter by dropping content, citations kept on their paragraph,
+  structure/examples/diagrams kept. The new `prompts/slower.md` replaces
+  `prompts/depth.md`; the turn carries the Guide writing-style lens like
+  the other main turns. Undo steps back through the presses. Ask stays
+  the way to say what is confusing.
+- **Wherever depth applied:** page cards, thread replies and persona
+  variants (rewritten as that persona); card/guide copy copies the shown
+  text (no level to select). `autoGoDeeper` is untouched — it drives the
+  separate go-deeper placeholder cards, not the removed levels.
+- **Stored shape:** `level` fields and per-level paragraph text are gone;
+  `DATA_FORMAT` 7 → 8 with no fallback, so existing data needs a reset.
+  The Settings → Prompts list and the Debug → Prompts expansion serve
+  `slower` (with its `{{card}}` variable) instead of `depth`.
+  Evidence: service `test/actions-m4.test.ts` (slower presses stack,
+  prompt carries the current text, undo restores), `test/guide-379.test.ts`
+  (Guide lens on the slower turn; persona variant rewritten as that
+  persona), `test/reuse.test.ts` (every press is a fresh turn; dedupe key
+  carries the revision), `test/persona-variants-349.test.ts` (variant
+  rewrite), journey `e2e/journeys/l3-reading.spec.ts` "Help me understand
+  rewrites twice, then undo steps back", tour frame
+  `packages/web/visual-tour/help-me-understand-1440-light.png`
+  (git-ignored, toolbar icon + tooltip, full page at 1440 light). Full
+  gates not yet run.

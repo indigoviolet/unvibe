@@ -8,7 +8,8 @@
  * - an unverified citation gets the single repair turn, then stores;
  * - Ask on the variant is answered by the same persona (thread carries
  *   the persona; the turn reuses its model);
- * - depth simpler/deeper on the variant rewrites the variant's blocks.
+ * - a slower press on the variant rewrites the variant's blocks as that
+ *   persona, leaving the guide text alone.
  */
 import { describe, expect, it } from "vitest";
 import type { AgentEvent, ReviewSnapshot } from "@unvibe/shared";
@@ -163,7 +164,7 @@ function personaAgents(): FakeAgentRunner {
     { match: "The central paragraph", events: textEvents(PERSONA_ONE_BAD) },
     { match: "# Persona card", events: textEvents(PERSONA_INVALID) },
     { match: "# Ask", events: textEvents(ASK_ON_VARIANT) },
-    { match: "# Depth rewrite", events: textEvents("A simpler variant line.\n\n```json\n{\"depth\": {\"level\": \"simple\"}}\n```\n") },
+    { match: "# Help me understand", events: textEvents("A slower variant line.\n\n```json\n{\"slower\": {}}\n```\n") },
   ]);
 }
 
@@ -309,7 +310,7 @@ describe("persona card runs (#349 step 2)", () => {
     }
   });
 
-  it("depth on the variant rewrites the variant, not the guide", { timeout: 120000 }, async () => {
+  it("slower on the variant rewrites the variant, not the guide", { timeout: 120000 }, async () => {
     process.env.UNVIBE_REPO_ROOTS = "";
     const agents = personaAgents();
     const { app, ctx, id } = await openDemo(agents);
@@ -324,9 +325,8 @@ describe("persona card runs (#349 step 2)", () => {
       const before = ctx.reviews.getSnapshot(id)!.pages.flatMap((p) => p.cards).find((c) => c.id === "problem")!;
       const guideTextBefore = JSON.stringify(before.blocks);
       const res = await postAction(app, id, {
-        kind: "depth",
+        kind: "slower",
         cardId: "problem",
-        direction: "simpler",
         personaId: "historian",
       });
       expect(res.status).toBe(200);
@@ -337,8 +337,7 @@ describe("persona card runs (#349 step 2)", () => {
       });
       const after = ctx.reviews.getSnapshot(id)!.pages.flatMap((p) => p.cards).find((c) => c.id === "problem")!;
       expect(JSON.stringify(after.blocks)).toBe(guideTextBefore);
-      expect(after.variants!["historian"].level).toBe("simple");
-      expect(JSON.stringify(after.variants!["historian"].blocks)).toContain("simpler variant");
+      expect(JSON.stringify(after.variants!["historian"].blocks)).toContain("slower variant");
     } finally {
       await app.close();
     }

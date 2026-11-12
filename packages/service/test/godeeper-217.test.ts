@@ -217,7 +217,7 @@ describe("auto go-deeper (#217)", () => {
         draft.plotlines = [{ id: "main-thread", name: "Main thread", description: "d" }];
         const root = draft.pages.find((pg) => pg.id === "root")!;
         root.cards = [{
-          id: "g-seeded", pageId: "root", title: "Seeded direction", level: "standard", collapsed: false,
+          id: "g-seeded", pageId: "root", title: "Seeded direction", collapsed: false,
           revision: 1, blocks: [], undoStack: [], pending: { label: "Seeded direction", why: "seeded" },
         } as typeof root.cards[number]];
         const hunk = draft.files[0].hunks[0];

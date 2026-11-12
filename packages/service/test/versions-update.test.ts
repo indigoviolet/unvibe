@@ -33,7 +33,7 @@ function fakeReply(newHash: string): string {
     revisedCards: [{
       cardId: "c-a",
       revision: 2,
-      blocks: [{ type: "paragraph", id: "b1", text: { standard: "revised for new code" }, citations: [] }],
+      blocks: [{ type: "paragraph", id: "b1", text: "revised for new code", citations: [] }],
     }],
     recheckedFindings: [{ pageId: "f-1", verdict: "still-applies", evidence: "still holds" }],
     newFindings: [{
@@ -42,7 +42,7 @@ function fakeReply(newHash: string): string {
       confidence: "medium",
       summary: "new code risk",
       cards: [{
-        id: "c-new", pageId: "f-new", title: "New", level: "standard", collapsed: false,
+        id: "c-new", pageId: "f-new", title: "New", collapsed: false,
         revision: 1, blocks: [], undoStack: [],
       }],
     }],
@@ -106,9 +106,9 @@ describe("update pass", () => {
         draft.pages.push({
           id: "p-root", kind: "root", title: "Guide",
           cards: [{
-            id: "c-a", pageId: "p-root", title: "A", level: "standard", collapsed: false,
+            id: "c-a", pageId: "p-root", title: "A", collapsed: false,
             revision: 1,
-            blocks: [{ type: "paragraph", id: "b1", text: { standard: "old prose" }, citations: [{ target: hk }] }],
+            blocks: [{ type: "paragraph", id: "b1", text: "old prose", citations: [{ target: hk }] }],
             undoStack: [],
             stale: true, staleChangedHunks: 1, staleHunks: [hk],
           }],

@@ -24,11 +24,10 @@ function reply(kind: ReplyKind, question: string | null, over: Omit<Partial<Repl
       {
         type: "paragraph",
         id: "b1",
-        text: { standard: `body ${n}` },
+        text: `body ${n}`,
         citations: [],
       },
     ],
-    level: "standard",
     revision: 1,
     undoStack: [],
     ...over,

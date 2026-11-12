@@ -82,14 +82,13 @@ function fakeReply(snap: ReviewSnapshot): string {
         id: "since-delta-1",
         pageId: "since",
         title: "Alpha reworked, gamma added",
-        level: "standard",
         collapsed: false,
         revision: 1,
         undoStack: [],
         blocks: [{
           type: "paragraph",
           id: "b-since-1",
-          text: { standard: "Alpha now returns 11 and gamma is new, answering the review comment." },
+          text: "Alpha now returns 11 and gamma is new, answering the review comment.",
           citations: [{ target }],
         }],
         // Agent-shaped `{ kind, id }` pointers: the JSON text goes
@@ -109,7 +108,7 @@ function fakeReply(snap: ReviewSnapshot): string {
         blocks: [{
           type: "paragraph",
           id: "b-add-1",
-          text: { standard: "Updated since v1: alpha returns 11 now." },
+          text: "Updated since v1: alpha returns 11 now.",
           citations: [{ target }],
         }],
         answers: [
@@ -175,11 +174,10 @@ describe("since-B step 1", () => {
             id: "c-a",
             pageId: "p-root",
             title: "Alpha",
-            level: "standard",
             collapsed: false,
             revision: 1,
             undoStack: [],
-            blocks: [{ type: "paragraph", id: "b1", text: { standard: "old prose" }, citations: [{ target: hk }] }],
+            blocks: [{ type: "paragraph", id: "b1", text: "old prose", citations: [{ target: hk }] }],
           }],
         });
       });
@@ -237,8 +235,7 @@ describe("since-B step 1", () => {
             kind: "comment",
             who: "you",
             question: null,
-            blocks: [{ type: "paragraph", id: "b-t1", text: { standard: "Agreed, fix alpha." }, citations: [] }],
-            level: "standard",
+            blocks: [{ type: "paragraph", id: "b-t1", text: "Agreed, fix alpha.", citations: [] }],
             revision: 1,
             undoStack: [],
           }],
@@ -296,7 +293,7 @@ describe("since-B step 1", () => {
       expect(card.blocks).toHaveLength(1);
       expect(card.blocks[0].type).toBe("paragraph");
       if (card.blocks[0].type !== "paragraph") throw new Error("unexpected block");
-      expect(card.blocks[0].text.standard).toBe("old prose");
+      expect(card.blocks[0].text).toBe("old prose");
       expect(card.addenda).toHaveLength(1);
       expect(card.addenda![0].baseline).toEqual({ kind: "version", version: 1 });
       expect(card.addenda![0].version).toBe(2);

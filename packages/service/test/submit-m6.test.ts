@@ -24,8 +24,7 @@ function descThread(text: string): Thread {
       kind: "comment",
       who: "you",
       question: null,
-      blocks: [{ type: "paragraph", id: "b1", text: { standard: text }, citations: [] }],
-      level: "standard",
+      blocks: [{ type: "paragraph", id: "b1", text: text, citations: [] }],
       revision: 1,
       undoStack: [],
     }],
@@ -157,7 +156,7 @@ describe("submit", () => {
       },
       open: true,
       pinned: false,
-      replies: [{ id: "ans_t1", seq: 1, kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "Is beta still the right default?" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
+      replies: [{ id: "ans_t1", seq: 1, kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: "Is beta still the right default?", citations: [] }], revision: 1, undoStack: [] }],
       post: true,
     };
     const runner = new FakeCommandRunner();

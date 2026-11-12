@@ -54,11 +54,11 @@ function snapshot(): ReviewSnapshot {
       },
     ],
     ingest: { status: "ready" },
-    pages: [{ id: "root", kind: "root", title: "t", cards: [{ id: "c1", pageId: "root", title: "t", collapsed: false, blocks: [], level: "standard", revision: 1, undoStack: [] }] }],
+    pages: [{ id: "root", kind: "root", title: "t", cards: [{ id: "c1", pageId: "root", title: "t", collapsed: false, blocks: [], revision: 1, undoStack: [] }] }],
     annotations: [
       {
         type: "thread", id: "t1", anchor: { host: { kind: "block", blockId: "c1#b1" }, quotedText: "", prefix: "", suffix: "", position: 0, version: 1 },
-        open: true, pinned: false, post: true, replies: [{ id: "r1", kind: "comment", who: "you", question: null, blocks: [], level: "standard", revision: 1, undoStack: [] }],
+        open: true, pinned: false, post: true, replies: [{ id: "r1", kind: "comment", who: "you", question: null, blocks: [], revision: 1, undoStack: [] }],
       },
     ],
     hunkStates: [{ contentHash: "h1", summary: "s1" }],

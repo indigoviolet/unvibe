@@ -8,7 +8,7 @@
  * - a dead session (idle close + adapter loss, the restart path) rebuilds
  *   from the base with the stored turns as the transcript, and the card
  *   stores the new session id;
- * - depth on one answer leaves the other answer alone;
+ * - a slower rewrite on one answer leaves the other answer alone;
  * - a diagram in a follow-up answer renders through the diagrams route;
  * - a diagram in an Ask answer renders (#106: answers are blocks now,
  *   never flattened to thread HTML).
@@ -56,10 +56,10 @@ const SECOND_ANSWER = `Second answer body about ordering.
 \`\`\`
 `;
 
-const DEPTH_SIMPLE = `A simpler first answer.
+const SLOWER_FIRST = `A slower first answer.
 
 \`\`\`json
-{"depth": {"level": "simple"}}
+{}
 \`\`\`
 `;
 
@@ -171,7 +171,7 @@ function fakeAgents(askReply: string): FakeAgentRunner {
     { match: "# Reader task", events: textEvents(MINIMAL_READER) },
     { match: "## The question\n\nExplain this.", events: textEvents(FIRST_ANSWER) },
     { match: "# Ask", events: textEvents(askReply) },
-    { match: "# Depth rewrite", events: textEvents(DEPTH_SIMPLE) },
+    { match: "# Help me understand", events: textEvents(SLOWER_FIRST) },
   ]);
 }
 
@@ -282,7 +282,7 @@ describe("conversation cards (#136)", () => {
     }
   });
 
-  it("depth on one answer leaves the other answer alone", { timeout: 120000 }, async () => {
+  it("slower on one answer leaves the other answer alone", { timeout: 120000 }, async () => {
     process.env.UNVIBE_REPO_ROOTS = "";
     const agents = fakeAgents(SECOND_ANSWER);
     const { app, ctx, id } = await openDemo(agents);
@@ -300,16 +300,15 @@ describe("conversation cards (#136)", () => {
         ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!.replies![1].blocks,
       );
 
-      const depth = await postAction(app, id, { kind: "depth", cardId: turnId, direction: "simpler" });
-      expect(depth.status).toBe(200);
-      if (depth.json.jobId) await waitForJob(ctx, depth.json.jobId as string);
+      const slower = await postAction(app, id, { kind: "slower", cardId: turnId });
+      expect(slower.status).toBe(200);
+      if (slower.json.jobId) await waitForJob(ctx, slower.json.jobId as string);
       const card = ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annotationId)!;
       const [first, second] = card.replies!;
-      expect(first.level).toBe("simple");
       expect(first.id).toBe(turnId);
-      // The sibling answer is untouched: same blocks, same level.
+      expect(JSON.stringify(first.blocks)).toContain("A slower first answer.");
+      // The sibling answer is untouched: same blocks.
       expect(second.id).toBe(secondTurnId);
-      expect(second.level).toBe("standard");
       expect(JSON.stringify(second.blocks)).toBe(secondBefore);
     } finally {
       await app.close();

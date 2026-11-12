@@ -194,7 +194,6 @@ describe("issue #96: desc: IDs from the review tools", () => {
             id: "c-central",
             pageId: "root",
             title: "Central change",
-            level: "standard",
             collapsed: false,
             revision: 1,
             blocks: [],

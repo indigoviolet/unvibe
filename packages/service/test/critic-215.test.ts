@@ -5,7 +5,7 @@ import type { Block } from "@unvibe/shared";
 function cards(...spec: [string, string][]): { title: string | null; blocks: Block[] }[] {
   return spec.map(([title, text]) => ({
     title,
-    blocks: [{ type: "paragraph", id: "b1", text: { standard: text }, citations: [] } as Block],
+    blocks: [{ type: "paragraph", id: "b1", text: text, citations: [] } as Block],
   }));
 }
 

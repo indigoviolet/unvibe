@@ -820,11 +820,10 @@ describe("follow-ups across a posture flip (owner report)", () => {
             {
               type: "paragraph",
               id: "b1",
-              text: { standard: "The widget folds headers." },
+              text: "The widget folds headers.",
               citations: [],
             },
           ],
-          level: "standard",
           revision: 1,
           undoStack: [],
           collapsed: false,

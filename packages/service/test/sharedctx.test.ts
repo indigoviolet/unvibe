@@ -78,10 +78,9 @@ function card(id: string, standard: string): Card {
     id,
     pageId: "root",
     title: id,
-    level: "standard",
     collapsed: false,
     revision: 1,
-    blocks: [{ type: "paragraph", id: `b-${id}-1`, text: { standard }, citations: [] }],
+    blocks: [{ type: "paragraph", id: `b-${id}-1`, text: standard, citations: [] }],
     undoStack: [],
   };
 }
@@ -105,8 +104,7 @@ function thread(id: string, agentText: string, open = true): Thread {
         kind: "comment",
         who: "you",
         question: null,
-        blocks: [{ type: "paragraph", id: "b1", text: { standard: "Why is y two?" }, citations: [] }],
-        level: "standard",
+        blocks: [{ type: "paragraph", id: "b1", text: "Why is y two?", citations: [] }],
         revision: 1,
         undoStack: [],
       },
@@ -115,8 +113,7 @@ function thread(id: string, agentText: string, open = true): Thread {
         kind: "comment",
         who: "agent",
         question: null,
-        blocks: [{ type: "paragraph", id: "b2", text: { standard: agentText }, citations: [] }],
-        level: "standard",
+        blocks: [{ type: "paragraph", id: "b2", text: agentText, citations: [] }],
         revision: 1,
         undoStack: [],
       },
@@ -203,7 +200,7 @@ async function appendEntries(
 
 describe("log taxonomy (PRD §9.3)", () => {
   it("never logs UI state", () => {
-    for (const kind of ["read", "collapse", "depth-state", "open", "close", "mark-for-pr", "undo"] as const) {
+    for (const kind of ["read", "collapse", "open", "close", "mark-for-pr", "undo"] as const) {
       expect(logEntryForEvent({ kind, reviewId: "r", text: "x" }), kind).toBeNull();
     }
   });
@@ -214,8 +211,8 @@ describe("log taxonomy (PRD §9.3)", () => {
     expect(ex).toMatchObject({ kind: "example", scope: { scope: "card", cardId: "c-A" } });
     const dg = logEntryForEvent({ kind: "diagram-added", reviewId: "r", cardId: "c-A", text: "dg" });
     expect(dg).toMatchObject({ kind: "diagram", scope: { scope: "card", cardId: "c-A" } });
-    const rw = logEntryForEvent({ kind: "depth-rewrite", reviewId: "r", cardId: "c-A", text: "rw" });
-    expect(rw).toMatchObject({ kind: "depth-rewrite", scope: { scope: "card", cardId: "c-A" } });
+    const rw = logEntryForEvent({ kind: "slower-rewrite", reviewId: "r", cardId: "c-A", text: "rw" });
+    expect(rw).toMatchObject({ kind: "slower-rewrite", scope: { scope: "card", cardId: "c-A" } });
   });
 
   it("logs settled threads as one global line, cards/findings/answers in full, deletions as one line", () => {
@@ -874,14 +871,13 @@ describe("isolation (PRD §12)", () => {
               id: "c1",
               pageId: "root",
               title: "T",
-              level: "standard",
               collapsed: false,
               revision: 1,
               blocks: [
                 {
                   type: "paragraph",
                   id: "b1",
-                  text: { standard: "GUIDE-PROBE central prose must not leak" },
+                  text: "GUIDE-PROBE central prose must not leak",
                   citations: [],
                 },
               ],
@@ -927,7 +923,7 @@ describe("isolation (PRD §12)", () => {
           {
             type: "paragraph",
             id: "b-g",
-            text: { standard: "GUIDE-PROBE central prose must not leak" },
+            text: "GUIDE-PROBE central prose must not leak",
             citations: [],
           },
         ];
@@ -1013,8 +1009,7 @@ describe("end-to-end demo review (replay): settled summaries are global, card-lo
                 kind: "comment",
                 who: "you",
                 question: null,
-                blocks: [{ type: "paragraph", id: "b1", text: { standard: "What about A?" }, citations: [] }],
-                level: "standard",
+                blocks: [{ type: "paragraph", id: "b1", text: "What about A?", citations: [] }],
                 revision: 1,
                 undoStack: [],
               },
@@ -1024,8 +1019,7 @@ describe("end-to-end demo review (replay): settled summaries are global, card-lo
                 kind: "comment",
                 who: "agent",
                 question: null,
-                blocks: [{ type: "paragraph", id: "b2", text: { standard: "SETTLED-A-SUMMARY the A thread concluded first." }, citations: [] }],
-                level: "standard",
+                blocks: [{ type: "paragraph", id: "b2", text: "SETTLED-A-SUMMARY the A thread concluded first.", citations: [] }],
                 revision: 1,
                 undoStack: [],
                 suggested: true,
@@ -1046,8 +1040,7 @@ describe("end-to-end demo review (replay): settled summaries are global, card-lo
                 kind: "comment",
                 who: "you",
                 question: null,
-                blocks: [{ type: "paragraph", id: "b1", text: { standard: "What about B?" }, citations: [] }],
-                level: "standard",
+                blocks: [{ type: "paragraph", id: "b1", text: "What about B?", citations: [] }],
                 revision: 1,
                 undoStack: [],
               },
@@ -1057,8 +1050,7 @@ describe("end-to-end demo review (replay): settled summaries are global, card-lo
                 kind: "comment",
                 who: "agent",
                 question: null,
-                blocks: [{ type: "paragraph", id: "b2", text: { standard: "SETTLED-B-SUMMARY the B thread concluded second." }, citations: [] }],
-                level: "standard",
+                blocks: [{ type: "paragraph", id: "b2", text: "SETTLED-B-SUMMARY the B thread concluded second.", citations: [] }],
                 revision: 1,
                 undoStack: [],
                 suggested: true,
