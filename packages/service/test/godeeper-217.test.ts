@@ -1,6 +1,6 @@
 /**
  * #217: go-deeper placeholders are written automatically after the guide
- * when `autoGoDeeper` is on (default), at background priority, through the
+ * when `autoGoDeeper` is on (off by default since #389), at background priority, through the
  * same fill path as Generate; an on-click Generate while the automatic
  * job is queued/running reuses that job. Fake runner only.
  */

@@ -1124,6 +1124,9 @@ test.describe("L3 demo guide reading", () => {
       }
     }
     svc = await startService(dataDir, { agent: "replay", label: "l3demo" });
+    // These journeys assert auto-written go-deeper cards, which need the
+    // setting on (off by default since #389).
+    await apiJson(svc, "PUT", "/api/settings", { autoGoDeeper: true });
     readReview = await createDemoReview(svc);
     askReview = await createDemoReview(svc);
     explainReview = await createDemoReview(svc);

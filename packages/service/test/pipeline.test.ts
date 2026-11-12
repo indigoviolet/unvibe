@@ -79,6 +79,9 @@ describe("pipeline demo e2e (replay)", () => {
       const changes = await app.inject({ method: "GET", url: "/api/repos/demo/changes", headers: authed });
       expect(changes.statusCode).toBe(200);
       expect((changes.json() as { changes: { kind: string }[] }).changes[0].kind).toBe("demo");
+      // The full demo includes the go-deeper fills, which are written
+      // automatically only with the setting on (off by default, #389).
+      ctx.settings.update({ autoGoDeeper: true });
 
       const created = await app.inject({
         method: "POST",

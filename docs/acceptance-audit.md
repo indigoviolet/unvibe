@@ -1560,7 +1560,7 @@ needed (that deviation is closed, not added).
    "Summaries for X of Y hunks · Summarize more" whenever hunks lack
    summaries, and the trace's `review.skipped` counts every hunk without
    a summary to match.
-6. On demand (depth/go-deeper — automatic in the background by default (#217; an auto-written card stays collapsed, title and why-line, until the reader opens it, and opening shows the written content with no new job), or on Generate when the setting is off — /explain/examples/diagrams/answers/concepts/
+6. On demand (depth/go-deeper — on Generate by default (#389), or automatic in the background when the setting is on (#217; an auto-written card stays collapsed, title and why-line, until the reader opens it, and opening shows the written content with no new job) — /explain/examples/diagrams/answers/concepts/
    second opinions) — met (`pipeline/actions/*`, `actions-m4.test.ts`).
    Full concept pages may draw a `d2` diagram inline, same rule as
    explain/go_deeper (#69; the template used to recommend one in prose).
