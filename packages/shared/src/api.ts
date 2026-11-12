@@ -183,6 +183,10 @@ export interface ChangesCursor {
   authoring?: string | null;
   direct?: string | null;
   team?: string | null;
+  /** #385: next-page cursor for the `reviewed-by:@me` search. */
+  reviewed?: string | null;
+  /** #385: next-page cursor for the typed-author `author:<login>` search. */
+  authorOther?: string | null;
 }
 
 const B64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
@@ -283,7 +287,7 @@ function fromB64Url(s: string): string | null {
 /** Encode a paging token (opaque, URL-safe, no padding). Pure. */
 export function encodeChangesCursor(c: ChangesCursor): string {
   const slim: Record<string, string | null> = {};
-  for (const k of ["authoring", "direct", "team"] as const) {
+  for (const k of ["authoring", "direct", "team", "reviewed", "authorOther"] as const) {
     // Only present keys round-trip: an absent key means "never fetched",
     // while an explicit null means "exhausted".
     if (k in c) slim[k] = typeof c[k] === "string" ? c[k] : null;
@@ -304,7 +308,7 @@ export function decodeChangesCursor(v: unknown): ChangesCursor {
   }
   if (typeof doc !== "object" || doc === null || Array.isArray(doc)) return {};
   const out: ChangesCursor = {};
-  for (const k of ["authoring", "direct", "team"] as const) {
+  for (const k of ["authoring", "direct", "team", "reviewed", "authorOther"] as const) {
     const val = (doc as Record<string, unknown>)[k];
     if (val === undefined) continue;
     out[k] = typeof val === "string" ? val : null;
@@ -337,13 +341,15 @@ export interface RepoChange {
    * #95: which review request a "review-requested" row answers — a request
    * made of you by name ("direct") or only of a team you belong to
    * ("team"). Absent on other rows and on rows stored before this change
-   * (the start page shows those under "Requested of you").
+   * (the start page shows those under "Requested of you"). #385 adds
+   * "other": an author's open PR that requests no review from you —
+   * shown under "Not requested of you" during an author search only.
    */
   /** #224: normalised PR state from gh (`state` + `isDraft`). Absent on branch rows. */
   prState?: PrState;
   /** #224: normalised review decision from gh. Absent when none/unknown. */
   reviewDecision?: PrReviewDecision;
-  reviewScope?: "direct" | "team";
+  reviewScope?: "direct" | "team" | "other";
   /**
    * #95: team slugs (or names) from `gh`'s `reviewRequests` that asked for
    * the review. Shown on team-requested rows when cheap; absent when there
