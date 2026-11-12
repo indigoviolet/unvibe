@@ -774,7 +774,7 @@ test.describe("J385 already-reviewed and typed-author lists", () => {
     await prBlock.getByLabel("Author", { exact: true }).press("Enter");
     await expect(prBlock.getByText("Harper works alone")).toBeVisible({ timeout: 30_000 });
     await expect(prBlock.getByText("Not requested of you")).toBeVisible();
-    await prBlock.getByText("Waiting on your review").scrollIntoViewIfNeeded();
+    await prBlock.getByText("Not requested of you").scrollIntoViewIfNeeded();
     await checkLayout(page, "start-385-author-1440-light");
     await page.screenshot({ path: `${SHOTS}/start-385-author-1440-light.png` });
   });
