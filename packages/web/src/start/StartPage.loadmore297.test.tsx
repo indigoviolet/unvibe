@@ -269,7 +269,7 @@ describe("author combobox (#297 follow-up)", () => {
     expect(requestedAuthors().every((a) => a === undefined)).toBe(true);
   });
 
-  it("picking a listed login applies the client-side filter", async () => {
+  it("picking a listed login runs the server search too (#385)", async () => {
     localStorage.setItem(REPO_KEY, "r1");
     requestedRows = [pr(1, "Alice asks", "alice"), pr(2, "Bob asks", "bob")];
     mockPage();
@@ -281,8 +281,8 @@ describe("author combobox (#297 follow-up)", () => {
 
     await waitFor(() => expect(screen.queryByText("Bob asks")).not.toBeInTheDocument());
     expect(screen.getByText("Alice asks")).toBeInTheDocument();
-    // A listed login filters client-side: no server search was sent.
-    expect(requestedAuthors().every((a) => a === undefined)).toBe(true);
+    // #385: every author choice fetches server-side, listed or not.
+    expect(requestedAuthors()).toContain("alice");
     expect(authorInput()).toHaveValue("alice (1)");
   });
 

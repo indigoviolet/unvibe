@@ -366,7 +366,9 @@ if [ "$1" = "api" ] && [ "$2" = "graphql" ]; then
         *"reviewed-by:"*) echo '${L1_EMPTY_SEARCH}' ;;
         *"user-review-requested:@me"*) cat "$POOL/pl-direct.json" ;; 
         *"review-requested:@me"*) cat "$POOL/pl-team.json" ;;
-        *"author:"*) cat "$POOL/pl-authoring.json" ;;
+        *"is:pr"*) cat "$POOL/pl-authoring.json" ;;
+        # #385: the author's-other-PRs search is empty for this repo
+        # (its own shape lives on acme/reviewed).
         *) echo '${L1_EMPTY_SEARCH}' ;;
       esac
       ;;
@@ -375,7 +377,8 @@ if [ "$1" = "api" ] && [ "$2" = "graphql" ]; then
         *"reviewed-by:"*) echo '${L1_EMPTY_SEARCH}' ;;
         *"user-review-requested:@me"*) cat "$POOL/fi-direct.json" ;;
         *"review-requested:@me"*) cat "$POOL/fi-team.json" ;;
-        *"author:"*) cat "$POOL/fi-authoring.json" ;;
+        *"is:pr"*) cat "$POOL/fi-authoring.json" ;;
+        # #385: the author's-other-PRs search is empty for this repo.
         *) echo '${L1_EMPTY_SEARCH}' ;;
       esac
       ;;
