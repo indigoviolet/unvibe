@@ -61,10 +61,10 @@ GET /api/repos/demo/changes        → [{ kind: "demo", title: "Demo: urllib3#50
 POST /api/reviews { repoId: "demo" } → 201 + pipeline starts
 ```
 
-With `autoGoDeeper` on (the default, #217), the pipeline fills every
-go-deeper placeholder in the background once the guide lands (background
-jobs, same fill path; demo included). With it off, a placeholder is
-written only on Generate. Concept pages are written only when a reader
+With `autoGoDeeper` off (the default since #389), a go-deeper placeholder
+is written only on Generate. With it on (#217), the pipeline fills every
+placeholder in the background once the guide lands (background jobs, same
+fill path; demo included). Concept pages are written only when a reader
 opens a concept link (#216).
 
 ## Stages (all jobs on the queue)
