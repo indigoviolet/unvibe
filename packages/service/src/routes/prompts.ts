@@ -543,7 +543,13 @@ export function expandAll(lib: TemplateLibrary, snapshot: PromptReviewSnapshot, 
     changed_hunks: "(no changes)",
     message: PH.message,
   });
-  forked("slower", { card: cardText });
+  forked("slower", {
+    card: cardText,
+    // Issue #388: the preview shows the ordinary press (no picked terms);
+    // the terms block attaches when the action runs.
+    terms: "",
+    guide: "",
+  });
   forked("examples", { card: cardText });
   forked("diagram", { card: cardText });
   forked("go_deeper", { direction: PH.direction, glossary: glossaryForPreview });

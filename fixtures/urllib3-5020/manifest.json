@@ -287,6 +287,66 @@
       "kind": "slower",
       "key": "persona:central:1",
       "file": "slower-persona-central-1.md"
+    },
+    {
+      "kind": "slower",
+      "key": "problem:terms:1",
+      "file": "slower-problem-terms1.md"
+    },
+    {
+      "kind": "slower",
+      "key": "central:terms:1",
+      "file": "slower-central-terms1.md"
+    },
+    {
+      "kind": "slower",
+      "key": "buildup:terms:1",
+      "file": "slower-buildup-terms1.md"
+    },
+    {
+      "kind": "slower",
+      "key": "decisions:terms:1",
+      "file": "slower-decisions-terms1.md"
+    },
+    {
+      "kind": "slower",
+      "key": "g-alt:terms:1",
+      "file": "slower-g-alt-terms1.md"
+    },
+    {
+      "kind": "slower",
+      "key": "g-regex:terms:1",
+      "file": "slower-g-regex-terms1.md"
+    },
+    {
+      "kind": "slower",
+      "key": "g-tests:terms:1",
+      "file": "slower-g-tests-terms1.md"
+    },
+    {
+      "kind": "slower",
+      "key": "g-reach:terms:1",
+      "file": "slower-g-reach-terms1.md"
+    },
+    {
+      "kind": "slower",
+      "key": "evidence-adjacent-folds:terms:1",
+      "file": "slower-evidence-adjacent-folds-terms1.md"
+    },
+    {
+      "kind": "slower",
+      "key": "assessment-adjacent-folds:terms:1",
+      "file": "slower-assessment-adjacent-folds-terms1.md"
+    },
+    {
+      "kind": "slower",
+      "key": "evidence-bare-lf:terms:1",
+      "file": "slower-evidence-bare-lf-terms1.md"
+    },
+    {
+      "kind": "slower",
+      "key": "assessment-bare-lf:terms:1",
+      "file": "slower-assessment-bare-lf-terms1.md"
     }
   ]
 }
