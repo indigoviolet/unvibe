@@ -180,11 +180,10 @@ export async function selectText(
         );
         if (!found) return "not-found";
         if (opts?.waitForBar === false) {
-          // Issue #388: ? mode clears the selection when it picks the
-          // term; read the raw text synchronously, before it runs.
-          return await page.evaluate(() =>
-            (getSelection()?.toString() ?? "").trim().replace(/\s+/g, " "),
-          );
+          // Issue #388: ? mode suspends the toolbar, so "shown" means
+          // the mouseup was dispatched; the caller asserts the tray and
+          // highlights with their own waits.
+          return "shown";
         }
         // Wait for the toolbar to actually appear (a slow loop needs
         // longer than a fixed tick to render it), not a fixed sleep.

@@ -244,7 +244,9 @@ test.describe("L3 guide mock shell", () => {
       await expect.soft(page.locator("#pop")).toBeHidden();
 
       await openPopover(page);
-      await page.mouse.click(300, 20);
+      // (300, 20) used to be empty bar space; since #388 it is the ?
+      // toggle, so press the demo banner instead (plain text, no controls).
+      await page.mouse.click(200, 64);
       await expect.soft(page.locator("#pop")).toBeHidden();
 
       await openPopover(page);
