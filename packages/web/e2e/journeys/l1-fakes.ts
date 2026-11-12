@@ -548,6 +548,9 @@ if [ "$1" = "api" ] && [ "$2" = "graphql" ]; then
       ;;
     *repo:acme/progapp*)
       case "$*" in
+        # #385: the reviewed-by search is empty here and never waits for
+        # the release marker (only the review-requested searches hold).
+        *reviewed-by:*) echo '{"data":{"search":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}' ;;
         *search\\(query:*)
           # The review-requested searches wait for the release marker, so
           # the spec can observe the other sections (and the kept rows on
