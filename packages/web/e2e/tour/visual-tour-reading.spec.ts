@@ -159,8 +159,11 @@ test.describe("J20 critic, concepts and go-deeper", () => {
     let svc: RunningService | null = null;
     try {
       svc = await startService(dataDir, { agent: "replay" });
+      // Auto go-deeper is off by default since #389: turn it on so
+      // every go-deeper card fills without a click.
+      await apiJson(svc, "PUT", "/api/settings", { autoGoDeeper: true });
       const reviewId = await createDemoReview(svc);
-      // #217 (default on): every go-deeper card fills without a click, in
+      // #217: every go-deeper card fills without a click, in
       // the background; #215: one critic job; #216: no concept pages yet.
       const snap = await poll(
         () => snapshot(svc!, reviewId),
@@ -243,7 +246,10 @@ test.describe("J20 critic, concepts and go-deeper", () => {
     let svc: RunningService | null = null;
     try {
       svc = await startService(dataDir, { agent: "replay" });
-      // Toggle off in Settings (Limits tab) before the review exists.
+      // The toggle starts on (enabled above the default-off since #389)
+      // so the test can toggle it off in Settings (Limits tab) before
+      // the review exists.
+      await apiJson(svc, "PUT", "/api/settings", { autoGoDeeper: true });
       await page.goto(`${svc.origin}/settings?token=${svc.token}`);
       await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible({ timeout: 30_000 });
       await page.getByRole("tab", { name: "Limits" }).click();

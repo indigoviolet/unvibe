@@ -373,11 +373,11 @@ test.describe("J349b persona versions", () => {
       timeout: 15_000,
     });
     await tabs.locator(`[data-version-tab="${PERSONA_ID}"]`).click();
-    await expect(card).toContainText("CRLF is the framing delimiter", { timeout: 15_000 });
+    await expect(card).toContainText("agree with each other", { timeout: 15_000 });
 
     // Ask on the persona's text: the thread belongs to the persona and
     // the agent avatar wears its colour.
-    await selectText(page, "#C-central", "framing delimiter");
+    await selectText(page, "#C-central", "agree with each other");
     await page.locator('#selbar [data-act="ask"]').click();
     const composer = page.locator('#C-central .ithread[data-pending-thread]');
     await expect(composer).toBeVisible({ timeout: 10_000 });
