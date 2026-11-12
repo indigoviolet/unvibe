@@ -5,7 +5,7 @@
  * flattened into an explanation used to repeat IDs (`["b1","b1"]`) — and
  * one nested anchor then matched two blocks, drawing its card twice.
  * End to end over HTTP with the scripted fake runner: a two-card Explain
- * reply, then a depth change, examples and diagram inserts on the
+ * reply, then a slower rewrite, examples and diagram inserts on the
  * expansion, then a follow-up answer and a nested Explain per paragraph.
  */
 import { describe, expect, it, vi } from "vitest";

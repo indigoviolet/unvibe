@@ -2,9 +2,9 @@
  * L4 — Threads: Explain and Ask (#363 package C).
  *
  * The thread area in usage order: explain/ask/follow-up/nested-explain/
- * depth on guide cards, Ask + comment sharing one diff line, diff threads
- * pinned inline with the Reply-box quote chip, streamed-patch answers
- * with citations, the writing state, page/conversation depth principles,
+ * slower rewrites on guide cards, Ask + comment sharing one diff line,
+ * diff threads pinned inline with the Reply-box quote chip,
+ * streamed-patch answers with citations, the writing state,
  * flat threads (ask/explain-inside/Reply/link/collapse-all, avatars,
  * reply counts, reply chrome), multi-turn threads across restart and
  * access-mode change, suggested questions/comments, thread polish
@@ -370,12 +370,12 @@ test.describe("L4 threads on the demo (fast replay)", () => {
       await expect.soft(page.locator(`#C-central section.ithread[data-thread="${threadId}"]`)).toHaveCount(1);
     });
 
-    await test.step("depth rewrites the parent answer", async () => {
+    await test.step("Help me understand rewrites the parent answer", async () => {
       const threadId = explainId;
       const exp = page.locator(`#C-central section.ithread[data-thread="${threadId}"]`).first();
-      const beforeDepth = await exp.locator(".exp-b").first().innerText();
-      await clickReplyControl(exp.locator("[data-reply]").first(), "Deeper");
-      await expect.soft.poll(async () => exp.locator(".exp-b").first().innerText(), { timeout: 60_000 }).not.toBe(beforeDepth);
+      const beforeSlower = await exp.locator(".exp-b").first().innerText();
+      await clickReplyControl(exp.locator("[data-reply]").first(), "Help me understand");
+      await expect.soft.poll(async () => exp.locator(".exp-b").first().innerText(), { timeout: 60_000 }).not.toBe(beforeSlower);
     });
 
     await test.step("Ask opens a pinned thread; the question is a reviewer entry", async () => {
@@ -588,63 +588,63 @@ test.describe("L4 threads on the demo (fast replay)", () => {
     });
   });
 
-  test("page card: + at deepest adds one principle; + again tells; undo removes", async ({ page }) => {
+  test("page card: Help me understand rewrites twice, then undo steps back", async ({ page }) => {
     test.setTimeout(300_000);
     // Fresh seeded review: other tests in this file leave cards behind
-    // whose own Deeper buttons would capture the unscoped clicks.
+    // whose own slower buttons would capture the unscoped clicks.
     await openReview(page, "l4-depth-page");
     const card = page.locator("#C-central");
+    const s = service();
+    const paraText = async (): Promise<string> => {
+      const cur = await apiJson(s, "GET", "/api/reviews/l4-depth-page");
+      const cards = ((cur.json as { pages: { id: string; cards: { id: string; blocks: { type: string; text?: string }[] }[] }[] }).pages ?? [])
+        .find((p) => p.id === "root")?.cards ?? [];
+      const central = cards.find((c) => c.id === "central");
+      return (central?.blocks ?? []).filter((b) => b.type === "paragraph").map((b) => b.text ?? "").join("\n\n");
+    };
+    const before = await paraText();
+    expect.soft(before).toContain("unfolds every");
 
-    function principleLocator(scope: Locator) {
-      return scope.locator(".blk.gen-aside", { hasText: "Underlying principle" });
-    }
-    await test.step("step to deep without the principle, then + adds exactly one", async () => {
-      for (let i = 0; i < 3; i++) {
-        if ((await principleLocator(card).count()) > 0) break;
-        const pipsBefore = await card.locator(".pips i.on").count();
-        await card.getByRole("button", { name: "Deeper" }).click();
-        await expect
-          .soft.poll(
-            async () => ((await principleLocator(card).count()) > 0 ? -1 : await card.locator(".pips i.on").count()),
-            { timeout: 60_000 },
-          )
-          .not.toBe(pipsBefore);
-        if ((await principleLocator(card).count()) > 0) {
-          await card.getByRole("button", { name: "Undo" }).click();
-          await expect.soft(principleLocator(card)).toHaveCount(0, { timeout: 30_000 });
-          break;
-        }
-        if (i >= 1) break;
-      }
-      await expect.soft(principleLocator(card)).toHaveCount(0, { timeout: 10_000 });
-      await card.getByRole("button", { name: "Deeper" }).click();
-      await expect.soft(principleLocator(card)).toHaveCount(1, { timeout: 60_000 });
-      await expect.soft(principleLocator(card).first()).toContainText("Underlying principle");
+    // The toolbar carries one icon button with the tooltip, no pips.
+    await card.hover();
+    const help = card.locator("> .chead .ctl").getByRole("button", { name: "Help me understand" });
+    await expect.soft(help).toBeVisible({ timeout: 15_000 });
+    expect.soft(await help.getAttribute("data-tip")).toBe("Help me understand");
+    await expect.soft(card.locator(".pips")).toHaveCount(0);
+
+    await test.step("two presses rewrite further each time", async () => {
+      await help.click();
+      await expect.soft.poll(async () => paraText(), { timeout: 60_000 }).toContain("obsolete folded header line");
+      const afterFirst = await paraText();
+      expect.soft(afterFirst).not.toBe(before);
+      await card.hover();
+      await card.locator("> .chead .ctl").getByRole("button", { name: "Help me understand" }).click();
+      await expect.soft.poll(async () => paraText(), { timeout: 60_000 }).toContain("Start with what the server sends");
+      expect.soft(await paraText()).not.toBe(afterFirst);
     });
 
-    await test.step("+ again adds nothing and says so; undo removes it", async () => {
-      await card.getByRole("button", { name: "Deeper" }).click();
-      await expect.soft(principleLocator(card)).toHaveCount(1, { timeout: 10_000 });
-      await expect.soft(page.locator("#toast")).toContainText(/deepest|nothing more/i, { timeout: 10_000 });
-      await card.getByRole("button", { name: "Undo" }).click();
-      await expect.soft(principleLocator(card)).toHaveCount(0, { timeout: 10_000 });
+    await test.step("undo steps back through the presses", async () => {
+      await card.hover();
+      await card.locator("> .chead .ctl").getByRole("button", { name: "Undo" }).click();
+      await expect.soft.poll(async () => paraText(), { timeout: 60_000 }).toContain("obsolete folded header line");
+      await expect.soft(card).not.toContainText("Start with what the server sends", { timeout: 15_000 });
     });
   });
 
-  test("conversation card: same principle flow", async ({ page }) => {
+  test("conversation card: slower rewrites the reply, undo restores", async ({ page }) => {
     test.setTimeout(300_000);
     const s = service();
     await openReview(page, "l4-depth-conv");
 
     const snap = await apiJson(s, "GET", "/api/reviews/l4-depth-conv");
-    const central = ((snap.json as { pages: { id: string; cards: { id: string; blocks: { id: string; type: string; text?: { standard: string } }[] }[] }[] }).pages ?? [])
+    const central = ((snap.json as { pages: { id: string; cards: { id: string; blocks: { id: string; type: string; text?: string }[] }[] }[] }).pages ?? [])
       .find((p) => p.id === "root")?.cards.find((c) => c.id === "central");
-    const paras = (central?.blocks ?? []).filter((b) => b.type === "paragraph" && b.text?.standard);
-    const host = paras.find((b) => b.text!.standard.includes("agree")) ?? paras[0];
+    const paras = (central?.blocks ?? []).filter((b) => b.type === "paragraph" && b.text);
+    const host = paras.find((b) => b.text!.includes("agree")) ?? paras[0];
     if (!host?.text) throw new Error("central has no paragraph blocks");
-    const quote = host.text.standard.includes("agree")
+    const quote = host.text.includes("agree")
       ? "so the message and urllib3's HTTPHeaderDict agree"
-      : host.text.standard.slice(0, 12);
+      : host.text.slice(0, 12);
     const created = await apiJson(s, "POST", "/api/reviews/l4-depth-conv/actions", {
       kind: "explain",
       quote,
@@ -669,33 +669,22 @@ test.describe("L4 threads on the demo (fast replay)", () => {
     const exp = page.locator(`#C-central [data-thread="${annId}"]`).first();
     await expect(exp).toBeVisible({ timeout: 30_000 });
 
-    function principleLocator(scope: Locator) {
-      return scope.locator(".blk.gen-aside", { hasText: "Underlying principle" });
-    }
-    await test.step("step to deep, then + / + / undo on the conversation reply", async () => {
-      for (let i = 0; i < 2; i++) {
-        const expPipsBefore = await exp.locator(".pips i.on").count();
-        await clickReplyControl(exp.locator("[data-reply]").first(), "Deeper");
-        await expect
-          .soft.poll(
-            async () => ((await principleLocator(exp).count()) > 0 ? -1 : await exp.locator(".pips i.on").count()),
-            { timeout: 60_000 },
-          )
-          .not.toBe(expPipsBefore);
-        if ((await principleLocator(exp).count()) > 0) {
-          await clickReplyControl(exp.locator("[data-reply]").first(), "Undo");
-          await expect.soft(principleLocator(exp)).toHaveCount(0, { timeout: 30_000 });
-          break;
-        }
-      }
-      await expect.soft(principleLocator(exp)).toHaveCount(0, { timeout: 10_000 });
-      await clickReplyControl(exp.locator("[data-reply]").first(), "Deeper");
-      await expect.soft(principleLocator(exp)).toHaveCount(1, { timeout: 60_000 });
-      await clickReplyControl(exp.locator("[data-reply]").first(), "Deeper");
-      await expect.soft(principleLocator(exp)).toHaveCount(1, { timeout: 10_000 });
-      await expect.soft(page.locator("#toast")).toContainText(/deepest|nothing more/i, { timeout: 10_000 });
+    const replyText = async (): Promise<string> => {
+      const cur = await apiJson(s, "GET", "/api/reviews/l4-depth-conv");
+      const ann = ((cur.json as { annotations: { id: string; replies?: { blocks: { type: string; text?: string }[] }[] }[] }).annotations ?? []).find(
+        (a) => a.id === annId,
+      );
+      const blocks = ann?.replies?.[0]?.blocks ?? [];
+      return blocks.filter((b) => b.type === "paragraph").map((b) => b.text ?? "").join("\n\n");
+    };
+    const beforeReply = await replyText();
+    await test.step("one press rewrites the reply more slowly, undo restores it", async () => {
+      await clickReplyControl(exp.locator("[data-reply]").first(), "Help me understand");
+      await expect.soft.poll(async () => replyText(), { timeout: 60_000 }).toContain("too long for one line");
+      expect.soft(await replyText()).not.toBe(beforeReply);
+      await expect.soft(exp.locator(".exp-b").first()).toContainText("too long for one line", { timeout: 15_000 });
       await clickReplyControl(exp.locator("[data-reply]").first(), "Undo");
-      await expect.soft(principleLocator(exp)).toHaveCount(0, { timeout: 10_000 });
+      await expect.soft.poll(async () => replyText(), { timeout: 60_000 }).toBe(beforeReply);
     });
   });
 

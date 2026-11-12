@@ -91,7 +91,10 @@ async function slowerViaAgent(
   const capture = captureJobId();
   // Persona variants carry their own revision count, so a persona press
   // keys its own recording cluster and never collides with the guide's.
-  const replayKey = personaId ? `persona:${cardId}:${revision}` : `${cardId}:${revision}`;
+  // Thread replies carry dynamic `ans_…` ids, so they share one
+  // `expansion:<revision>` cluster like the old depth recordings did.
+  const replayKey =
+    personaId ? `persona:${cardId}:${revision}` : cardId.startsWith("ans_") || cardId.startsWith("ann_") ? `expansion:${revision}` : `${cardId}:${revision}`;
   const replay = isReplayRunner(pipeline.runner) ? { kind: "slower", key: replayKey } : undefined;
   // Issue #50: a rewrite must not open by repeating the card title — for
   // an answer, its question (else the card's quoted text).

@@ -277,6 +277,11 @@
       "kind": "slower",
       "key": "persona:central:1",
       "file": "slower-persona-central-1.md"
+    },
+    {
+      "kind": "slower",
+      "key": "expansion:1",
+      "file": "slower-expansion-1.md"
     }
   ]
 }
