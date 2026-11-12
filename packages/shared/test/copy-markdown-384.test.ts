@@ -40,11 +40,11 @@ function localCtx(): CopyMarkdownContext {
 }
 
 function para(html: string, citations: { target: string }[] = [], id = "b1"): Block {
-  return { type: "paragraph", id, text: { standard: html }, citations };
+  return { type: "paragraph", id, text: html, citations };
 }
 
-function card(title: string | null, blocks: Block[], level: "simple" | "standard" | "deep" = "standard"): GuideCardInput {
-  return { title, blocks, level };
+function card(title: string | null, blocks: Block[]): GuideCardInput {
+  return { title, blocks };
 }
 
 describe("guide copy (#384)", () => {
@@ -57,21 +57,25 @@ describe("guide copy (#384)", () => {
     expect(md).toBe("# Fix the retry path\n\n## First\n\nOne.\n\n## Second\n\nTwo.\n\n## Third\n\nThree.\n");
   });
 
-  it("renders each card at its own shown depth", () => {
-    const blocks: Block[] = [
+  it("renders each card's shown text", () => {
+    const a: Block[] = [
       {
         type: "paragraph",
         id: "b1",
-        text: { simple: "Simple.", standard: "Standard.", deep: "Deep." },
+        text: "Slower A.",
         citations: [],
       },
     ];
-    const md = guideToMarkdown(
-      "Title",
-      [card("A", blocks, "simple"), card("B", blocks, "deep")],
-      prCtx(),
-    );
-    expect(md).toBe("# Title\n\n## A\n\nSimple.\n\n## B\n\nDeep.\n");
+    const b: Block[] = [
+      {
+        type: "paragraph",
+        id: "b1",
+        text: "Slower B.",
+        citations: [],
+      },
+    ];
+    const md = guideToMarkdown("Title", [card("A", a), card("B", b)], prCtx());
+    expect(md).toBe("# Title\n\n## A\n\nSlower A.\n\n## B\n\nSlower B.\n");
   });
 
   it("leaves out code blocks, finding/comment links and follow-ups", () => {
@@ -180,7 +184,7 @@ describe("guide copy (#384)", () => {
     expect(guide).toBe("# Title\n\n## C\n\n- Run it\n");
     expect(guide).not.toContain("```");
     // Card copy (#377) keeps the fence: the default is unchanged.
-    const cardMd = blocksToMarkdown(blocks, "standard", prCtx());
+    const cardMd = blocksToMarkdown(blocks, prCtx());
     expect(cardMd).toContain("```sh");
     expect(cardMd).toContain("make test");
   });
@@ -220,7 +224,6 @@ describe("guide copy (#384)", () => {
           { type: "follow-up", id: "b4", items: [{ label: "Check" }], citations: [] },
         ],
       },
-      "standard",
       prCtx(),
       { findPage: () => ({ title: "Finding" }) },
     );

@@ -22,7 +22,6 @@ function turn(id: string, over: Record<string, unknown> = {}): Record<string, un
     who: "agent",
     question: null,
     blocks: [],
-    level: "standard",
     revision: 1,
     undoStack: [],
     working: "Writing explanation…",
@@ -156,7 +155,7 @@ describe("provisional streamed paragraphs", () => {
       replies: [
         turn("ans_1", {
           blocks: [
-            { type: "paragraph", id: "b1", text: { standard: "Final validated answer." }, citations: [] },
+            { type: "paragraph", id: "b1", text: "Final validated answer.", citations: [] },
           ],
           working: null,
         }),

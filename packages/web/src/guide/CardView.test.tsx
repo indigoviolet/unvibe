@@ -24,7 +24,6 @@ function card(over: Partial<Card> = {}): Card {
     id: "c1",
     pageId: "root",
     title: "Card",
-    level: "standard",
     collapsed: false,
     revision: 1,
     blocks: [],
@@ -232,7 +231,7 @@ describe("CardView immediate feedback", () => {
   test("a follow-up chip goes disabled/busy on click with an answer placeholder", () => {
     const withFollow = card({
       blocks: [
-        { type: "paragraph", id: "b-p", text: { standard: "Some text." }, citations: [] },
+        { type: "paragraph", id: "b-p", text: "Some text.", citations: [] },
         { type: "follow-up", id: "b-f", items: [{ label: "Why?" }], citations: [] },
       ],
     });
@@ -263,8 +262,8 @@ describe("CardView immediate feedback", () => {
 
   test("a live card job with no in-flight entry still shows busy (reload mid-rewrite)", () => {
     const live = {
-      id: "job-depth-1",
-      kind: "depth",
+      id: "job-slower-1",
+      kind: "slower",
       provider: "claude",
       model: "m",
       reviewId: REVIEW_ID,
@@ -293,7 +292,7 @@ describe("CardView immediate feedback", () => {
   test("once the answer thread arrives, the chip placeholder is gone", () => {
     const withFollow = card({
       blocks: [
-        { type: "paragraph", id: "b-p", text: { standard: "Some text." }, citations: [] },
+        { type: "paragraph", id: "b-p", text: "Some text.", citations: [] },
         { type: "follow-up", id: "b-f", items: [{ label: "Why?" }], citations: [] },
       ],
     });
@@ -337,7 +336,7 @@ describe("CardView immediate feedback", () => {
     expect(document.querySelector(".ui-card.child.placeholder")).toBeNull();
   });
 
-  test("depth marks the card as rewriting on click", () => {
+  test("Help me understand marks the card as rewriting on click", () => {
     seedSnapshot([card()]);
     const held = holdAction();
     try {
@@ -352,7 +351,7 @@ describe("CardView immediate feedback", () => {
         />,
         </MemoryRouter>
       );
-      fireEvent.click(screen.getByRole("button", { name: "Deeper" }));
+      fireEvent.click(screen.getByRole("button", { name: "Help me understand" }));
       const section = document.getElementById("C-c1");
       expect(section?.className).toMatch(/rewriting/);
       expect(section?.getAttribute("aria-busy")).toBe("true");
@@ -373,10 +372,7 @@ describe("CardView titles (issue #49)", () => {
         {
           type: "paragraph",
           id: "b1",
-          text: {
-            standard:
-              "A single microphone cannot tell who is speaking because the childrens voices all sound the same in this recording",
-          },
+          text: "A single microphone cannot tell who is speaking because the childrens voices all sound the same in this recording",
           citations: [],
         },
       ],
@@ -445,7 +441,7 @@ describe("CardView titles (issue #49)", () => {
         {
           type: "paragraph",
           id: "b-p",
-          text: { standard: "The USB stream stays at 48 kHz." },
+          text: "The USB stream stays at 48 kHz.",
           citations: [{ target: "diff:conn:82" }],
         },
       ],
@@ -506,7 +502,7 @@ describe("CardView persona versions", () => {
         {
           type: "paragraph",
           id: "b1",
-          text: { standard: "Guide version text." },
+          text: "Guide version text.",
           citations: [],
         },
       ],
@@ -517,11 +513,10 @@ describe("CardView persona versions", () => {
             {
               type: "paragraph",
               id: "b1",
-              text: { standard: "Persona version text." },
+              text: "Persona version text.",
               citations: [],
             },
           ],
-          level: "standard",
           revision: 1,
           undoStack: [],
           working: null,

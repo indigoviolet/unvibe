@@ -60,11 +60,10 @@ function card(open: boolean): Thread {
           {
             type: "paragraph",
             id: "b1",
-            text: { standard: "Unfolds folded header values before reading." },
+            text: "Unfolds folded header values before reading.",
             citations: [],
           },
         ],
-        level: "standard",
         revision: 1,
         undoStack: [],
         working: null,

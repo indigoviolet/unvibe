@@ -46,7 +46,6 @@ function fillingLink(): Thread {
     id: "ans_1",
     question: null,
     blocks: [],
-    level: "standard",
     revision: 1,
     undoStack: [],
     working: "Thinking…",

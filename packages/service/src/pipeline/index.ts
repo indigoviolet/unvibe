@@ -15,7 +15,7 @@ export { dispatchAction, type ActionDeps } from "./actions/dispatcher.js";
 export { generateAction } from "./actions/generate.js";
 export { askAction, explainAction, replyAction, retryAction } from "./actions/conversation.js";
 export { noteAction } from "./actions/note.js";
-export { depthAction } from "./actions/depth.js";
+export { slowerAction } from "./actions/slower.js";
 export { examplesAction } from "./actions/examples.js";
 export { diagramAction } from "./actions/diagram.js";
 export { undoAction } from "./actions/undo.js";

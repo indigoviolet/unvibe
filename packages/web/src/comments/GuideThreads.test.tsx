@@ -18,11 +18,10 @@ function seedSnapshot(): void {
     id: "c1",
     pageId: "root",
     title: "Card",
-    level: "standard",
     read: false,
     collapsed: false,
     revision: 1,
-    blocks: [{ type: "paragraph", id: "b1", text: { standard: "Some text." }, citations: [] }],
+    blocks: [{ type: "paragraph", id: "b1", text: "Some text.", citations: [] }],
     undoStack: [],
   } as unknown as Card;
   useReview.getState().setSnapshot({

@@ -25,7 +25,7 @@ Second paragraph about the folded header.
 `;
 
 function paragraph(id: string, text = "hi"): Block {
-  return { type: "paragraph", id, text: { standard: text }, citations: [] };
+  return { type: "paragraph", id, text: text, citations: [] };
 }
 
 function asideWithInner(id: string, innerId: string): Block {
@@ -33,7 +33,7 @@ function asideWithInner(id: string, innerId: string): Block {
     type: "aside",
     id,
     kind: "Example",
-    inner: [{ type: "paragraph", id: innerId, text: { standard: "inner" }, citations: [] }],
+    inner: [{ type: "paragraph", id: innerId, text: "inner", citations: [] }],
     citations: [],
   };
 }
@@ -72,8 +72,8 @@ describe("dedupeBlockIds", () => {
   it("preserves block content and order", () => {
     const flat = parseCards(TWO_CARDS).flatMap((c) => c.blocks);
     const out = dedupeBlockIds(flat);
-    expect(out.map((b) => (b.type === "paragraph" ? b.text.standard : ""))).toEqual(
-      flat.map((b) => (b.type === "paragraph" ? (b as { text: { standard: string } }).text.standard : "")),
+    expect(out.map((b) => (b.type === "paragraph" ? b.text : ""))).toEqual(
+      flat.map((b) => (b.type === "paragraph" ? (b as { text: string }).text : "")),
     );
   });
 });

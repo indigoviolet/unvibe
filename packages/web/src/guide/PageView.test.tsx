@@ -54,11 +54,10 @@ function card(id: string, title: string): Card {
     id,
     pageId: "root",
     title,
-    level: "standard",
     read: false,
     collapsed: false,
     revision: 1,
-    blocks: [{ type: "paragraph", id: `b-${id}`, text: { standard: `Text of ${title}.` }, citations: [] }],
+    blocks: [{ type: "paragraph", id: `b-${id}`, text: `Text of ${title}.`, citations: [] }],
     undoStack: [],
   } as unknown as Card;
 }

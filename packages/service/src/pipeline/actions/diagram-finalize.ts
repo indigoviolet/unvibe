@@ -122,7 +122,6 @@ async function finalizeList(
 export interface RepairDiagramsOpts {
   /** Context line for the repair prompt (the card text, or `Explain: …`). */
   card: string;
-  level: string;
   /** Dedupe anchor for the repair job (caller-scoped, e.g. card or annotation). */
   dedupeAnchor: string;
   /** Distinguishes repair jobs from first passes on the Debug page. */
@@ -147,17 +146,15 @@ export const DIAGRAM_REPAIR_MARKER = "The previous diagram failed validation:";
  */
 export function buildRepairVariables(
   card: string,
-  level: string,
   messages: string[],
   blocks: Block[],
-): { card: string; level: string } {
+): { card: string } {
   const problems = messages.join("\n");
   const prevSources = repairableDiagrams(blocks)
     .map((d) => `\`\`\`d2\n${d.source}\n\`\`\``)
     .join("\n");
   return {
     card: `${card}\n\n${DIAGRAM_REPAIR_MARKER}\n${problems}\n${prevSources}\nFix the D2 source (citations and syntax) and reply again.`,
-    level,
   };
 }
 
@@ -204,7 +201,7 @@ export async function repairDiagrams(
 ): Promise<Block[]> {
   const { pipeline, reviews, reviewId } = ctx;
   const live = getSnapshotOrThrow(reviews, reviewId);
-  const variables = buildRepairVariables(opts.card, opts.level, messages, fresh);
+  const variables = buildRepairVariables(opts.card, messages, fresh);
   const echoTitle = opts.cardId ? storedCardTitle(live, opts.cardId) : undefined;
   const res = await pipeline.runInFork({
     reviewId,

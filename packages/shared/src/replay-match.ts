@@ -43,7 +43,7 @@ const KIND_HINTS: { re: RegExp; kind: string }[] = [
   { re: /concept[-_ ]page|concept:\s*[\w-]+/i, kind: "concept-page" },
   { re: /\bhunk\b|summariz/i, kind: "hunk" },
   { re: /go[-_ ]deeper|placeholder card|\bgenerate\b/i, kind: "go-deeper" },
-  { re: /\bdepth\b|simpler|\bdeeper\b/i, kind: "depth" },
+  { re: /\bslower\b|more slowly|help me understand/i, kind: "slower" },
   { re: /examples?/i, kind: "examples" },
   { re: /\bdiagram\b|\bd2\b/i, kind: "diagram" },
   // `ask` first: the merged first-turn prompt carries both words (#136).
@@ -202,10 +202,9 @@ export function extractReplayKey(kind: string, prompt: string): string | null {
       }
       return null;
     }
-    case "depth": {
+    case "slower": {
       const card = /central/.test(lower) ? "central" : /problem/.test(lower) ? "problem" : null;
-      const level = /deep/.test(lower) ? "deep" : /simpl/.test(lower) ? "simple" : null;
-      return card && level ? `${card}:${level}` : (card ?? level);
+      return card;
     }
     case "examples":
       return /central/.test(lower) ? "central" : /problem/.test(lower) ? "problem" : null;

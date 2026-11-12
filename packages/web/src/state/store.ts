@@ -32,7 +32,7 @@ type PatchEvent = Extract<ReviewEvent, { type: "patch" }>;
  * reacts on click instead of waiting for the first WS event.
  */
 export type InFlightKind =
-  | "depth"
+  | "slower"
   | "examples"
   | "diagram"
   | "generate"

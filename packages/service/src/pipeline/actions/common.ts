@@ -3,7 +3,7 @@
  *
  * Every action goes through `ReviewStore.mutate` so the UI gets patches;
  * every agent call runs at user-requested priority with a dedupe key of
- * (anchor, kind, depth, base version) and is validated (citations, one
+ * (anchor, kind, revision, base version) and is validated (citations, one
  * repair turn) by the `runInFork` seam.
  */
 import type { Job } from "@unvibe/shared";

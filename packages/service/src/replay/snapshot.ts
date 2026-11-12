@@ -57,7 +57,6 @@ function mkCard(id: string, pageId: string, title: string | null, blocks: Block[
     id,
     pageId,
     title,
-    level: "standard",
     collapsed: false,
     revision: 1,
     blocks,
@@ -224,11 +223,10 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
     rootCards.push(mkCard(cardId, "root", title, canonBlocks(parsed.blocks)));
   }
 
-  // Issue #341: depth levels are NOT pre-seeded. The re-recorded reader
-  // carries standard text only, so the fixture is the post-ingest state
-  // before any on-demand depth action — exactly what the live pipeline
-  // builds. Depth fills run on demand from the `depth` recordings
-  // (problem/central/buildup simple/deep, expansion:deep for answers).
+  // Issue #341: no slower rewrites are pre-seeded. The re-recorded reader
+  // carries the base text only, so the fixture is the post-ingest state
+  // before any on-demand rewrite — exactly what the live pipeline builds.
+  // Slower rewrites run on demand from the `slower` recordings.
 
   const pages: Page[] = [
     {
@@ -321,7 +319,7 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
   // Thread anchors use real file keys; card anchors use card#block IDs.
   // Issue #136: the seed conversation carries its turns (`Thread.turns`)
   // so it renders like any explain result — each answer is a unit in its
-  // own right (level, revision, undo stack). Content comes from the
+  // own right (revision, undo stack). Content comes from the
   // recorded `explain-obsfold` reply, canonicalized like the live
   // pipeline stores it.
   const connKey = meta.keyAliases["conn"];
@@ -336,8 +334,7 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
       kind: "comment",
       who,
       question: null,
-      blocks: [{ type: "paragraph", id: "b1", text: { standard: esc }, citations: [] }],
-      level: "standard",
+      blocks: [{ type: "paragraph", id: "b1", text: esc, citations: [] }],
       revision: 1,
       undoStack: [],
       ...(suggested ? { suggested: true } : {}),
@@ -382,7 +379,6 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
           who: "agent",
           question: null,
           blocks: canonBlocks(explainSeed.blocks),
-          level: "standard",
           revision: 1,
           undoStack: [],
         },

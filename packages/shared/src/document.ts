@@ -37,7 +37,7 @@ export function documentBlockText(block: DocumentBlock): string {
   const b = block.block;
   switch (b.type) {
     case "paragraph":
-      return stripTags(b.text.standard);
+      return stripTags(b.text);
     case "heading":
       return stripTags(b.html);
     case "list":
@@ -50,7 +50,7 @@ export function documentBlockText(block: DocumentBlock): string {
       return [b.source, b.caption ?? ""].join("\n");
     case "aside":
       return b.inner.map((inner) =>
-        inner.type === "paragraph" ? stripTags(inner.text.standard) : "",
+        inner.type === "paragraph" ? stripTags(inner.text) : "",
       ).join("\n");
     default:
       return "";
@@ -98,7 +98,7 @@ export function parseDocumentMarkdown(markdown: string): DocumentContent {
         id,
         kind: "heading",
         level: chunk.heading.level,
-        block: { type: "paragraph", id, text: { standard: rendered.html }, citations: rendered.citations },
+        block: { type: "paragraph", id, text: rendered.html, citations: rendered.citations },
       });
       if (!title && chunk.heading.level === 1) title = stripTags(rendered.html);
     }

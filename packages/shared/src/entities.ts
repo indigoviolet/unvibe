@@ -225,22 +225,21 @@ export interface Page {
   recheckNote?: string;
 }
 
-export type DepthLevel = "simple" | "standard" | "deep";
-
 /**
- * Issue #273: what depth, examples, diagram and undo act on — a page
- * card's body or one reply of a thread. Every unit carries its own
- * `ans_…`/card id so none of those contracts change shape when the unit
- * is a reply. (Issue #349 step 2 adds per-persona card variants here.)
+ * Issue #273: what slower rewrites, examples, diagram and undo act on —
+ * a page card's body or one reply of a thread. Every unit carries its
+ * own `ans_…`/card id so none of those contracts change shape when the
+ * unit is a reply. (Issue #349 step 2 adds per-persona card variants
+ * here.) Issue #387 removed the depth levels: a body is rewritten in
+ * place, never per level.
  */
 export interface ContentBody {
   /** Page-card id, or `ans_<12 hex>` for a thread reply. */
   id: string;
   blocks: Block[];
-  level: DepthLevel;
   /** Bumped on every accepted rewrite; references always mean latest. */
   revision: number;
-  /** Undo stack of block snapshots (depth/examples/diagram changes). */
+  /** Undo stack of block snapshots (slower/examples/diagram changes). */
   undoStack: CardSnapshot[];
 }
 
@@ -248,19 +247,19 @@ export interface ContentBody {
  * Issue #349 step 2: one persona's version of a card. A normal card body
  * (same blocks, citations, validation): stored as a variant of the guide
  * card, keyed by persona id. The title stays the guide card's; the
- * variant carries its own blocks/level/revision/undo stack plus its run
+ * variant carries its own blocks/revision/undo stack plus its run
  * state (`working`/`error`/`jobId`) and its own agent session for that
- * card. Conversations on this version (depth, Explain, Ask, replies,
- * examples) run under the same persona and continue on `sessionId`.
+ * card. Conversations on this version (slower rewrites, Explain, Ask,
+ * replies, examples) run under the same persona and continue on
+ * `sessionId`.
  */
 export interface CardVariant {
   /** Persona id this variant belongs to (key of `Card.variants`). */
   personaId: string;
   blocks: Block[];
-  level: DepthLevel;
   /** Bumped on every accepted rewrite; references always mean latest. */
   revision: number;
-  /** Undo stack of block snapshots (depth/examples/diagram changes). */
+  /** Undo stack of block snapshots (slower/examples/diagram changes). */
   undoStack: CardSnapshot[];
   /**
    * This variant's own agent session (created by the persona card run),
@@ -283,7 +282,6 @@ export function isCardVariant(v: unknown): v is CardVariant {
   return (
     typeof o["personaId"] === "string" &&
     Array.isArray(o["blocks"]) &&
-    (o["level"] === "simple" || o["level"] === "standard" || o["level"] === "deep") &&
     typeof o["revision"] === "number" &&
     Array.isArray(o["undoStack"])
   );
@@ -352,10 +350,9 @@ export interface Card extends ContentBody {
   answers?: import("./versions.js").SinceFeedbackLink[];
 }
 
-/** A single undo entry: block list + depth level. No redo (PRD §4.4). */
+/** A single undo entry: the block list before a rewrite. No redo (PRD §4.4). */
 export interface CardSnapshot {
   blocks: Block[];
-  level: DepthLevel;
 }
 
 export interface PendingCard {
@@ -375,25 +372,21 @@ export type BlockType =
   | "follow-up"
   | "aside";
 
-/** Text variants per depth level (PRD §4.4). Standard is the stored default. */
-export interface DepthText {
-  simple?: string;
-  standard: string;
-  deep?: string;
-}
+
 
 export interface ParagraphBlock {
   type: "paragraph";
   id: string;
-  text: DepthText;
+  /** Rendered inline HTML (issue #387: one text, rewritten in place). */
+  text: string;
   citations: Citation[];
 }
 
 /**
  * Sub-heading inside a card (`###` and deeper in the reply Markdown,
  * issue #327). `##` stays the card boundary and `### Follow-ups` stays
- * its own block, so every other `###`+ heading lands here, rendered the
- * same at any depth. Inline Markdown is rendered like a paragraph's.
+ * its own block, so every other `###`+ heading lands here.
+ * Inline Markdown is rendered like a paragraph's.
  */
 export interface HeadingBlock {
   type: "heading";
@@ -502,11 +495,11 @@ export interface FollowUpBlock {
   citations: Citation[];
 }
 
-/** Example / Diagram / Underlying-principle insert (prototype `gen-aside`). */
+/** Example / Diagram insert (prototype `gen-aside`). */
 export interface AsideBlock {
   type: "aside";
   id: string;
-  kind: "Example" | "Diagram" | "Underlying principle";
+  kind: "Example" | "Diagram";
   /** Inner blocks rendered inside the aside. */
   inner: Block[];
   citations: Citation[];
@@ -1088,7 +1081,7 @@ export type JobKind =
   | "hunk-pass"
   | "concept"
   | "ask"
-  | "depth"
+  | "slower"
   | "examples"
   | "diagram"
   | "go-deeper"
@@ -1295,13 +1288,19 @@ export const JOB_PRIORITY = {
 export interface JobDedupeKey {
   anchor: string;
   requestKind: string;
-  depth?: string;
+  /**
+   * Issue #387: card revision the request was made against. Lets
+   * repeated slower presses on the same card stack instead of deduping
+   * into one job; absent on requests that are revision-independent.
+   * Stored second, so the base version stays the fourth `|` segment.
+   */
+  revision?: number;
   baseVersion: string;
 }
 
 /** Canonical string form of a {@link JobDedupeKey} (stored as `Job.dedupeKey`). */
 export function jobDedupeKeyString(key: JobDedupeKey): string {
-  return [key.anchor, key.requestKind, key.depth ?? "", key.baseVersion].join("|");
+  return [key.anchor, key.requestKind, key.revision ?? "", key.baseVersion].join("|");
 }
 
 export type LogScope = { scope: "global" } | { scope: "card"; cardId: string };

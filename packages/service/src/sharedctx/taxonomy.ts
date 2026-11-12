@@ -29,7 +29,6 @@ export function logEntryForEvent(event: InteractionEvent): TaxonomyResult | null
   switch (event.kind) {
     case "read":
     case "collapse":
-    case "depth-state":
     case "open":
     case "close":
     case "mark-for-pr":
@@ -37,9 +36,9 @@ export function logEntryForEvent(event: InteractionEvent): TaxonomyResult | null
       return null;
     case "example-added":
     case "diagram-added":
-    case "depth-rewrite": {
+    case "slower-rewrite": {
       if (!event.cardId) return null;
-      const kind = event.kind === "example-added" ? "example" : event.kind === "diagram-added" ? "diagram" : "depth-rewrite";
+      const kind = event.kind === "example-added" ? "example" : event.kind === "diagram-added" ? "diagram" : "slower-rewrite";
       const result: TaxonomyResult = {
         kind,
         payload: { text: event.text, ...(event.sessionId ? { sessionId: event.sessionId } : {}) },

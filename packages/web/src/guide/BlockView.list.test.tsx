@@ -77,7 +77,6 @@ describe("BlockView list citations (#165)", () => {
     const { container } = render(
       <BlockView
         block={listBlock()}
-        level="standard"
         threads={[]}
         cardId="c1"
         onOpenPage={() => {}}
@@ -99,7 +98,6 @@ describe("BlockView list citations (#165)", () => {
     const { container } = render(
       <BlockView
         block={listBlock()}
-        level="standard"
         threads={[]}
         footnotes={[footnote()]}
         cardId="c1"
@@ -131,7 +129,6 @@ describe("BlockView ordered start (issue #314)", () => {
     const { container } = render(
       <BlockView
         block={started}
-        level="standard"
         threads={[]}
         cardId="c1"
         onOpenPage={() => {}}
@@ -144,7 +141,6 @@ describe("BlockView ordered start (issue #314)", () => {
     const second = render(
       <BlockView
         block={plain}
-        level="standard"
         threads={[]}
         cardId="c1"
         onOpenPage={() => {}}
@@ -208,7 +204,6 @@ describe("BlockView whole-list citations (issue #305)", () => {
     const { container } = render(
       <BlockView
         block={citedList()}
-        level="standard"
         threads={[]}
         cardId="c1"
         onOpenPage={() => {}}

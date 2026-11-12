@@ -251,18 +251,14 @@ const MOCK_PLOTLINES: Plotline[] = [
  */
 const MOCK_DESCRIPTION = { ...guideDescription, editable: true, source: "pr" as const };
 
-/** Canned explanation blocks (fixture-shaped: depth variants + citations). */
+/** Canned explanation blocks (fixture-shaped text + citations). */
 function mockExplainBlocks(quote: string): import("@unvibe/shared").Block[] {
   const q = quote.replace(/</g, "&lt;").slice(0, 120) || "this text";
   return [
     {
       type: "paragraph",
       id: `b-mock-exp-${Date.now().toString(36)}`,
-      text: {
-        simple: `<em>${q}</em> is about unfolding folded header values.`,
-        standard: `Mock explanation of <em>${q}</em>: the helper replaces each fold with one space before urllib3 reads the value.`,
-        deep: `Mock deep explanation of <em>${q}</em>: obs-fold handling sits at the recipient per RFC 9112 §5.2, before interpretation or forwarding, so every consumer sees one semantic value.`,
-      },
+      text: `Mock explanation of <em>${q}</em>: the helper replaces each fold with one space before urllib3 reads the value.`,
       citations: [{ target: "diff:src-urllib3-connection.py:80-82" }],
     },
   ] as unknown as import("@unvibe/shared").Block[];
@@ -282,18 +278,6 @@ function mockExampleAside(): import("@unvibe/shared").Block {
 
 function mockDiagramAside(): import("@unvibe/shared").Block {
   return mockAddedD2Block() as unknown as import("@unvibe/shared").Block;
-}
-
-function mockPrincipleAside(): import("@unvibe/shared").Block {
-  return {
-    type: "aside",
-    id: `b-mock-pr-${Date.now().toString(36)}`,
-    kind: "Underlying principle",
-    inner: [
-      { type: "paragraph", id: `b-mock-pr-${Date.now().toString(36)}-p`, text: { standard: "Resolve encoding at the recipient, before interpretation." }, citations: [] },
-    ],
-    citations: [],
-  } as unknown as import("@unvibe/shared").Block;
 }
 
 type MockCardRef =
@@ -316,20 +300,14 @@ function mockCardBlocks(ref: MockCardRef): import("@unvibe/shared").Block[] {
   return (ref.kind === "page" ? ref.card.blocks : ref.turn.blocks) as import("@unvibe/shared").Block[];
 }
 
-function mockCardLevel(ref: MockCardRef): import("@unvibe/shared").DepthLevel {
-  return (ref.kind === "page" ? ref.card.level : ref.turn.level) as import("@unvibe/shared").DepthLevel;
-}
-
-/** Push undo + set blocks/level + bump revision on a page card or answer. */
-function setMockCard(ref: MockCardRef, blocks: import("@unvibe/shared").Block[], level: import("@unvibe/shared").DepthLevel): void {
+/** Push undo + set blocks + bump revision on a page card or answer. */
+function setMockCard(ref: MockCardRef, blocks: import("@unvibe/shared").Block[]): void {
   const cur = mockCardBlocks(ref);
   const body = ref.kind === "page" ? ref.card : ref.turn;
-  (body.undoStack as { blocks: unknown; level: unknown }[]).push({
+  (body.undoStack as { blocks: unknown }[]).push({
     blocks: JSON.parse(JSON.stringify(cur)),
-    level: (body as { level: unknown }).level,
   });
   (body as { blocks: unknown }).blocks = blocks;
-  (body as { level: unknown }).level = level;
   (body as { revision: number }).revision += 1;
 }
 
@@ -525,59 +503,33 @@ function findMockBlock(blockId: string): { ownerId: string; blockId: string } | 
   return null;
 }
 
-/** Card controls in mock: depth/examples/diagram/undo through the patch path. */
-function mockCardControl(a: { kind: string; cardId: string; direction?: string }): {
+/** Card controls in mock: slower/examples/diagram/undo through the patch path. */
+function mockCardControl(a: { kind: string; cardId: string }): {
   accepted: boolean;
   cardId: string;
   jobId?: string;
-  /** Mirrors the service (issue #65): stored switches and at-the-limit repeats reuse. */
+  /** Mirrors the service: repeats that add nothing reuse. */
   reused?: boolean;
-  /** Resulting level for depth actions (issue #65). */
-  level?: import("@unvibe/shared").DepthLevel;
 } {
   const ref = findMockCard(a.cardId);
   if (!ref) throw new Error(`unknown card ${a.cardId}`);
-  const ORDER: import("@unvibe/shared").DepthLevel[] = ["simple", "standard", "deep"];
-  if (a.kind === "depth" && (a.direction === "simpler" || a.direction === "deeper")) {
-    const level = mockCardLevel(ref);
-    const i = ORDER.indexOf(level);
-    const next = a.direction === "simpler" ? ORDER[i - 1] : ORDER[i + 1];
+  // Issue #387: a Help-me-understand press rewrites the first paragraph
+  // more slowly (a visible mock stand-in for the agent turn), so repeats
+  // stack through the undo stack like the service.
+  if (a.kind === "slower") {
     const blocks = mockCardBlocks(ref);
-    if (!next) {
-      // + at the deepest level adds the Underlying principle block once.
-      if (a.direction === "deeper" && !blocks.some((b) => b.type === "aside" && (b as { kind: string }).kind === "Underlying principle")) {
-        const cur = [...blocks];
-        // Fresh ID within this body (#116), inner IDs moving along.
-        const principle = mockPrincipleAside() as { id: string; inner: { id: string }[] };
-        const principleId = freshBlockId(cur as never[], principle.id);
-        const stamped =
-          principleId === principle.id
-            ? principle
-            : {
-                ...principle,
-                id: principleId,
-                inner: principle.inner.map((ib) =>
-                  ib.id.startsWith(`${principle.id}-`)
-                    ? { ...ib, id: `${principleId}-${ib.id.slice(principle.id.length + 1)}` }
-                    : ib,
-                ),
-              };
-        setMockCard(ref, [...cur, stamped] as never, level as never);
-        emitPages();
-        emitAnnotations();
-        return { accepted: true, cardId: a.cardId, level };
-      }
-      return { accepted: true, cardId: a.cardId, reused: true, level };
-    }
-    const cur = [...blocks];
-    setMockCard(ref, cur as never, next as never);
+    const first = blocks.find((b) => b.type === "paragraph");
+    if (!first || first.type !== "paragraph") return { accepted: true, cardId: a.cardId, reused: true };
+    const cur = blocks.map((b) =>
+      b === first && b.type === "paragraph" ? { ...b, text: `More slowly: ${b.text}` } : b,
+    );
+    setMockCard(ref, cur as never);
     emitPages();
     emitAnnotations();
-    return { accepted: true, cardId: a.cardId, reused: true, level: next };
+    return { accepted: true, cardId: a.cardId };
   }
   if (a.kind === "examples" || a.kind === "diagram") {
     const blocks = mockCardBlocks(ref);
-    const level = mockCardLevel(ref);
     const want = a.kind === "examples" ? "Example" : null;
     if (want && blocks.some((b) => b.type === "aside" && (b as { kind: string }).kind === want)) {
       return { accepted: true, cardId: a.cardId };
@@ -605,17 +557,16 @@ function mockCardControl(a: { kind: string; cardId: string; direction?: string }
     // first paragraph when one exists, else append.
     const at = cur.findIndex((b) => b.type === "paragraph");
     const nextBlocks = at >= 0 ? [...cur.slice(0, at + 1), stamped, ...cur.slice(at + 1)] : [...cur, stamped];
-    setMockCard(ref, nextBlocks as never, level as never);
+    setMockCard(ref, nextBlocks as never);
     emitPages();
     emitAnnotations();
     return { accepted: true, cardId: a.cardId };
   }
   if (a.kind === "undo") {
     const body = ref.kind === "page" ? ref.card : ref.turn;
-    const prev = (body.undoStack as { blocks: unknown; level: unknown }[]).pop();
+    const prev = (body.undoStack as { blocks: unknown }[]).pop();
     if (!prev) return { accepted: true, cardId: a.cardId };
     (body as { blocks: unknown }).blocks = prev.blocks;
-    (body as { level: unknown }).level = prev.level;
     (body as { revision: number }).revision += 1;
     emitPages();
     emitAnnotations();
@@ -640,7 +591,6 @@ function ensureMockVariant(
   const created: import("@unvibe/shared").CardVariant = {
     personaId,
     blocks: clone,
-    level: card.level,
     revision: 1,
     undoStack: [],
     working: null,
@@ -650,49 +600,31 @@ function ensureMockVariant(
   return created;
 }
 
-/** Issue #349 step 2 (mock): depth/examples/diagram/undo on a persona's variant. */
-function mockVariantControl(a: { kind: string; cardId: string; direction?: string }, personaId: string): {
+/** Issue #349 step 2 (mock): slower/examples/diagram/undo on a persona's variant. */
+function mockVariantControl(a: { kind: string; cardId: string }, personaId: string): {
   accepted: boolean;
   cardId: string;
   jobId?: string;
   reused?: boolean;
-  level?: import("@unvibe/shared").DepthLevel;
 } {
   const ref = findMockCard(a.cardId);
   if (!ref || ref.kind !== "page") throw new Error(`unknown card ${a.cardId}`);
   const card = ref.card;
   const variant = (card.variants as Record<string, import("@unvibe/shared").CardVariant> | undefined)?.[personaId];
   if (!variant) throw new Error(`persona ${personaId} has not run on card ${a.cardId} yet`);
-  const ORDER: import("@unvibe/shared").DepthLevel[] = ["simple", "standard", "deep"];
   const pushVariantUndo = (): void => {
-    (variant.undoStack as { blocks: unknown; level: unknown }[]).push({
+    (variant.undoStack as { blocks: unknown }[]).push({
       blocks: JSON.parse(JSON.stringify(variant.blocks)),
-      level: variant.level,
     });
   };
-  if (a.kind === "depth" && (a.direction === "simpler" || a.direction === "deeper")) {
-    const i = ORDER.indexOf(variant.level);
-    const next = a.direction === "simpler" ? ORDER[i - 1] : ORDER[i + 1];
-    if (!next) {
-      if (
-        a.direction === "deeper" &&
-        !(variant.blocks as { type: string; kind?: string }[]).some(
-          (b) => b.type === "aside" && b.kind === "Underlying principle",
-        )
-      ) {
-        pushVariantUndo();
-        (variant.blocks as unknown[]).push(mockPrincipleAside() as never);
-        variant.revision += 1;
-        emitPages();
-        return { accepted: true, cardId: a.cardId, level: variant.level };
-      }
-      return { accepted: true, cardId: a.cardId, reused: true, level: variant.level };
-    }
+  if (a.kind === "slower") {
+    const first = (variant.blocks as { type: string; text?: string }[]).find((b) => b.type === "paragraph");
+    if (!first || typeof first.text !== "string") return { accepted: true, cardId: a.cardId, reused: true };
     pushVariantUndo();
-    variant.level = next;
+    first.text = `More slowly: ${first.text}`;
     variant.revision += 1;
     emitPages();
-    return { accepted: true, cardId: a.cardId, reused: true, level: next };
+    return { accepted: true, cardId: a.cardId };
   }
   if (a.kind === "examples" || a.kind === "diagram") {
     const blocks = variant.blocks as { type: string; kind?: string }[];
@@ -709,10 +641,9 @@ function mockVariantControl(a: { kind: string; cardId: string; direction?: strin
     return { accepted: true, cardId: a.cardId };
   }
   if (a.kind === "undo") {
-    const prev = (variant.undoStack as { blocks: never; level: never }[]).pop();
+    const prev = (variant.undoStack as { blocks: never }[]).pop();
     if (!prev) return { accepted: true, cardId: a.cardId };
     (variant.blocks as unknown) = prev.blocks;
-    (variant.level as unknown) = prev.level;
     variant.revision += 1;
     emitPages();
     return { accepted: true, cardId: a.cardId };
@@ -1649,7 +1580,6 @@ function mirrorMockPromotedTurn(tid: string, replyId: string): void {
     const card = p.cards.find((c) => c.id === mapping.cardId);
     if (!card) continue;
     card.blocks = JSON.parse(JSON.stringify(turn.blocks));
-    card.level = turn.level;
     card.revision = turn.revision;
     card.undoStack = JSON.parse(JSON.stringify(turn.undoStack));
     emitPages();
@@ -1728,8 +1658,7 @@ function ensureMockHunkCard(fileKey: string, contentHash: string): { id: string;
         kind: "explain",
         who: "agent",
         question: null,
-        blocks: [{ type: "paragraph", id: blockId, text: { standard: safe }, citations: [] }],
-        level: "standard",
+        blocks: [{ type: "paragraph", id: blockId, text: safe, citations: [] }],
         revision: 1,
         undoStack: [],
         working: null,
@@ -1785,9 +1714,8 @@ function mockReplyText(reply: { blocks?: Array<{ type: string }> }): string {
   const parts: string[] = [];
   for (const b of ((reply.blocks ?? []) as Array<Record<string, unknown>>)) {
     if (b["type"] === "paragraph") {
-      const t = b["text"] as Record<string, unknown> | undefined;
-      const std = typeof t?.["standard"] === "string" ? (t["standard"] as string) : "";
-      const plain = std.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+      const t = b["text"];
+      const plain = (typeof t === "string" ? t : "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
       if (plain) parts.push(plain);
     }
   }
@@ -1813,8 +1741,7 @@ function mockCommentReply(who: "you" | "agent", text: string, suggested = false,
     kind: "comment",
     who,
     question: null,
-    blocks: [{ type: "paragraph", id: "b1", text: { standard: esc }, citations: [] }],
-    level: "standard",
+    blocks: [{ type: "paragraph", id: "b1", text: esc, citations: [] }],
     revision: 1,
     undoStack: [],
     ...(suggested ? { suggested: true } : {}),
@@ -3097,7 +3024,6 @@ export const mockApi = {
             who: "agent",
             question: (a as { message: string }).message,
             blocks: [],
-            level: "standard",
             revision: 1,
             undoStack: [],
             working: "Writing answer",
@@ -3181,7 +3107,6 @@ export const mockApi = {
               who: "agent",
               question: a.message,
               blocks: [],
-              level: "standard",
               revision: 1,
               undoStack: [],
               working: "Thinking",
@@ -3212,7 +3137,6 @@ export const mockApi = {
           who: "agent",
           question: (a as { message: string }).message,
           blocks: [],
-          level: "standard",
           revision: 1,
           undoStack: [],
           working: "Writing answer",
@@ -3262,7 +3186,7 @@ export const mockApi = {
       answerTurnLater(found.id, last.id, last.question ?? found.anchor.quotedText, retryJobId, "ask", demoMatchText(found.anchor.quotedText, last.question ?? undefined, found.anchor.host as never));
       return { accepted: true, annotationId: found.id, replyId: last.id, jobId: retryJobId };
     }
-    // M4 interaction (mock): explain, depth, examples, diagram, undo,
+    // M4 interaction (mock): explain, slower, examples, diagram, undo,
     // generate, followup, concept, promote, close + instant card state.
     // Canned content derives from the fixture snapshot so the UI exercises
     // the real shapes (working → streamed text → blocks, error + retry via
@@ -3289,7 +3213,6 @@ export const mockApi = {
           who: "agent",
           question: a.quote,
           blocks: [],
-          level: "standard",
           revision: 1,
           undoStack: [],
           working: "Thinking",
@@ -3366,7 +3289,6 @@ export const mockApi = {
             who: "agent",
             question: null,
             blocks: [],
-            level: "standard",
             revision: 1,
             undoStack: [],
             working: "Thinking",
@@ -3379,7 +3301,7 @@ export const mockApi = {
       answerTurnLater(id, replyId, a.quote, jobId, "explain", demoMatchText(a.quote, undefined, host as never));
       return { accepted: true, annotationId: id, replyId, jobId };
     }
-    if (a.kind === "depth" || a.kind === "examples" || a.kind === "diagram" || a.kind === "undo") {
+    if (a.kind === "slower" || a.kind === "examples" || a.kind === "diagram" || a.kind === "undo") {
       const personaId = (a as { personaId?: string }).personaId;
       if (typeof personaId === "string" && personaId !== "") {
         const res = mockVariantControl(a as never, personaId);
@@ -3417,7 +3339,7 @@ export const mockApi = {
           {
             type: "paragraph",
             id: `${card.id}-b1`,
-            text: { standard: `Mock generated card for <em>${card.id}</em>: the live agent would fill this from the repo.` },
+            text: `Mock generated card for <em>${card.id}</em>: the live agent would fill this from the repo.`,
             citations: [{ target: "diff:src-urllib3-connection.py:80-82" }],
           },
           { type: "follow-up", id: `${card.id}-f1`, items: [{ label: "What happens to a fold that ends in a bare LF?", ask: "bare lf" }], citations: [] },
@@ -3448,7 +3370,6 @@ export const mockApi = {
           id: replyId,
           question: message,
           blocks: [],
-          level: "standard",
           revision: 1,
           undoStack: [],
           working: "Writing answer",
@@ -3502,7 +3423,7 @@ export const mockApi = {
         post: false,
         working: "Writing answer",
         replies: [
-          { id: replyId, seq: 1, kind: "ask", who: "agent", question: item.ask ?? item.label, blocks: [], level: "standard", revision: 1, undoStack: [], working: "Writing answer" },
+          { id: replyId, seq: 1, kind: "ask", who: "agent", question: item.ask ?? item.label, blocks: [], revision: 1, undoStack: [], working: "Writing answer" },
         ],
       } as unknown as import("@unvibe/shared").Thread);
       emitAnnotations();
@@ -3531,7 +3452,7 @@ export const mockApi = {
           kind: "concept",
           title: slug,
           parent: "root",
-          cards: [{ id: `cc-${slug}`, pageId, title: null, level: "standard", collapsed: false, revision: 1, blocks: [], undoStack: [] }],
+          cards: [{ id: `cc-${slug}`, pageId, title: null, collapsed: false, revision: 1, blocks: [], undoStack: [] }],
         });
         emitPages();
         page = mockPages.find((p) => p.id === pageId)!;
@@ -3551,7 +3472,6 @@ export const mockApi = {
               id: `cc-${slug}`,
               pageId,
               title: null,
-              level: "standard",
               collapsed: false,
               revision: 2,
               blocks: demoBlocks,
@@ -3571,14 +3491,13 @@ export const mockApi = {
             id: `cc-${slug}`,
             pageId,
             title: null,
-            level: "standard",
             collapsed: false,
             revision: 2,
             blocks: [
-              { type: "paragraph", id: `cc-${slug}-b1`, text: { standard: `Mock concept page for <em>${slug}</em>: written on first open.` }, citations: [{ target: "diff:src-urllib3-connection.py:80-82" }] },
+              { type: "paragraph", id: `cc-${slug}-b1`, text: `Mock concept page for <em>${slug}</em>: written on first open.`, citations: [{ target: "diff:src-urllib3-connection.py:80-82" }] },
               ...(known
                 ? [
-                    { type: "paragraph", id: `cc-${slug}-b2`, text: { standard: 'Whitespace is one of the <a class="cx" data-link="concept:ows-rws">OWS and RWS</a> rules.' }, citations: [] },
+                    { type: "paragraph", id: `cc-${slug}-b2`, text: 'Whitespace is one of the <a class="cx" data-link="concept:ows-rws">OWS and RWS</a> rules.', citations: [] },
                     mockExampleAside(),
                   ]
                 : []),
@@ -3621,7 +3540,6 @@ export const mockApi = {
             id: cardIds[i],
             pageId,
             title: i === 0 ? quote || null : (turn.question ?? null),
-            level: turn.level,
             collapsed: false,
             revision: turn.revision,
             blocks: JSON.parse(JSON.stringify(turn.blocks)),
@@ -4194,7 +4112,7 @@ export const mockApi = {
     const ref = findMockCard(cardId);
     let revision = 2;
     if (ref?.kind === "page") {
-      ref.card.undoStack.push({ blocks: JSON.parse(JSON.stringify(ref.card.blocks)), level: ref.card.level });
+      ref.card.undoStack.push({ blocks: JSON.parse(JSON.stringify(ref.card.blocks)) });
       ref.card.revision += 1;
       revision = ref.card.revision;
       emitPages();

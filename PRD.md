@@ -56,7 +56,7 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
 
 **Main flows**
 1. **Open a review.** Pick a repo, then a PR or branch. The guide starts filling in within about a minute.
-2. **Understand.** Read the guide. Hover links and citations, open concept pages, change the depth, and explain or ask about selected text.
+2. **Understand.** Read the guide. Hover links and citations, open concept pages, ask for a slower explanation, and explain or ask about selected text.
 3. **Inspect the code.** Use the diff beside the guide: filter files, hide uninteresting hunks, fold, summarize, mark reviewed.
 4. **Get a second opinion** on a card or an agent finding.
 5. **Comment and submit.** Mark comments in the Outbox, edit the drafts, then submit one GitHub review (PR reviews) or copy the Outbox Markdown export (any review). If it's your PR, the description edit goes in the same submit.
@@ -135,13 +135,10 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
 Every page card has the same controls. Explanation cards (§4.7) carry the same controls per answer:
 - **Title:** every page card has a short title, shown in the card header and in Contents. The prompts require one for every card; when the agent omits it anyway, the app derives a fallback once — the first sentence or clause of the body as plain text, cut on a word boundary with an ellipsis. Explanation cards show the quoted selection as their header instead and get no derived title.
 - **Collapse:** a leading chevron on the title row. A collapsed card shows only its title row.
-- **Depth:** a − / + stepper with three dots and no level names. The levels are simpler, standard and first principles. While a depth change runs, both buttons keep their icons and are disabled (one shared control for page cards and answers).
-  - Changing depth rewrites the card's paragraphs in place.
-  - + at the deepest level adds an "Underlying principle" block.
-  - Depth versions are generated **on demand** and kept once made.
+- **Help me understand:** one icon button (tooltip "Help me understand") in the card toolbar. Each press rewrites the card more slowly than its current text — filling in skipped steps, defining terms at first use, walking through one concrete example, and stating the "why" — so the rewrite is repeatable and relative, with no fixed levels. The rewrite never gets shorter by dropping content, keeps every citation on its paragraph, and keeps the structure, examples and diagrams. While the rewrite runs the button shows dots and the other controls are disabled (one shared control for page cards and answers).
 - **Use examples** and **Add diagram:** insert example or diagram blocks after the paragraphs they relate to, never duplicating one already there.
 - **Diagrams** render inline in the card at fit: the whole diagram visible, no scrollbars, never above natural size. +/−/Reset zoom in place (trackpad pinch and Ctrl/Cmd+wheel zoom; a plain wheel scrolls the page), drag pans once zoomed. When the guide pane has spare room the block breaks out past the text column, centered, up to the usable width; caption and citations stay column-aligned. **Expand** opens the same diagram out of the column in a full-window view with the same zoom/pan plus reset-to-fit. Esc or the close control shuts it and focus returns to Expand. Citation hover previews and click-to-reveal work the same expanded, inline, and zoomed. Diagrams wear the guide palette in both themes, with `myid.class: [ok]` / `[bad]` on its own line for good/bad states. A diagram that did not render shows its source with a plain "Couldn't draw this diagram." note and a retry — no zoom, Reset or Expand controls, no compiler output (the raw reason is on the Debug page).
-- **Undo:** reverts the card's last change (depth, examples or diagram). There's no history trail and no redo. Comments and nested cards attached to the card survive undo.
+- **Undo:** reverts the card's last change (a slower rewrite, examples or diagram). There's no history trail and no redo. Comments and nested cards attached to the card survive undo.
 - **While the agent works:** the card (likewise threads, hunk summaries, placeholders and the loading states) shows a fixed plain label with three dots bouncing in sequence — never streamed agent text. Under the OS reduced-motion setting the dots stay still but solid.
 
 ### 4.5 Links and citations
@@ -154,7 +151,7 @@ Every page card has the same controls. Explanation cards (§4.7) carry the same 
   - Inline code chips in agent answers behave the same way.
 - **Unverified citations:** a citation the app couldn't check or repair (§10) is shown dimmed, with a tooltip saying so.
 - **Comment marker:** a speech bubble with a count, shown only for comments that never had highlighted anchor text. A thread whose quote can no longer be found in its host paragraph shows a footnote chip with its quote instead (see §4.7).
-- **Anchor footnotes:** when an annotation's quote cannot be found in its host paragraph's rendered text (for example after a depth rewrite), a small muted chip on the paragraph's citations line shows the truncated quote (full quote on hover). Hover previews and click behave as the highlight did. One row per paragraph, shared with the `<>` chip; 12px muted, no underline until hover. A closed explanation shows dotted-link styling, an opened-as-page link an arrow, a thread a speech bubble. When the phrase returns, the highlight comes back and the chip disappears. Open cards stay in place with a muted "from an earlier wording" hint next to the quote.
+- **Anchor footnotes:** when an annotation's quote cannot be found in its host paragraph's rendered text (for example after a slower rewrite), a small muted chip on the paragraph's citations line shows the truncated quote (full quote on hover). Hover previews and click behave as the highlight did. One row per paragraph, shared with the `<>` chip; 12px muted, no underline until hover. A closed explanation shows dotted-link styling, an opened-as-page link an arrow, a thread a speech bubble. When the phrase returns, the highlight comes back and the chip disappears. Open cards stay in place with a muted "from an earlier wording" hint next to the quote.
 - **Hover cards and tooltips:**
   - open after a short pause (about 0.2 s);
   - close on any scroll anywhere, a press outside them, Escape, the window losing focus or the pointer, and on resize;
@@ -172,7 +169,7 @@ Every page card has the same controls. Explanation cards (§4.7) carry the same 
 - **Floating is only for peeking:** hovering a closed card's mark shows the card floating as a preview; clicking the mark (or the preview) pins the card in place. Cards are keyboard reachable in their DOM position.
 - **Header:** the quoted text, then **Open as page**, **Delete** and **Close**. Below that, one answer view per turn: each answer carries the standard card controls acting on that answer alone (the latest answer shows them; earlier answers reveal them on hover or focus), and a reply box at the bottom answers in the same conversation. While a turn is being written, the card shows only its header and the writing state: no answer controls and no reply box until the answer arrives, and a failed turn shows **Retry** instead.
 - **Close** removes the card and turns the highlighted text into a dotted link: hover previews the explanation, click pins it back in place. Close only hides the card: an answer still being written keeps being written and fills its turn, so the answer is there when the card is reopened or its link previewed; the card still shows it is working when reopened. Only **Delete** cancels a running answer.
-- **If the anchor text can't be found** (for example after a depth rewrite), a footnote chip is shown on the host paragraph's citations line instead of a collapsed card (see §4.5). Open explanation cards stay in place with a muted "from an earlier wording" hint next to the quote.
+- **If the anchor text can't be found** (for example after a slower rewrite), a footnote chip is shown on the host paragraph's citations line instead of a collapsed card (see §4.5). Open explanation cards stay in place with a muted "from an earlier wording" hint next to the quote.
 - **Open as page** moves the content to a new page titled with the quoted text — one card per answer, the first titled with the quoted text and later ones with their questions — and the anchor text becomes a link to that page at once, in the guide, the description and the diff. Opening as a page never discards work: when the answer is still being written, its job keeps running and fills the page card (the page shows the usual working state until then, and the error with Retry when the fill fails); second opinions move to the page with the answers.
 - **Follow-up suggestions** stay on Explain answers; clicking one sends it as the next turn in the same conversation.
 - The card is never submitted to GitHub; it carries no Outbox control.
@@ -378,7 +375,7 @@ A session started under one setting keeps it until it ends (the posture is part 
 | FileState | file key → folded (file reviewed is derived from its hunks, never stored) |
 | Page | id, kind (root, concept, finding, opened-expansion), title, parent, cards[] |
 | Card | id, page, title, level, collapsed, revision, blocks[], undo stack, second opinions |
-| Block | id, type (paragraph, list, table, code, diagram, finding link, follow-up, aside), text per depth level, citations |
+| Block | id, type (paragraph, list, table, code, diagram, finding link, follow-up, aside), text, citations |
 | Annotation | id, type (conversation, comment, link), anchor, open/closed, plus for conversations: turns (question + answer blocks, each with level, revision, undo stack, second opinions), one session id, reply draft; plus for comments: messages, `post`, draft; plus for links moved mid-fill: the unsettled turns with their page-card mapping until they settle. A conversation can host on a hunk (`h:…`), created from the hunk's summary text with no agent call. |
 | Anchor | host (block ID, description paragraph, diff line, or hunk), quoted text, prefix/suffix, position at creation, version |
 | Contribution | id, source session, items (fact, correction, open question, reader note), citations, replaces, status |
@@ -444,7 +441,7 @@ The aim: every conversation starts mostly from cache, and rarely needs a tool ca
 | L0 Harness | The adapter's system prompt and tools, our MCP tools (identical in every session), our instructions (link tokens, output format) | App release |
 | L1 Source | Metadata, description or commit log (framed as material, never instructions), the full handwritten diff with IDs inline (a hunk ID on each header, the new-side number on each line), the file list, one-line summaries of hidden hunks, existing GitHub review comments (framed the same way) | New version |
 | L1b Pinned code | Code excerpts the reader pinned, each with a `code:` ID | New version |
-| L2 Reader output | Guide cards at standard depth, findings, the concept index (one line each), hunk summaries | Guide regenerated |
+| L2 Reader output | Guide cards, findings, the concept index (one line each), hunk summaries | Guide regenerated |
 | L3 Annotations | Appended log entries (§9.3) | Continuously |
 | L4 Conversation | The anchor (quote, full host block, its card), nearby annotations in full, the thread so far, the change list, the user's message | Every turn |
 
@@ -460,8 +457,8 @@ The aim: every conversation starts mostly from cache, and rarely needs a tool ca
 
 ### 9.3 The append-only log and change lists
 - **What enters the log:**
-  - **never:** collapse, depth, open/close and Outbox state;
-  - **only for conversations anchored on that card:** examples, diagrams and depth rewrites;
+  - **never:** collapse, open/close and Outbox state;
+  - **only for conversations anchored on that card:** examples, diagrams and slower rewrites;
   - **one line, once a thread settles:** a summary of the thread;
   - **in full:** new cards and findings, and answers that cited something outside the base;
   - **a one-line deletion entry:** for a deleted item that had been shared.
@@ -535,7 +532,7 @@ A new base is built when any of these happens:
 4. **Parallel forks of the base:**
    - a **critic** (main model): findings with evidence, an assessment, a confidence level, and drafted suggested comments on diff lines;
 5. **Hunk pass** (small model, no fork): at most N summaries per review version (the "Hunk summaries written automatically" setting, Settings → Limits, default 50, 0 for none), picked source first, then tests, config, docs — never generated files, never hunks hidden at the review's hide level — plus the uninteresting classification with a one-line reason. Guide-cited hunks without summaries get priority within the same N once the reader lands; no extra jobs beyond N without asking. The rest summarise on demand. The diff header shows "Summaries for X of Y hunks · Summarize more", which queues the next N in the same order.
-6. **On demand:** depth versions, "Go deeper" cards, explanations, examples, diagrams, answers, full concept pages, second opinions.
+6. **On demand:** slower rewrites, "Go deeper" cards, explanations, examples, diagrams, answers, full concept pages, second opinions.
 7. **Update pass** (§8).
 
 ---
@@ -552,7 +549,7 @@ A new base is built when any of these happens:
   - a priority queue: what the user asked for, then what's visible on screen, then background work;
   - back off on rate limits, and show it on the job;
   - cancel a job when its card is deleted (ACP `session/cancel`); closing a card only hides it, and its running job keeps filling the turn;
-  - reuse results for identical requests, keyed by (anchor, kind of request, depth, base version);
+  - reuse results for identical requests, keyed by (anchor, kind of request, revision, base version);
   - close idle sessions after the cache lifetime, and reopen them with `load`.
 
 ---
@@ -573,7 +570,7 @@ A new base is built when any of these happens:
 | `concept_page` | Concept pages (on demand) | `{{concept}}`, `{{mentions}}` |
 | `ask` | Conversation first turns, Explain and Ask alike | `{{quote}}`, `{{item_id}}`, `{{offsets}}`, `{{thread}}` (own transcript on rebuilt sessions, else `(none)`), `{{changed_hunks}}`, `{{message}}` |
 | `ask_turn` | Follow-ups on a live or loaded session | `{{followup}}` (own reply ID + thread ID; a chip adds its quote, item ID and offsets), `{{changed_hunks}}`, `{{message}}` |
-| `depth`, `examples`, `diagram` | Card controls | `{{card}}`, `{{level}}` |
+| `slower`, `examples`, `diagram` | Card controls | `{{card}}` |
 | `go_deeper` | Placeholder cards | `{{direction}}` |
 | `update_pass` | Update | `{{changed_hunks}}`, `{{stale_cards}}`, `{{findings}}` |
 | `consolidate` | Small model | `{{contributions}}` |
@@ -614,7 +611,7 @@ POST /api/reviews/:id/retry              re-run a failed ingest
 POST /api/reviews/:id/redo               re-do the guide: delete + create in one call (new id, answers the loading snapshot)
 POST /api/reviews/:id/refresh            fetch and compare (no agent; 409 while loading/failed)
 POST /api/reviews/:id/update             run the update pass (409 while loading/failed)
-POST /api/reviews/:id/actions            { kind: explain|ask|note|reply|retry|depth|examples|diagram|undo|
+POST /api/reviews/:id/actions            { kind: explain|ask|note|reply|retry|slower|examples|diagram|undo|
                                             collapse|generate|second_opinion|promote|close|delete|followup|concept, … } (409 while loading/failed)
 PATCH /api/reviews/:id/hunks/:hash       { folded?, reviewed?, summary? } ; POST …/summarize (409 while loading/failed)
 PATCH /api/reviews/:id/files/:fileKey    { folded? } (409 while loading/failed)
@@ -682,7 +679,7 @@ after the ingest. Start-page PR rows show `#N` when the branch is unknown
 | **M0** | **ACP spike** (do this first) | In both `claude-agent-acp` and `codex-acp`: start a session with a system prompt plus an MCP server, send a ~30k-token pack, fork it twice, and confirm that (a) each fork answers questions about the pack, (b) usage shows cache reads on the forks, (c) a trailing JSON block parses reliably. Results written up. |
 | M1 | Service, ingest and diff | Start page lists repos, PRs and branches. Opening one ingests it. The diff pane has every §4.13 feature except agent summaries. Token-protected localhost service, installable web app, helper and idle exit. |
 | M2 | Reader and guide | Reader, base and critic run. The guide shows cards with checked citations and hover previews. Findings appear as pages. Concept pages are written when a link is opened. Hunk pass summaries, and Hide uninteresting with reasons. |
-| M3 | Interaction | Explain, Ask and Comment on the guide, description and diff. The depth stepper, examples and diagrams on demand, and undo. Explanation cards close into links; Open as page. Contents. The log, change lists and contributions; the per-review shared-context debug page. |
+| M3 | Interaction | Explain, Ask and Comment on the guide, description and diff. Help-me-understand rewrites, examples and diagrams on demand, and undo. Explanation cards close into links; Open as page. Contents. The log, change lists and contributions; the per-review shared-context debug page. |
 | M4 | Comments and submit | Threads in all three places, the Comments menu with Outbox drafts and Markdown export, agent-suggested comments, description editing (author, open PR), and Submit review posting one review. |
 | M5 | Versions | Refresh, the version mapping, a stale and outdated UI, preservation of hunk state by hash, and the update pass. A rebase without conflicts shows no changes. |
 | M6 | Second opinion and settings | Second opinion (blind or check). The settings page with models, prompt templates and limits; the per-review debug page with jobs, the expanded prompt text, and usage. |

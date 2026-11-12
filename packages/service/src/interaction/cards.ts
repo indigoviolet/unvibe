@@ -2,8 +2,8 @@
  * Card targets + pure card mutations (issue #273).
  *
  * A "card" for interaction purposes is either a `Page` card or one reply of a thread (`Thread.replies`, each with its own
- * `ans_…` id). Every helper below resolves both, so depth / examples /
- * diagram / undo work on answers exactly like on cards
+ * `ans_…` id). Every helper below resolves both, so slower rewrites /
+ * examples / diagram / undo work on answers exactly like on cards
  * (PRD §4.4). All mutations run inside `ReviewStore.mutate` in the action
  * modules; this file only builds the draft edits.
  */
@@ -14,7 +14,6 @@ import type {
   Block,
   Card,
   CardSnapshot,
-  DepthLevel,
   DiagramBlock,
   ReviewSnapshot,
   Reply,
@@ -24,8 +23,6 @@ import { freshBlockId } from "@unvibe/shared";
 export type CardTarget =
   | { kind: "page-card"; pageId: string; card: Card }
   | { kind: "answer"; annotation: Thread; turn: Reply };
-
-const ORDER: DepthLevel[] = ["simple", "standard", "deep"];
 
 /** Find a page card or a conversation answer by id. */
 export function findCardTarget(snapshot: ReviewSnapshot, cardId: string): CardTarget | null {
@@ -85,16 +82,11 @@ export function mirrorPromotedAnswer(
       const card = (page.cards ?? []).find((c) => c.id === mapping.cardId);
       if (!card) continue;
       card.blocks = structuredCloneBlocks(turn.blocks);
-      card.level = turn.level;
       card.revision = turn.revision;
       card.undoStack = JSON.parse(JSON.stringify(turn.undoStack)) as Card["undoStack"];
       return;
     }
   }
-}
-
-export function targetLevel(target: CardTarget): DepthLevel {
-  return target.kind === "page-card" ? target.card.level : target.turn.level;
 }
 
 export function targetBlocks(target: CardTarget): Block[] {
@@ -105,8 +97,9 @@ export function targetRevision(target: CardTarget): number {
   return target.kind === "page-card" ? target.card.revision : target.turn.revision;
 }
 
-/** Push the current blocks+level onto the undo stack (no redo, PRD §4.4). */
-export function pushUndo(target: CardTarget, blocks: Block[], level: DepthLevel): void {  const entry: CardSnapshot = { blocks: structuredCloneBlocks(blocks), level };
+/** Push the current blocks onto the undo stack (no redo, PRD §4.4). */
+export function pushUndo(target: CardTarget, blocks: Block[]): void {
+  const entry: CardSnapshot = { blocks: structuredCloneBlocks(blocks) };
   if (target.kind === "page-card") {
     target.card.undoStack.push(entry);
   } else {
@@ -118,21 +111,19 @@ function structuredCloneBlocks(blocks: Block[]): Block[] {
   return JSON.parse(JSON.stringify(blocks)) as Block[];
 }
 
-/** Set blocks + level + bump revision on the target. */
-export function setTargetContent(target: CardTarget, blocks: Block[], level: DepthLevel): void {
+/** Set blocks + bump revision on the target. */
+export function setTargetContent(target: CardTarget, blocks: Block[]): void {
   if (target.kind === "page-card") {
     target.card.blocks = blocks;
-    target.card.level = level;
     target.card.revision += 1;
   } else {
     target.turn.blocks = blocks;
-    target.turn.level = level;
     target.turn.revision += 1;
   }
 }
 
 /**
- * Pop the undo stack: restore the last blocks+level, drop everything
+ * Pop the undo stack: restore the last blocks, drop everything
  * after it (no redo, no history trail). Returns false when empty.
  *
  * Comments and nested cards attached to the card survive undo:
@@ -146,37 +137,12 @@ export function applyUndo(target: CardTarget): boolean {
   if (!prev) return false;
   if (target.kind === "page-card") {
     target.card.blocks = prev.blocks;
-    target.card.level = prev.level;
     target.card.revision += 1;
   } else {
     target.turn.blocks = prev.blocks;
-    target.turn.level = prev.level;
     target.turn.revision += 1;
   }
   return true;
-}
-
-/** Step one level simpler/deeper; null when already at that end. */
-export function stepLevel(level: DepthLevel, direction: "simpler" | "deeper"): DepthLevel | null {
-  const i = ORDER.indexOf(level);
-  const ni = i + (direction === "simpler" ? -1 : 1);
-  if (ni < 0 || ni >= ORDER.length) return null;
-  return ORDER[ni];
-}
-
-/**
- * True when every paragraph already carries text for `level` (stored per
- * block per level; switching back is instant and costs no agent call).
- */
-export function hasLevelText(blocks: Block[], level: DepthLevel): boolean {
-  let anyParagraph = false;
-  for (const b of blocks) {
-    if (b.type !== "paragraph") continue;
-    anyParagraph = true;
-    if (b.text[level] === undefined) return false;
-  }
-  // Cards without paragraphs (diagram-only etc.) have nothing to rewrite.
-  return anyParagraph;
 }
 
 /** Paragraph ids in order (for example/diagram placement). */
@@ -315,56 +281,41 @@ export function insertDiagrams(blocks: Block[], fresh: Block[]): { blocks: Block
   return { blocks: out, added: stamped.length };
 }
 
-/** True when the card already has an Underlying-principle block. */
-export function hasPrinciple(blocks: Block[]): boolean {
-  return blocks.some((b) => b.type === "aside" && (b as AsideBlock).kind === "Underlying principle");
-}
-
 /**
- * Merge a depth reply into the card: per-paragraph `text[level]` slots
- * are filled from the reply's paragraphs in order (stored per block per
- * level and kept once made). Blocks that are not paragraphs (examples,
- * diagrams, follow-ups) are left untouched. Returns the merged blocks.
+ * Merge a slower rewrite into the card: the reply's paragraphs replace
+ * the current paragraphs' text in order, keeping the current block ids
+ * (anchors keep resolving) and leaving non-paragraph blocks (examples,
+ * diagrams, follow-ups) untouched. Length mismatches keep the extra
+ * blocks on their current side: surplus current paragraphs keep their
+ * text, surplus reply paragraphs are dropped.
  */
-export function mergeDepthText(current: Block[], reply: Block[], level: DepthLevel): Block[] {
+export function mergeSlowerText(current: Block[], reply: Block[]): Block[] {
   const replyParas = reply.filter((b) => b.type === "paragraph");
   if (replyParas.length === 0) return current;
   let ri = 0;
   return current.map((b) => {
     if (b.type !== "paragraph") return b;
-    const rp = replyParas[Math.min(ri++, replyParas.length - 1)];
+    if (ri >= replyParas.length) return b;
+    const rp = replyParas[ri++];
     if (rp.type !== "paragraph") return b;
-    const incoming = rp.text[level] ?? rp.text.standard;
-    if (!incoming || incoming === b.text[level]) return b;
-    return { ...b, text: { ...b.text, [level]: incoming } };
+    if (!rp.text || rp.text === b.text) return b;
+    return { ...b, text: rp.text };
   });
 }
 
 /**
- * After a depth rewrite, check every annotation anchored on this card's
+ * After a rewrite, check every annotation anchored on this card's
  * blocks: when the anchor quote is no longer a substring of the host
- * block's *currently shown* text, the annotation stays attached but
- * carries `anchorStale` so the UI shows the footnote chip (PRD §4.7).
- *
- * Paragraphs store per-level text; the renderer shows `depthText`
- * (`simple ?? standard`, `deep ?? standard` — see
- * `packages/web/src/guide/guideUtils.ts`). Checking every level joined
- * would count a quote that only exists in a hidden level as found, so
- * check the card's current level with the same fallback.
+ * block's text, the annotation stays attached but carries `anchorStale`
+ * so the UI shows the footnote chip (PRD §4.7).
  */
-function visibleParagraphText(text: { simple?: string; standard: string; deep?: string }, level: DepthLevel): string {
-  if (level === "simple") return text.simple ?? text.standard;
-  if (level === "deep") return text.deep ?? text.standard;
-  return text.standard;
-}
-
 export function markStaleAnchors(draft: WritableDraft<ReviewSnapshot>, cardId: string): string[] {
   const stale: string[] = [];
   const hostText = new Map<string, string>();
-  const collect = (blocks: Block[] | undefined, level: DepthLevel): void => {
+  const collect = (blocks: Block[] | undefined): void => {
     for (const b of blocks ?? []) {
       if (b.type === "paragraph") {
-        hostText.set(b.id, visibleParagraphText(b.text, level));
+        hostText.set(b.id, b.text);
       } else if (b.type === "aside") {
         hostText.set(b.id, JSON.stringify(b.inner).slice(0, 4000));
       } else {
@@ -374,12 +325,12 @@ export function markStaleAnchors(draft: WritableDraft<ReviewSnapshot>, cardId: s
   };
   for (const page of draft.pages ?? []) {
     for (const card of page.cards ?? []) {
-      if (card.id === cardId) collect(card.blocks as Block[], card.level);
+      if (card.id === cardId) collect(card.blocks as Block[]);
     }
   }
   for (const ann of draft.annotations as unknown as Thread[]) {
     for (const turn of ann.replies ?? []) {
-      if (turn.id === cardId) collect(turn.blocks, turn.level);
+      if (turn.id === cardId) collect(turn.blocks);
     }
   }
   for (const ann of (draft.annotations ?? []) as unknown as Thread[]) {

@@ -1,8 +1,8 @@
 /**
  * Card rendering (M4 interaction; PRD §4.4 display side + §8 stale state).
  *
- * Collapse chevron first (title row when collapsed); control row (depth
- * stepper with three dots, Use examples, Add diagram, Undo) wired to
+ * Collapse chevron first (title row when collapsed); control row (Help me
+ * understand, Use examples, Add diagram, Undo) wired to
  * `POST /api/reviews/:id/actions`; stale cards
  * show the cited-hunks count with an Update button; "Go deeper"
  * placeholder cards with Generate showing a plain working state. Every
@@ -15,7 +15,7 @@
  * footnote chips. Corrections show as suggestions on the target card with
  * Accept/Dismiss.
  */
-import type { CardVariant, Thread, Card, DepthLevel, Page, Persona, Reply } from "@unvibe/shared";
+import type { CardVariant, Thread, Card, Page, Persona, Reply } from "@unvibe/shared";
 import { cardToMarkdown, displayCardTitle, isUpdateAvailable, sinceBaselineLabel, stripAddendumPrefix } from "@unvibe/shared";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -33,15 +33,12 @@ import { ThreadMarginOverlay } from "../comments/ThreadMarginOverlay.js";
 import { useIsReadOnlyVersion } from "../comments/readOnly.js";
 import { SinceAnswers } from "./SinceAnswers.js";
 import { sinceDate } from "./SinceSection.js";
-import { DepthControl } from "./DepthControl.js";
 import { copyContextFor, copyMarkdownText, useGithubRepo } from "./copyAsMarkdown.js";
 import { CorrectionSuggestion } from "./expansions/CorrectionSuggestion.js";
 import { expansionsForBlock } from "./expansions/ExpansionHighlights.js";
 import { isExpansionFootnote } from "./expansions/expansionUtils.js";
 import { busyForCard, inflightLabel, updateKey } from "./inflight.js";
 import { Button, Card as UiCard, CardHeader } from "../ui/index.js";
-
-const DEPTH_ORDER: DepthLevel[] = ["simple", "standard", "deep"];
 
 interface Props {
   reviewId: string;
@@ -60,7 +57,7 @@ function ControlButton({
   busy,
   copyId,
 }: {
-  icon: "down" | "right" | "bulb" | "diagram" | "undo" | "copy";
+  icon: "down" | "right" | "slower" | "bulb" | "diagram" | "undo" | "copy";
   label: string;
   onClick: () => void;
   disabled?: boolean;
@@ -426,13 +423,11 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
     );
   }
 
-  // Issue #349 step 2: the active version's own blocks/level/undo
-  // stack. The Guide version keeps today's path; a persona tab renders
-  // that persona's blocks, and every control below addresses them.
+  // Issue #349 step 2: the active version's own blocks/undo stack. The
+  // Guide version keeps today's path; a persona tab renders that
+  // persona's blocks, and every control below addresses them.
   const shownBlocks = activeVariant ? activeVariant.blocks : card.blocks;
-  const shownLevel = activeVariant ? activeVariant.level : card.level;
   const shownUndoDepth = activeVariant ? activeVariant.undoStack.length : card.undoStack.length;
-  const depthIndex = DEPTH_ORDER.indexOf(shownLevel);
   const threadsFor = (blockId: string): Thread[] =>
     blockThreads(annotations, card.id, blockId).filter(
       (t) => (t.personaId ?? null) === (activePersonaId ?? null),
@@ -440,7 +435,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
 
   // Issue #252: glossary terms link in card text (first mention per card).
   const glossary = snapshot?.glossary ?? [];
-  const linkedBlocks = linkCardBlocks(shownBlocks, glossary, shownLevel);
+  const linkedBlocks = linkCardBlocks(shownBlocks, glossary);
   // Issue #380: every thread on the card gets a margin pill, and the
   // card always reserves the gutter it sits in (`.gutter`) — the first
   // thread must never move the text.
@@ -460,7 +455,6 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
       <Fragment key={block.id}>
         <BlockView
           block={block}
-          level={shownLevel}
           threads={threadsFor(block.id)}
           footnotes={footnotes}
           lookupPage={lookupPage}
@@ -522,7 +516,6 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
     copyMarkdownText(
       cardToMarkdown(
         { title: card.title, blocks: shownBlocks, answers: card.answers, addenda: card.addenda },
-        shownLevel,
         ctx,
         { findPage },
       ),
@@ -531,7 +524,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
   // While an agent action runs for this card, the conflicting controls go
   // disabled and the clicked one shows dots in place of its icon.
   const controlsBusy = busy !== null;
-  const depthBusy = busyKind === "depth";
+  const slowerBusy = busyKind === "slower";
   const examplesBusy = busyKind === "examples";
   const diagramBusy = busyKind === "diagram";
   const personaBusy = busyKind === "persona";
@@ -572,25 +565,17 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
         {title ? <h2 className="ct">{title}</h2> : null}
         {/* #274: the toolbar lives in the heading row, hover/focus-revealed. */}
         <div className="ctl">
-          <DepthControl
-            level={shownLevel}
+          <ControlButton
+            icon="slower"
+            label="Help me understand"
+            busy={slowerBusy}
             disabled={controlsBusy}
-            depthBusy={depthBusy}
-            simplerAtLimit={depthIndex <= 0}
-            onSimpler={() =>
+            onClick={() =>
               runCardAction(
                 reviewId,
                 activePersonaId
-                  ? { kind: "depth", cardId: card.id, direction: "simpler", personaId: activePersonaId }
-                  : { kind: "depth", cardId: card.id, direction: "simpler" },
-              )
-            }
-            onDeeper={() =>
-              runCardAction(
-                reviewId,
-                activePersonaId
-                  ? { kind: "depth", cardId: card.id, direction: "deeper", personaId: activePersonaId }
-                  : { kind: "depth", cardId: card.id, direction: "deeper" },
+                  ? { kind: "slower", cardId: card.id, personaId: activePersonaId }
+                  : { kind: "slower", cardId: card.id },
               )
             }
           />
@@ -707,16 +692,12 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
           {a.blocks.map((block, bi) => {
             const shown =
               bi === 0 && block.type === "paragraph"
-                ? {
-                    ...block,
-                    text: { ...block.text, standard: stripAddendumPrefix(block.text.standard) },
-                  }
+                ? { ...block, text: stripAddendumPrefix(block.text) }
                 : block;
             return (
               <BlockView
                 key={block.id}
                 block={shown}
-                level="standard"
                 threads={[]}
                 footnotes={[]}
                 lookupPage={lookupPage}

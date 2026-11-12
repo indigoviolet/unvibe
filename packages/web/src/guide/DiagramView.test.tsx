@@ -59,7 +59,6 @@ function renderDiagram(block: DiagramBlock): ReturnType<typeof render> {
     <MemoryRouter>
       <BlockView
         block={block}
-        level="standard"
         threads={[]}
         cardId="c1"
         lookupPage={() => undefined}

@@ -2,7 +2,7 @@
  * Copy-as-Markdown converter (issue #377).
  *
  * Builds the Markdown a card's copy icon puts on the clipboard: the card
- * as shown — title heading, blocks at the current depth level, the active
+ * as shown — title heading, blocks as shown, the active
  * persona variant's blocks — with citations rewritten as portable text
  * (GitHub permalinks on PR reviews, plain `path:lines` elsewhere) and
  * internal `[[…]]` link tokens replaced by their visible labels.
@@ -10,7 +10,7 @@
  * Pure: no Node or DOM APIs. The web builds the context from the snapshot
  * (`contextFromSnapshot`); unit tests construct it by hand.
  */
-import type { Block, Citation, DepthLevel } from "../entities.js";
+import type { Block, Citation } from "../entities.js";
 import type { ReviewSnapshot } from "../api.js";
 import type { CardAddendum, SinceFeedbackLink } from "../versions.js";
 import { sinceBaselineLabel, stripAddendumPrefix } from "../versions.js";
@@ -210,16 +210,6 @@ function citeParenthetical(citations: Citation[], ctx: CopyMarkdownContext): str
   return ` (${rendered.join(", ")})`;
 }
 
-/** Per-depth text for a paragraph at the card's level (same rule as the renderer). */
-function depthHtmlText(
-  text: { simple?: string; standard: string; deep?: string },
-  level: DepthLevel,
-): string {
-  if (level === "simple") return text.simple ?? text.standard;
-  if (level === "deep") return text.deep ?? text.standard;
-  return text.standard;
-}
-
 /** Stored `<table>` HTML → a GitHub pipe table. */
 export function tableHtmlToMarkdown(html: string): string {
   const rows: string[][] = [];
@@ -299,10 +289,10 @@ export function formatAddendumDate(at: number): string {
 }
 
 /** One block → Markdown lines (without the blank-line joins). */
-function blockToLines(block: Block, level: DepthLevel, ctx: CopyMarkdownContext, opts: BlockMarkdownOptions): string[] {
+function blockToLines(block: Block, ctx: CopyMarkdownContext, opts: BlockMarkdownOptions): string[] {
   switch (block.type) {
     case "paragraph": {
-      const text = htmlInlineToMarkdown(depthHtmlText(block.text, level));
+      const text = htmlInlineToMarkdown(block.text);
       return [`${text}${citeParenthetical(block.citations, ctx)}`.trim()];
     }
     case "heading": {
@@ -364,7 +354,7 @@ function blockToLines(block: Block, level: DepthLevel, ctx: CopyMarkdownContext,
       return out;
     }
     case "aside": {
-      const inner = blocksToMarkdown(block.inner, level, ctx, opts).replace(/\n$/, "");
+      const inner = blocksToMarkdown(block.inner, ctx, opts).replace(/\n$/, "");
       const lines = [`> **${block.kind}**`];
       // The aside's own citations are the union of the inner blocks'
       // (see the parser), which already render inline — never repeat them.
@@ -403,18 +393,16 @@ function blockToLines(block: Block, level: DepthLevel, ctx: CopyMarkdownContext,
 /**
  * A block list → Markdown (blank line between blocks, single trailing
  * newline). The same converter serves guide cards, page cards and thread
- * answers: callers pass the blocks as shown (current depth level, active
- * persona variant).
+ * answers: callers pass the blocks as shown (active persona variant).
  */
 export function blocksToMarkdown(
   blocks: Block[],
-  level: DepthLevel,
   ctx: CopyMarkdownContext,
   opts: BlockMarkdownOptions = {},
 ): string {
   const parts: string[] = [];
   for (const block of blocks) {
-    const lines = blockToLines(block, level, ctx, opts);
+    const lines = blockToLines(block, ctx, opts);
     if (lines.length > 0 && !(lines.length === 1 && lines[0] === "")) parts.push(lines.join("\n"));
   }
   return parts.length > 0 ? `${parts.join("\n\n")}\n` : "";
@@ -426,8 +414,7 @@ export function blocksToMarkdown(
  * since" addendum (issue #377: copy = what's shown). `title` is the
  * stored title (null when the reply carried none); the shared fallback
  * renders from `blocks` then, the same string the card header shows.
- * Addendum bodies render at standard level with the same echo-prefix
- * strip the card applies.
+ * Addendum bodies render with the same echo-prefix strip the card applies.
  */
 export function cardToMarkdown(
   card: {
@@ -436,24 +423,23 @@ export function cardToMarkdown(
     answers?: SinceFeedbackLink[];
     addenda?: CardAddendum[];
   },
-  level: DepthLevel,
   ctx: CopyMarkdownContext,
   opts: BlockMarkdownOptions = {},
 ): string {
   const title = displayCardTitle(card.title, card.blocks);
   const formatDate = opts.formatDate ?? formatAddendumDate;
   const parts: string[] = [];
-  const body = blocksToMarkdown(card.blocks, level, ctx, opts);
+  const body = blocksToMarkdown(card.blocks, ctx, opts);
   if (body) parts.push(body.replace(/\n$/, ""));
   if (card.answers?.length) parts.push(answersToMarkdown(card.answers));
   for (const addendum of card.addenda ?? []) {
     const head = `### Updated since ${sinceBaselineLabel(addendum.baseline)} · ${formatDate(addendum.at)}`;
     const shown = addendum.blocks.map((block, i) =>
       i === 0 && block.type === "paragraph"
-        ? { ...block, text: { ...block.text, standard: stripAddendumPrefix(block.text.standard) } }
+        ? { ...block, text: stripAddendumPrefix(block.text) }
         : block,
     );
-    const abody = blocksToMarkdown(shown, "standard", ctx, opts);
+    const abody = blocksToMarkdown(shown, ctx, opts);
     const aparts = [head];
     if (abody) aparts.push(abody.replace(/\n$/, ""));
     if (addendum.answers?.length) aparts.push(answersToMarkdown(addendum.answers));
@@ -466,7 +452,6 @@ export function cardToMarkdown(
 export interface GuideCardInput {
   title: string | null;
   blocks: Block[];
-  level: DepthLevel;
 }
 
 /**
@@ -489,7 +474,7 @@ export function guideToMarkdown(
 ): string {
   const parts = [`# ${title}`];
   for (const card of cards) {
-    const body = blocksToMarkdown(card.blocks, card.level, ctx, { ...opts, guide: true });
+    const body = blocksToMarkdown(card.blocks, ctx, { ...opts, guide: true });
     if (!body) continue;
     parts.push(`## ${displayCardTitle(card.title, card.blocks)}\n\n${body.replace(/\n$/, "")}`);
   }
@@ -515,12 +500,11 @@ export function answersToMarkdown(answers: SinceFeedbackLink[]): string {
  */
 export function replyToMarkdown(
   reply: { question: string | null; kind: string; blocks: Block[] },
-  level: DepthLevel,
   ctx: CopyMarkdownContext,
   opts: BlockMarkdownOptions = {},
 ): string {
   const fallback = reply.kind === "explain" ? "Explain" : reply.kind === "ask" ? "Ask" : "Answer";
   const title = reply.question?.trim() ? reply.question.trim() : fallback;
-  const body = blocksToMarkdown(reply.blocks, level, ctx, opts);
+  const body = blocksToMarkdown(reply.blocks, ctx, opts);
   return body ? `## ${title}\n\n${body}` : `## ${title}\n`;
 }

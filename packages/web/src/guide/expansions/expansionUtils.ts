@@ -6,7 +6,7 @@
  * - card preview text (first paragraph HTML → plain text);
  * - grouping cards by host for guide/description/diff slots.
  */
-import type { Thread, Block, DepthLevel, Reply } from "@unvibe/shared";
+import type { Thread, Block, Reply } from "@unvibe/shared";
 
 export interface ExpansionGroup {
   open: Thread[];
@@ -60,16 +60,10 @@ function stripTags(s: string): string {
   return s.replace(/<[^>]+>/g, " ");
 }
 
-function blockPlainText(block: Block, level: DepthLevel): string {
+function blockPlainText(block: Block): string {
   switch (block.type) {
     case "paragraph":
-      return stripTags(
-        level === "simple"
-          ? (block.text.simple ?? block.text.standard)
-          : level === "deep"
-            ? (block.text.deep ?? block.text.standard)
-            : block.text.standard,
-      );
+      return stripTags(block.text);
     case "list":
       return stripTags(block.items[0]?.html ?? "");
     case "code":
@@ -83,9 +77,8 @@ function blockPlainText(block: Block, level: DepthLevel): string {
 export function expansionPreview(a: Thread): string {
   const first = conversationTurns(a)[0];
   const blocks = first?.blocks ?? [];
-  const level = first?.level ?? "standard";
   for (const b of blocks) {
-    const text = blockPlainText(b, level).replace(/\s+/g, " ").trim();
+    const text = blockPlainText(b).replace(/\s+/g, " ").trim();
     if (text) return text.slice(0, 280);
   }
   return "";
@@ -95,16 +88,9 @@ export function expansionPreview(a: Thread): string {
 export function expansionPreviewHtml(a: Thread): string | null {
   const first = conversationTurns(a)[0];
   const blocks = first?.blocks ?? [];
-  const level = first?.level ?? "standard";
   for (const b of blocks) {
     if (b.type === "paragraph") {
-      const html =
-        level === "simple"
-          ? (b.text.simple ?? b.text.standard)
-          : level === "deep"
-            ? (b.text.deep ?? b.text.standard)
-            : b.text.standard;
-      if (html.trim()) return html;
+      if (b.text.trim()) return b.text;
     }
   }
   return null;

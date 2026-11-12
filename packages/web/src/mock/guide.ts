@@ -47,7 +47,7 @@ function addMockConceptLinks(pages: Page[]): Page[] {
   for (const block of problem?.blocks ?? []) {
     if (block.type !== "paragraph") continue;
     for (const [plain, linked] of links) {
-      block.text.standard = block.text.standard.replace(plain, linked);
+      block.text = block.text.replace(plain, linked);
     }
   }
   return pages;

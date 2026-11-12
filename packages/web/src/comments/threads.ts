@@ -18,8 +18,8 @@ function replyText(reply: { blocks?: Array<{ type: string }> }): string {
   const parts: string[] = [];
   for (const b of ((reply.blocks ?? []) as Array<Record<string, unknown>>)) {
     if (b["type"] === "paragraph") {
-      const t = b["text"] as Record<string, unknown> | undefined;
-      const s = typeof t?.["standard"] === "string" ? (t["standard"] as string) : "";
+      const t = b["text"];
+      const s = typeof t === "string" ? t : "";
       const plain = s.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
       if (plain) parts.push(plain);
     }

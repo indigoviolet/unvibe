@@ -16,7 +16,7 @@ function para(standard: string, citations: string[] = []): Block {
   return {
     type: "paragraph",
     id: "b1",
-    text: { standard },
+    text: standard,
     citations: citations.map((target) => ({ target })),
   };
 }
@@ -84,7 +84,7 @@ describe("stripLeadingEcho (issue #50)", () => {
     expect(stripped).toHaveLength(1);
     expect(stripped[0].type).toBe("paragraph");
     if (stripped[0].type !== "paragraph") return;
-    expect(stripped[0].text.standard).toBe("It means the levels agree.");
+    expect(stripped[0].text).toBe("It means the levels agree.");
   });
 
   it("drops echo variants (case, quotes, punctuation)", () => {

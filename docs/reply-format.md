@@ -79,26 +79,12 @@ normalising case, whitespace, surrounding quotes and trailing
 punctuation; lines with citations are kept). It never retries or
 repairs for this.
 
-## 3. Per-depth text (simple / standard / deep)
+## 3. Paragraphs (one text, rewritten in place)
 
-The paragraph itself is the **standard** version. Simpler and deeper
-variants go in `::: simple` / `::: deep` containers **immediately after**
-the paragraph they rewrite:
-
-```md
-The pattern finds "spaces, line break, spaces". [[diff:conn:80-82]]
-
-::: simple
-The code searches for "optional spaces, a line break, then at least one space".
-:::
-
-::: deep
-Regex engines that backtrack retry at each start position …
-:::
-```
-
-At the deepest level, `+` may add an `::: underlying-principle` block
-(`::: principle` also works).
+A paragraph carries exactly one text — the body itself. There are no
+per-level variants: a slower rewrite replaces the paragraph's text in
+place. A leftover `::: simple` / `::: deep` / `::: principle`
+container is not special; it falls back to a plain paragraph.
 
 ## 4. Examples and asides
 
@@ -108,9 +94,8 @@ At the deepest level, `+` may add an `::: underlying-principle` block
 :::
 ```
 
-`::: example`, `::: diagram`, `::: principle` (or
-`::: underlying-principle`) become the Example / Diagram /
-Underlying-principle inserts. Inner content is ordinary Markdown.
+`::: example` and `::: diagram` become the Example / Diagram inserts.
+Inner content is ordinary Markdown.
 
 ## 5. Diagrams
 
@@ -241,7 +226,7 @@ dropped, the rest stand.
     "reader_notes": ["…"]
   },
   "hunk": {"summary": "…", "hiddenReason": "imports"},
-  "depth": {"level": "simple", "cardId": "central"},
+  "slower": {"cardId": "central"},
   "anchor": {"quote": "raw CRLF", "host": "card:problem#b1"},
   "secondOpinion": {"verdict": "agrees", "reasoning": "…", "missed": "…"},
   "degraded": "resolve returned nothing for the description paragraphs"
@@ -261,7 +246,7 @@ observes itself (the turn errored or was cancelled, the answer is
 empty, or a review-tool call failed to connect). An `anchor.host`
 that names only a card (`card:central` with no `#block`) is rejected
 with one repair turn carrying the reason. For
-depth/example/diagram replies, `depth`/`title` say which card and level
+slower/example/diagram replies, `slower`/`title` say which card
 the body belongs to. For hunk-pass replies, `hunk` carries the summary
 and the one-line `hiddenReason` (null when the hunk is interesting — in
 particular never hide a hunk cited by the guide, a one-line functional

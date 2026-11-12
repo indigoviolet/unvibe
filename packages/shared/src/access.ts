@@ -30,7 +30,7 @@ export function accessModeOf(settings: Pick<Settings, "fullAccess">): AccessMode
 /**
  * Owner decision (#160): automatic background small-model jobs always run
  * locked down, regardless of the setting. Everything the user asks
- * (Explain/Ask, follow-ups, second opinion, reader/guide, depth,
+ * (Explain/Ask, follow-ups, second opinion, reader/guide, slower rewrites,
  * diagrams) follows the setting.
  *
  * THE one place this is decided: session starts, base keys and job

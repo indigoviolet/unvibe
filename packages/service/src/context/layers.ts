@@ -775,7 +775,7 @@ export function buildL1bPinned(pins: PinnedExcerpt[]): string {
   return parts.join("\n");
 }
 
-/** Render one guide card at standard depth with its `card:` reference. */
+/** Render one guide card with its `card:` reference. */
 export function formatGuideCard(card: GuideCardInput): string {
   const title = card.title ?? "(untitled)";
   return [`### ${title} [[card:${card.id}]]`, "", card.markdown, ""].join("\n");
@@ -794,11 +794,11 @@ export function formatFinding(finding: FindingInput): string {
 }
 
 /**
- * The `{{guide}}` variable and the first half of L2: guide cards at
- * standard depth plus findings.
+ * The `{{guide}}` variable and the first half of L2: guide cards plus
+ * findings.
  */
 export function buildGuideSection(snapshot: PromptReviewSnapshot): string {
-  const parts = ["## Guide (standard depth)", ""];
+  const parts = ["## Guide", ""];
   if (snapshot.cards.length === 0) parts.push("(guide not generated yet)", "");
   for (const card of snapshot.cards) parts.push(formatGuideCard(card));
   parts.push("## Findings", "");
@@ -822,8 +822,8 @@ export function buildConceptsSection(snapshot: PromptReviewSnapshot): string {
 }
 
 /**
- * Build L2 Reader output: guide cards at standard depth, findings, the
- * one-line concept index (PRD §9.1), plus the glossary (issue #252).
+ * Build L2 Reader output: guide cards, findings, the one-line concept
+ * index (PRD §9.1), plus the glossary (issue #252).
  */
 export function buildL2Guide(snapshot: PromptReviewSnapshot): string {
   return [buildGuideSection(snapshot), buildConceptsSection(snapshot), buildGlossarySection(snapshot)].join("\n");

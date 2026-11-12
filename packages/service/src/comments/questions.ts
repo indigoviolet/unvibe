@@ -38,7 +38,7 @@ function replyText(reply: Reply): string {
   const parts: string[] = [];
   for (const b of reply.blocks ?? []) {
     if (b.type === "paragraph") {
-      const plain = b.text.standard.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+      const plain = b.text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
       if (plain) parts.push(plain);
     }
   }

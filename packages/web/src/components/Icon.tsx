@@ -224,6 +224,19 @@ const PATHS: Record<string, JSX.Element> = {
       <path d="M2.5 13.2h5.5" />
     </>
   ),
+  /**
+   * Issue #387: Help me understand (a slower rewrite — widening text
+   * lines, mirroring the `summary` tapering lines). Same 16x16 stroke
+   * style as the rest of the set.
+   */
+  slower: (
+    <>
+      <path d="M2.5 3.5h5.5" />
+      <path d="M2.5 6.8h8" />
+      <path d="M2.5 10h10" />
+      <path d="M2.5 13.2h11" />
+    </>
+  ),
   doc: (
     <>
       <path d="M4 2h5.5L12 4.5V14H4z" />

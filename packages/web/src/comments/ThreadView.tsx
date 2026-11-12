@@ -6,7 +6,7 @@
  * `persona` reserved in the type only), marked by an avatar and an
  * accessible name (no kind badges — #315). Threads render
  * inline under the card (or description block, or diff line) they started
- * from. Controls (depth, principle) are per reply.
+ * from. Controls (slower rewrites, examples, diagram) are per reply.
  * In-thread links point at reply ids; clicking one scrolls to that reply
  * and highlights it. "Collapse threads" in the review top bar collapses
  * every thread to one-line rows; expanding a row restores that thread.
@@ -25,7 +25,6 @@ import { toast } from "../floating/Toast.js";
 import { performAction, performInsertAction } from "../guide/actions.js";
 import { BlockView } from "../guide/BlockView.js";
 import { copyContextFor, copyMarkdownText, useGithubRepo } from "../guide/copyAsMarkdown.js";
-import { DepthControl } from "../guide/DepthControl.js";
 import { linkCardBlocks } from "../guide/glossary.js";
 import { busyForCard, inflightLabel } from "../guide/inflight.js";
 import { useReview } from "../state/store.js";
@@ -37,9 +36,6 @@ import { useProvisionalBlocks } from "../guide/expansions/streamedAnswer.js";
 import { revealSource } from "../source/reveal.js";
 import { ReplyBox } from "./ReplyBox.js";
 import { NEW_THREAD_EVENT, type NewThreadRequest } from "../floating/SelectionToolbar.js";
-
-const DEPTH_ORDER = ["simple", "standard", "deep"] as const;
-type Depth = (typeof DEPTH_ORDER)[number];
 
 function isNoAgentError(err: unknown): boolean {
   return isNoAgentMessage(err instanceof Error ? err.message : String(err));
@@ -67,7 +63,7 @@ function ControlButton({
   busy,
   copyId,
 }: {
-  icon: "down" | "right" | "bulb" | "diagram" | "undo" | "trash" | "x" | "open" | "copy";
+  icon: "down" | "right" | "slower" | "bulb" | "diagram" | "undo" | "trash" | "x" | "open" | "copy";
   label: string;
   onClick: () => void;
   disabled?: boolean;
@@ -216,8 +212,6 @@ function AgentReplyView({
   const workingLabel = direct?.label ?? (typeof reply.working === "string" && reply.working ? reply.working : "Working");
   const errorText = reply.error ?? null;
   const noAgent = isNoAgentMessage(errorText);
-  const depthIndex = DEPTH_ORDER.indexOf(reply.level as Depth);
-  const safeDepthIndex = depthIndex < 0 ? 1 : depthIndex;
   const undoEnabled = (reply.undoStack?.length ?? 0) > 0;
   const run = (action: Parameters<typeof performAction>[1]): void => {
     void performAction(reviewId, action).catch((err: unknown) => {
@@ -241,14 +235,14 @@ function AgentReplyView({
       return;
     }
     const { ctx, findPage } = copyContextFor(snap, githubRepo);
-    const shown = linkCardBlocks(reply.blocks, snap.glossary ?? [], reply.level);
+    const shown = linkCardBlocks(reply.blocks, snap.glossary ?? []);
     copyMarkdownText(
-      replyToMarkdown({ question: reply.question, kind: reply.kind, blocks: shown }, reply.level, ctx, { findPage }),
+      replyToMarkdown({ question: reply.question, kind: reply.kind, blocks: shown }, ctx, { findPage }),
     );
   };
   const controlsBusy = direct !== null;
   const busyKind = direct?.kind;
-  const depthBusy = busyKind === "depth";
+  const slowerBusy = busyKind === "slower";
   const contentReady = reply.blocks.length > 0 && !controlsBusy;
   const provisional = useProvisionalBlocks(thread.id, reply as unknown as Parameters<typeof useProvisionalBlocks>[1], showWorking && !errorText);
   const awaitingAnswer = !!errorText || (showWorking && (serverWorking || reply.blocks.length === 0));
@@ -303,11 +297,10 @@ function AgentReplyView({
   }, [reply.blocks, reply.linkTo, reply.linkText, onLink, unwrapLink]);
 
   const renderBlocks = (blocks: Block[]): React.ReactNode =>
-    linkCardBlocks(blocks, snapshot?.glossary ?? [], reply.level).map((block) => (
+    linkCardBlocks(blocks, snapshot?.glossary ?? []).map((block) => (
       <BlockView
         key={block.id}
         block={block}
-        level={reply.level}
         threads={[]}
         lookupPage={lookupPage as never}
         cardId={reply.id}
@@ -346,13 +339,12 @@ function AgentReplyView({
           hover/focus-revealed, so the body starts on the avatar's line. */}
       {awaitingAnswer ? null : (
           <div className="ctl">
-              <DepthControl
-                level={reply.level}
+              <ControlButton
+                icon="slower"
+                label="Help me understand"
+                busy={slowerBusy}
                 disabled={!contentReady}
-                depthBusy={depthBusy}
-                simplerAtLimit={safeDepthIndex <= 0}
-                onSimpler={() => run({ kind: "depth", cardId: reply.id, direction: "simpler" })}
-                onDeeper={() => run({ kind: "depth", cardId: reply.id, direction: "deeper" })}
+                onClick={() => run({ kind: "slower", cardId: reply.id })}
               />
               <ControlButton
                 icon="bulb"
@@ -412,7 +404,6 @@ function AgentReplyView({
             <BlockView
               key={block.id}
               block={block}
-              level={reply.level}
               threads={[]}
               lookupPage={lookupPage as never}
               cardId={reply.id}
@@ -458,7 +449,7 @@ function CommentReplyView({
 }) {
   const html = reply.blocks
     .map((b) => {
-      if (b.type === "paragraph") return b.text.standard;
+      if (b.type === "paragraph") return b.text;
       if (b.type === "list") return b.items.map((it) => it.html).join("<br>");
       if (b.type === "code") return `<pre>${b.code.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</pre>`;
       return "";
@@ -540,7 +531,7 @@ export function ThreadCollapsedRow({
   const lastText = last
     ? last.blocks
         .map((b) => {
-          if (b.type === "paragraph") return b.text.standard.replace(/<[^>]*>/g, " ");
+          if (b.type === "paragraph") return b.text.replace(/<[^>]*>/g, " ");
           return "";
         })
         .join(" ")

@@ -12,13 +12,14 @@
  * 3. **Task template** (shared, from `prompts/`, the same templates the
  *    main guide uses): the card task is the new `persona_card.md`
  *    ("here is the guide's version of this card; write your version");
- *    Explain / Ask use `ask.md` / `ask_turn.md`; depth, examples,
- *    diagram and concept pages use their own templates unchanged.
+ *    Explain / Ask use `ask.md` / `ask_turn.md`; slower rewrites,
+ *    examples, diagram and concept pages use their own templates unchanged.
  *
  * The persona's **card instruction** overrides the card task's default
  * for that persona (e.g. Second opinion's "respond to the card …"). When
  * it is empty, the card task's default applies. No per-task overrides
- * for Explain, Ask or depth in v1; the input shape stays open for them.
+ * for Explain, Ask or slower rewrites in v1; the input shape stays open
+ * for them.
  *
  * Pure except for the template library passed in (rendered by the
  * caller from the prompts dir, as everywhere else).
@@ -37,7 +38,7 @@ import { renderSystemPrompt } from "./access.js";
 export const GUIDE_STYLE_TEMPLATES: ReadonlySet<string> = new Set([
   "reader",
   "go_deeper",
-  "depth",
+  "slower",
   "ask",
   "ask_turn",
 ]);

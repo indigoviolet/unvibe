@@ -14,7 +14,7 @@ import { currentDescriptionHtml, descriptionParagraphText } from "../ingest/desc
 export function blockPlainText(block: Block): string {
   switch (block.type) {
     case "paragraph":
-      return block.text.standard;
+      return block.text;
     case "heading":
       return block.html.replace(/<[^>]+>/g, " ");
     case "list":
@@ -144,7 +144,7 @@ function findBlockIn(
     }
   }
   // Thread replies hold blocks too (#273): replies are addressable for
-  // citations and depth controls, but never as new-thread anchors (in-thread
+  // citations and the slower control, but never as new-thread anchors (in-thread
   // Explain/Ask travels as threadId/sourceReplyId instead of `ans_…` hosts).
   for (const ann of snapshot.annotations ?? []) {
     for (const turn of ann.replies ?? []) {
@@ -179,8 +179,8 @@ export function commentPlainText(comment: Thread): string {
     const parts: string[] = [];
     for (const b of ((r.blocks ?? []) as Array<Record<string, unknown>>)) {
       if (b["type"] === "paragraph") {
-        const t = b["text"] as Record<string, unknown> | undefined;
-        const s = typeof t?.["standard"] === "string" ? (t["standard"] as string) : "";
+        const t = b["text"];
+        const s = typeof t === "string" ? t : "";
         const plain = s.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
         if (plain) parts.push(plain);
       }
@@ -205,8 +205,8 @@ export function commentHostText(snapshot: ReviewSnapshot, commentId: string, quo
     const parts: string[] = [];
     for (const b of ((r.blocks ?? []) as Array<Record<string, unknown>>)) {
       if (b["type"] === "paragraph") {
-        const t = b["text"] as Record<string, unknown> | undefined;
-        const s = typeof t?.["standard"] === "string" ? (t["standard"] as string) : "";
+        const t = b["text"];
+        const s = typeof t === "string" ? t : "";
         const plain = s.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
         if (plain) parts.push(plain);
       }
@@ -495,7 +495,7 @@ export function changedHunksForTurn(snapshot: ReviewSnapshot, anchor: Thread["an
 }
 
 /**
- * Card rendering for the depth/examples/diagram templates. `cardId` is a
+ * Card rendering for the slower/examples/diagram templates. `cardId` is a
  * page-card id or one answer's `ans_…` id; an answer renders with its
  * question in front (per the owner's rule the controls apply to the
  * answer, so the agent rewrites that answer about that question).
@@ -505,18 +505,8 @@ export function cardPromptText(snapshot: ReviewSnapshot, cardId: string): string
     for (const card of page.cards ?? []) {
       if (card.id === cardId) {
         const head = card.title ?? "(untitled)";
-        const body = card.blocks
-          .map((b) => {
-            if (b.type === "paragraph") {
-              const parts = [`${blockPlainText(b)}`];
-              if (b.text.simple) parts.push(`::: simple\n${b.text.simple}\n:::`);
-              if (b.text.deep) parts.push(`::: deep\n${b.text.deep}\n:::`);
-              return parts.join("\n\n");
-            }
-            return blockPlainText(b);
-          })
-          .join("\n\n");
-        return `### ${head} [[card:${card.id}]] (level: ${card.level}, revision ${card.revision})\n\n${body}`;
+        const body = card.blocks.map((b) => blockPlainText(b)).join("\n\n");
+        return `### ${head} [[card:${card.id}]] (revision ${card.revision})\n\n${body}`;
       }
     }
   }
@@ -524,7 +514,7 @@ export function cardPromptText(snapshot: ReviewSnapshot, cardId: string): string
   if (ans) {
     const body = ans.turn.blocks.map((b) => blockPlainText(b)).join("\n\n");
     const head = ans.turn.question ?? excerptQuote(ans.annotation.anchor.quotedText ?? "");
-    return `### ${head} [[ann:${ans.annotation.id}]] (level: ${ans.turn.level}, revision ${ans.turn.revision})\n\n${body}`;
+    return `### ${head} [[ann:${ans.annotation.id}]] (revision ${ans.turn.revision})\n\n${body}`;
   }
   throw new Error(`unknown card ${cardId}`);
 }

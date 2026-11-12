@@ -86,10 +86,7 @@ export function demoInstallMessageBlocks(): Block[] {
     {
       type: "paragraph",
       id: `demo-install-${Date.now().toString(36)}`,
-      text: {
-        standard:
-          `The demo only has recorded answers. <a href="${DEMO_INSTALL_URL}" target="_blank" rel="noreferrer">Install Unvibe</a> to ask your own.`,
-      },
+      text: `The demo only has recorded answers. <a href="${DEMO_INSTALL_URL}" target="_blank" rel="noreferrer">Install Unvibe</a> to ask your own.`,
       citations: [],
     },
   ] as unknown as Block[];
