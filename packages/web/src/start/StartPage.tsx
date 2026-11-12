@@ -112,6 +112,8 @@ function changeKey(c: RepoChange, i: number): string {
  * Review-request scope (#95): rows the service marked team-only read as
  * "team"; everything else (direct rows, other lists, rows stored before
  * the scope existed) reads as direct, as the single list did before.
+ * #385's "other" rows (the typed author's non-requested PRs) never
+ * reach this function — they split into their own group by exact scope.
  */
 export function reviewScopeOf(c: RepoChange): "direct" | "team" {
   return c.reviewScope === "team" ? "team" : "direct";
@@ -123,11 +125,13 @@ export type RecencyWindow = "all" | "1d" | "3d" | "1w" | "2w";
 export const RECENCY_KEY = "unvibe.start.reviewRecency";
 
 /**
- * Author filter (#228, narrowed per owner decision): one single-select
- * for the requested-review PR groups only ("Waiting on your review":
- * requested of you / of your team). `"all"` (the default) shows
- * everything; any other value is an author login. The choice persists
- * like the recency window.
+ * Author choice (#228, #385): one control for the requested-review PR
+ * groups ("Waiting on your review": requested of you / of your team,
+ * plus "Not requested of you" while searching). `"all"` (the
+ * default) shows everything; any other value is an author login whose
+ * PRs the next load fetches from GitHub. The choice persists like the
+ * recency window (a restored choice filters the default rows until a
+ * search replaces them).
  */
 export const AUTHOR_KEY = "unvibe.start.author";
 export const AUTHOR_ALL = "all";
@@ -196,7 +200,7 @@ export function mergePageCursors(
   token: string | null,
 ): ChangesCursor {
   const next: ChangesCursor = { ...prev };
-  const keys = filter === "authoring" ? (["authoring"] as const) : (["direct", "team"] as const);
+  const keys = filter === "authoring" ? (["authoring"] as const) : (["direct", "team", "reviewed", "authorOther"] as const);
   if (token === null) {
     for (const k of keys) next[k] = null;
     return next;
@@ -531,7 +535,7 @@ function AuthorCombobox({
   /** "All" plus the known authors (with counts), plus the committed
       unknown login when a server search is active. */
   options: AuthorOption[];
-  /** Pick a listed login (client-side filter, clears any server search). */
+  /** Pick a listed login (runs the server search, like a typed login). */
   onPick: (login: string) => void;
   /** Fetch an unlisted login's PRs from GitHub. */
   onSearch: (login: string) => void;
@@ -1026,10 +1030,14 @@ export function StartPage(): React.JSX.Element {
   const selectAuthor = useCallback((login: string) => {
     const next = login.trim() !== "" ? login : AUTHOR_ALL;
     setAuthorFilter(next);
-    // Picking from the list is the client-side filter (#228): it clears
-    // any server-side typed search (#297), and its paging token with it
-    // (a cursor is only valid for the search that minted it).
-    setAuthorSearch(null);
+    // #385: every author choice runs the server search — a dropdown pick
+    // narrows server-side exactly like a typed login does (dropdown and
+    // typed box are one control). The paging token resets with it (a
+    // cursor is only valid for the search that minted it). The
+    // client-side filter (`matchesAuthor`) stays only as the
+    // reload-restore fallback: a restored choice filters the default
+    // rows until the next committed search replaces them.
+    setAuthorSearch(next === AUTHOR_ALL ? null : next);
     setPageCursors({});
     try {
       localStorage.setItem(AUTHOR_KEY, next);
@@ -1039,23 +1047,13 @@ export function StartPage(): React.JSX.Element {
   }, []);
 
   /**
-   * #297: commit a login as a server-side author search: the next load
-   * fetches that author's PRs from GitHub (`gh pr list --author`),
-   * instead of filtering the loaded rows.
+   * #297/#385: commit a login as a server-side author search: the next
+   * load fetches that author's PRs from GitHub instead of filtering the
+   * loaded rows. Every choice goes through `selectAuthor`, so a typed
+   * login and a dropdown pick behave the same.
    */
   const commitAuthorSearch = useCallback((login: string) => {
-    const t = login.trim();
-    if (t === "" || t === AUTHOR_ALL) {
-      selectAuthor(AUTHOR_ALL);
-      return;
-    }
-    setAuthorFilter(t);
-    setAuthorSearch(t);
-    try {
-      localStorage.setItem(AUTHOR_KEY, t);
-    } catch {
-      // Ignore: the choice simply does not persist.
-    }
+    selectAuthor(login);
   }, [selectAuthor]);
 
   /**
@@ -1455,8 +1453,14 @@ export function StartPage(): React.JSX.Element {
   // rows. #131 extends the window (and the newest-first order) to "Your
   // PRs" and to Recent branches (by last commit date); Reviews stays
   // unfiltered, ordered by recent activity.
-  const directRequested = requested.filter((c) => reviewScopeOf(c) === "direct");
+  // reviewScopeOf maps "other" to direct, so the direct group must
+  // exclude it explicitly (it has its own group below).
+  const directRequested = requested.filter((c) => reviewScopeOf(c) === "direct" && c.reviewScope !== "other");
   const teamRequested = requested.filter((c) => reviewScopeOf(c) === "team");
+  // #385: the typed author's open PRs that request no review from you
+  // (scope "other"): shown under "Not requested of you" during an
+  // author search only — the default view never receives them.
+  const otherRequested = requested.filter((c) => c.reviewScope === "other");
   const windowMs = RECENCY_WINDOWS.find((w) => w.value === recency)?.ms ?? null;
   const windowEmptyNote = RECENCY_WINDOWS.find((w) => w.value === recency)?.emptyNote ?? "";
   const branchesEmptyNote = RECENCY_WINDOWS.find((w) => w.value === recency)?.branchesNote ?? "";
@@ -1487,6 +1491,9 @@ export function StartPage(): React.JSX.Element {
     .filter((c) => matchesAuthor(c.author, effectiveAuthor))
     .filter((c) => inRecencyWindow(c, windowMs));
   const visibleTeam = teamRequested
+    .filter((c) => matchesAuthor(c.author, effectiveAuthor))
+    .filter((c) => inRecencyWindow(c, windowMs));
+  const visibleOther = otherRequested
     .filter((c) => matchesAuthor(c.author, effectiveAuthor))
     .filter((c) => inRecencyWindow(c, windowMs));
   const visibleAuthoring = [...authoring]
@@ -1761,9 +1768,10 @@ export function StartPage(): React.JSX.Element {
                           control for everything in this block — "Your
                           PRs", both review groups and Recent branches (by
                           last commit date). Reviews above stays
-                          unfiltered. The author filter (#228) lives with
-                          the "Waiting on your review" section below: it
-                          reads and filters only those two groups. */}
+                          unfiltered. The author control (#228, #385) lives
+                          with the "Waiting on your review" section below:
+                          it fetches that author's PRs for those groups
+                          (plus "Not requested of you" while searching). */}
                       <span style={{ width: 150, flex: "none" }}>
                         <Select
                           aria-label="Updated within"
@@ -1926,15 +1934,63 @@ export function StartPage(): React.JSX.Element {
                       />
                     ))
                   )}
+                  {/* #385: the typed author's other open PRs — only
+                      during an author search, after the two requested
+                      groups. Mirrors the team block above. */}
+                  {authorSearch !== null ? (
+                    <>
+                      <div className="subhead">
+                        Not requested of you
+                        {visibleOther.length === 0 && otherRequested.length === 0 && !listErrors.requested ? (
+                          <span className="cnt">0</span>
+                        ) : null}
+                      </div>
+                      {visibleOther.length === 0 ? (
+                        otherRequested.length === 0 ? null : (
+                          <p className="hint subempty" data-testid="requested-other-empty">
+                            {authorEmptyNote("PRs") ?? windowEmptyNote}{" "}
+                            <Button variant="quiet" size="sm" type="button" onClick={showAllLists}>
+                              Show all
+                            </Button>
+                          </p>
+                        )
+                      ) : (
+                        visibleOther.map((c, i) => (
+                          <ChangeRow
+                            key={changeKey(c, i)}
+                            c={c}
+                            i={i}
+                            opening={opening}
+                            owner={selected?.owner ?? null}
+                            name={selected?.name ?? null}
+                            stackInfo={c.prNumber !== undefined ? stacks[c.prNumber] : undefined}
+                            onOpenStackPr={openStackPr}
+                            onOpen={(row, j) =>
+                              openChange(row, j, {
+                                repoId: selectedId,
+                                pr: row.prNumber,
+                                branch: row.branch,
+                                title: row.title,
+                                ...(row.author ? { author: row.author } : {}),
+                              })
+                            }
+                          />
+                        ))
+                      )}
+                    </>
+                  ) : null}
                   {/* #297: a committed typed login that matches no loaded
                       rows: the server already narrowed the groups to it, so
-                      both stay empty and this names it (with the way back). */}
+                      all three stay empty and this names it (with the way
+                      back). #385: the text names what was searched — every
+                      open PR by the author, not just requested ones. */}
                   {authorSearch !== null &&
                   visibleDirect.length === 0 &&
                   visibleTeam.length === 0 &&
+                  visibleOther.length === 0 &&
                   !listErrors.requested ? (
                     <p className="hint subempty" data-testid="requested-author-search-empty">
-                      No PRs by {authorSearch}.{" "}
+                      No open PRs by {authorSearch}.{" "}
                       <Button variant="quiet" size="sm" type="button" onClick={showAllLists}>
                         Show all
                       </Button>

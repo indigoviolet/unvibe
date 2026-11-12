@@ -47,7 +47,7 @@ function cannedPrs(n: number, author: string): unknown[] {
   }));
 }
 
-type GhBodies = { author?: unknown[]; direct?: unknown[]; all?: unknown[] };
+type GhBodies = { author?: unknown[]; direct?: unknown[]; all?: unknown[]; reviewed?: unknown[]; authorOther?: unknown[] };
 
 /** Stub `gh api graphql` by search qualifier; records every `gh` invocation. */
 function stubGh(bodies: GhBodies): { runner: CommandRunner; ghCalls: string[][] } {
@@ -63,17 +63,31 @@ function stubGh(bodies: GhBodies): { runner: CommandRunner; ghCalls: string[][] 
       const q = valueOf(opts.args, "q") ?? "";
       const first = Number(valueOf(opts.args, "first") ?? "30");
       const after = valueOf(opts.args, "after");
-      const key = q.includes("user-review-requested:@me")
-        ? "direct"
-        : q.includes("review-requested:@me")
-          ? "all"
-          : "author";
+      const key = q.includes("reviewed-by:@me")
+        ? "reviewed"
+        : q.includes("user-review-requested:@me")
+          ? "direct"
+          : q.includes("review-requested:@me")
+            ? "all"
+            : q.includes("is:pr")
+              ? "author"
+              : "authorOther";
       const rows = [...(bodies[key] ?? [])];
       // Cursor pages: first call returns the first `first` rows with a
       // next-page cursor; any `after:` call returns the rest, exhausted.
       const page = after === undefined ? rows.slice(0, first) : rows.slice(first);
       const hasNextPage = after === undefined ? rows.length > first : false;
-      const endCursor = hasNextPage ? (key === "direct" ? "d1" : key === "author" ? "a1" : "t1") : null;
+      const endCursor = hasNextPage
+        ? key === "direct"
+          ? "d1"
+          : key === "author"
+            ? "a1"
+            : key === "reviewed"
+              ? "r1"
+              : key === "authorOther"
+                ? "o1"
+                : "t1"
+        : null;
       return {
         stdout: JSON.stringify({
           data: { search: { pageInfo: { hasNextPage, endCursor }, nodes: page } },
@@ -178,10 +192,13 @@ describe("changes paging + author search (#297, GraphQL #310)", () => {
       // The combined filter keeps "Your PRs" on @me while scoping requests.
       ghCalls.length = 0;
       await getChanges(app, `/api/repos/${repoId}/changes?filter=all&author=alice`);
-      const mine = ghCalls.filter((a) => queryOf(a).includes("author:@me"));
+      const mine = ghCalls.filter((a) => queryOf(a).includes("is:pr"));
       expect(mine).toHaveLength(1);
+      expect(queryOf(mine[0])).toContain("author:@me");
+      // #385: the typed login rides the reviewed search and the
+      // author's-other-PRs search too (direct + team + reviewed + other).
       const scoped = ghCalls.filter((a) => queryOf(a).includes("author:alice"));
-      expect(scoped).toHaveLength(2);
+      expect(scoped).toHaveLength(4);
     } finally {
       await app.close();
     }

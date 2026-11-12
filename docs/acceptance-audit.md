@@ -2602,6 +2602,27 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `test/changes-pr-lists.test.ts` (direct/team/both, sorting, missing
   fields, call counts), `StartPage.requested.test.tsx`,
   `e2e/start.spec.ts` lists section.
+- **#385 (start page, §4.2):** "Waiting on your review" also lists open
+  PRs you already reviewed (extra `reviewed-by:@me is:open -author:@me`
+  search per load; a reviewed PR still in a requested result keeps that
+  group, every other reviewed PR reads as direct) and, with a typed
+  author, that author's other open PRs under "Not requested of you"
+  (extra `author:<login> is:open` search, scope `"other"`, shown only
+  during an author search). Every author choice runs the server search
+  (dropdown pick and typed Enter alike); the client-side author filter
+  stays only as the reload-restore fallback. Drafts and approval status
+  never filter any group; the empty text reads "No open PRs by
+  <login>." only when every group is empty; paging, progressive
+  landing and kept lists cover the new searches. Evidence:
+  `test/changes-reviewed-385.test.ts` (union/dedupe, minus-shown,
+  minus-own, author on all searches, own-login lists as other, no
+  draft/approval filtering, reviewed paging), updated
+  `changes-pr-lists` / `changes-requested-union-307` / `changes-paging-297`
+  suites, `StartPage.loadmore297.test.tsx` (third group only during a
+  search, new empty text, every choice server-side),
+  `journeys/l1-start.spec.ts` "already-reviewed and typed-author lists",
+  tour frames `start-385-default-1440-light.png` +
+  `start-385-author-1440-light.png` (looked at).
 - **#131 (start page, §4.2):** the one recency filter sits below Reviews
   and applies to every list below it — "Your PRs" (newest first with the
   same relative time) and Recent branches (by last commit date, newest
