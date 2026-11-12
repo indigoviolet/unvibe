@@ -178,7 +178,12 @@ export function AppShell({ reviewId }: { reviewId: string }) {
       >
         <main className={guideClass + (questionMode ? " qmode" : "")} id="page">
           <GuidePage reviewId={reviewId} />
-          {questionMode ? <QuestionTray reviewId={reviewId} /> : null}
+          {questionMode ? (
+            <>
+              <div className="qreserve" aria-hidden="true" />
+              <QuestionTray reviewId={reviewId} />
+            </>
+          ) : null}
         </main>
         <div
           id="handle"

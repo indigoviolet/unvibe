@@ -1548,16 +1548,18 @@ pre.code .a { color: var(--add-ink); } pre.code .d { color: var(--del-ink); }
 /* ? mode (#388): picked-term marks and the docked tray. Marks read as a
    soft accent wash (anchors keep the note tone). The tray is a bar
    docked at the bottom of the guide pane only: sticky within the
-   pane's own scroll, the pane's width, never across the divider. While
-   the mode is on the pane carries extra bottom padding, so every line
-   can be scrolled above the tray and nothing sits unreachable under it. */
+   pane's own scroll, the pane's width, never across the divider. A
+   sticky bottom edge cannot enter the scroller's own bottom padding,
+   so qmode moves that reserve in-flow instead: the scroller keeps no
+   bottom padding and a plain spacer holds the end-of-guide breathing
+   room, which also guarantees every line scrolls above the tray
+   (nothing sits unreachable under it). The tray's negative side
+   margins mirror --pad-page's horizontal gutter (a 3-value shorthand,
+   unusable in calc, so the gutter repeats here). */
 mark[data-qterm] { background: var(--accent-soft); color: inherit; border-radius: var(--radius-2); padding: 0 1px; }
-/* The pane's own bottom padding is 140px (the third value of
-   --pad-page, same in every theme); the mode adds the tray's reserve
-   on top, so every line can be scrolled above the tray. The tray's
-   negative side margins mirror --pad-page's horizontal gutter. */
-#page.qmode { padding-bottom: 212px; }
-#qtray { position: sticky; bottom: 0; z-index: 20; display: flex; align-items: center; gap: var(--space-2); margin: var(--space-3) calc(-1 * clamp(16px, 4vw, 48px)) 0; padding: var(--space-2) clamp(16px, 4vw, 48px); background: var(--surface); border-top: var(--border-width) solid var(--line); box-shadow: var(--shadow-bar); font-size: var(--text-sm); flex-wrap: wrap; }
+#page.qmode { padding-bottom: 0; }
+#page .qreserve { height: 140px; }
+#qtray { position: sticky; bottom: 0; z-index: 20; display: flex; align-items: center; gap: var(--space-2); margin: 0 calc(-1 * clamp(16px, 4vw, 48px)) 0; padding: var(--space-2) clamp(16px, 4vw, 48px); background: var(--surface); border-top: var(--border-width) solid var(--line); box-shadow: var(--shadow-bar); font-size: var(--text-sm); flex-wrap: wrap; }
 #qtray .qt-label { color: var(--muted); white-space: nowrap; }
 #qtray .qt-empty { color: var(--muted); font-style: italic; white-space: nowrap; }
 #qtray .qt-term { display: inline-flex; align-items: center; gap: 2px; background: var(--accent-soft); border-radius: var(--radius-5); padding: 1px 2px 1px 8px; max-width: 240px; }
