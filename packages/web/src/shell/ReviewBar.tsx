@@ -56,6 +56,7 @@ import { useNavigate } from "react-router";
 import { useState } from "react";
 import { jobCounts } from "./jobCounts.js";
 import { RedoGuideButton } from "./RedoGuideButton.js";
+import { QuestionToggleButton } from "../guide/QuestionToggleButton.js";
 import { GuideCopyButton } from "../guide/GuideCopyButton.js";
 import { useReviewIdentity } from "./reviewIdentity.js";
 import { SubmitPanel } from "./SubmitPanel.js";
@@ -230,6 +231,10 @@ export function ReviewBar({
         {/* #384: guide copy lives with the other review actions (after
             Debug, before Re-do); hidden wherever there is no guide. */}
         <GuideCopyButton reviewId={reviewId} />
+        {/* #388: ? mode lives with the other review actions; hidden
+            wherever there is no guide (and in the static demo, whose
+            recordings can't answer arbitrary picked terms). */}
+        <QuestionToggleButton />
         {/* #345: re-do lives next to the other review actions (after
             Debug, before Collapse threads); hidden for the demo and for
             failed/empty opens, disabled while the review is opening. */}

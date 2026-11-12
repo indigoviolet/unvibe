@@ -52,6 +52,7 @@ import { selectionOffsetsIn } from "../comments/anchor.js";
 import { isReadOnlyVersionNow, useIsReadOnlyVersion } from "../comments/readOnly.js";
 import { parseLineElementId, snapWordOffsets, normalizeQuote, MAX_QUOTE_CHARS } from "../comments/selection.js";
 import { performAction } from "../guide/actions.js";
+import { highlightQuestionTerm } from "../guide/question.js";
 import { NO_AGENT_COPY } from "../guide/expansions/expansionUtils.js";
 import { showGuidePane } from "../shell/panes.js";
 import { hunkCommentAnchor, hunkDiffRange, parseHunkAttr, promotedPageForHunk } from "../source/diff/hunkAnchor.js";
@@ -547,6 +548,32 @@ export function isInScrollGrace(now: number, shownAt: number, selectionLive: boo
   return selectionLive && shownAt > 0 && now - shownAt >= 0 && now - shownAt < SCROLL_GRACE_MS;
 }
 
+/**
+ * Issue #388 (? mode): a finished selection in a guide card becomes a
+ * picked term instead of summoning the toolbar. The term highlights
+ * where it was picked; the tray lists it. Multi-node selections still
+ * list the term, only without a highlight.
+ */
+function pickQuestionTerm(quote: string, anchorEl: HTMLElement): void {
+  const sel = window.getSelection();
+  if (!quote || quote.length < 2) return;
+  if (quote.length > MAX_QUOTE_CHARS) {
+    toast("That selection is too long. Select less text to add it as a term.");
+    return;
+  }
+  const owner = anchorEl.closest("section.ui-card[id]")?.id ?? "";
+  if (!/^[CB]-/.test(owner)) return;
+  const id = useReview.getState().addQuestionTerm({ text: quote, cardId: owner.slice(2) });
+  if (sel && sel.rangeCount > 0) {
+    try {
+      highlightQuestionTerm(sel.getRangeAt(0), id);
+    } catch {
+      // The term is still listed without a highlight.
+    }
+  }
+  sel?.removeAllRanges();
+}
+
 export function SelectionToolbar() {
   const [pending, setPending] = useState<Pending | null>(null);
   // Over-cap selections show a plain note in the bar instead of the
@@ -603,6 +630,25 @@ export function SelectionToolbar() {
 
     const onMouseUp = (e: MouseEvent): void => {
       if ((e.target as Element | null)?.closest?.("#selbar")) return;
+      // Issue #388: while ? mode is on the normal toolbar is suspended
+      // — a finished selection in a guide card becomes a picked term.
+      // Clicks outside the guide (tray included) are ignored here.
+      if (useReview.getState().questionMode) {
+        const inGuide =
+          (e.target as Element | null) !== null &&
+          (e.target as Element).closest?.("#page") !== null &&
+          (e.target as Element | null)?.closest?.("button, a, input, textarea") == null &&
+          !isReadOnlyVersionNow();
+        if (!inGuide) return;
+        window.setTimeout(() => {
+          const sel = window.getSelection();
+          if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+          snapLiveSelection(sel);
+          const quote = normalizeQuote(sel.toString());
+          pickQuestionTerm(quote, elementOf(sel.anchorNode) ?? document.body);
+        }, 0);
+        return;
+      }
       const scope = (e.target as Element | null) !== null && inSelectionScope(e.target as Element);
       if (
         !scope ||

@@ -7,6 +7,7 @@ import { GuideThreadHooks } from "./comments/GuideThreads.js";
 import { ExpansionHighlights } from "./guide/expansions/ExpansionHighlights.js";
 import { HoverPopover } from "./floating/HoverPopover.js";
 import { SelectionToolbar } from "./floating/SelectionToolbar.js";
+import { QuestionTray } from "./guide/QuestionTray.js";
 import { Toast } from "./floating/Toast.js";
 import { Tooltip } from "./floating/Tooltip.js";
 import { AppShell } from "./shell/AppShell.js";
@@ -56,6 +57,7 @@ export function ReviewRoute() {
       <HoverPopover />
       <Tooltip />
       <SelectionToolbar />
+      <QuestionTray reviewId={reviewId} />
       <Toast />
     </>
   );
