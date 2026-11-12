@@ -925,11 +925,11 @@ export type ReviewAction =
   | { kind: "note"; quote: string; anchor: ActionAnchor; text?: string; offsets?: SelectionOffsets }
   /**
    * Issue #273: `cardId` is a page-card id or one thread reply's
-   * `ans_…` id. Depth, examples, diagram and undo act on that unit's
-   * own blocks/level/undo stack, so a reply rewrites alone.
+   * `ans_…` id. Slower rewrites, examples, diagram and undo act on that
+   * unit's own blocks/undo stack, so a reply rewrites alone.
    *
    * Issue #349 step 2: `personaId` selects a persona's version of a
-   * page card (its own blocks/level/undo stack and its own session).
+   * page card (its own blocks/undo stack and its own session).
    * Absent means the Guide version.
    */
   | { kind: "slower"; cardId: string; personaId?: string }

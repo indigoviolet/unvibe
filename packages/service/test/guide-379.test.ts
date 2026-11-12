@@ -142,7 +142,7 @@ The central paragraph.
     id: string,
   ): Promise<string | undefined> {
     // A fresh placeholder card: generation always calls the agent (no
-    // stored reuse like depth levels).
+    // stored reuse).
     await ctx.reviews.mutate(id, (draft) => {
       const root = (draft.pages ?? []).find((p) => p.id === "root");
       root?.cards.push({

@@ -270,8 +270,8 @@ test.describe("L4 threads on the demo (fast replay)", () => {
     dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-l4-data-"));
     createSeededDemoReview(dataDir, "l4-explain");
     createSeededDemoReview(dataDir, "l4-diff");
-    createSeededDemoReview(dataDir, "l4-depth-page");
-    createSeededDemoReview(dataDir, "l4-depth-conv");
+    createSeededDemoReview(dataDir, "l4-slower-page");
+    createSeededDemoReview(dataDir, "l4-slower-conv");
     createSeededDemoReview(dataDir, "l4-nesting");
     svc = await startService(dataDir, { agent: "replay", label: "l4demo" });
     // These journeys assert auto-written go-deeper cards, which need the
@@ -312,7 +312,7 @@ test.describe("L4 threads on the demo (fast replay)", () => {
     return { thread, threadId };
   }
 
-  test("explain, ask, follow-up and nested explain stay flat; depth rewrites", async ({ page, context }) => {
+  test("explain, ask, follow-up and nested explain stay flat; slower rewrites", async ({ page, context }) => {
     test.setTimeout(300_000);
     const s = service();
     // Our explain thread's id, captured at creation (the replay pipeline
@@ -592,11 +592,11 @@ test.describe("L4 threads on the demo (fast replay)", () => {
     test.setTimeout(300_000);
     // Fresh seeded review: other tests in this file leave cards behind
     // whose own slower buttons would capture the unscoped clicks.
-    await openReview(page, "l4-depth-page");
+    await openReview(page, "l4-slower-page");
     const card = page.locator("#C-central");
     const s = service();
     const paraText = async (): Promise<string> => {
-      const cur = await apiJson(s, "GET", "/api/reviews/l4-depth-page");
+      const cur = await apiJson(s, "GET", "/api/reviews/l4-slower-page");
       const cards = ((cur.json as { pages: { id: string; cards: { id: string; blocks: { type: string; text?: string }[] }[] }[] }).pages ?? [])
         .find((p) => p.id === "root")?.cards ?? [];
       const central = cards.find((c) => c.id === "central");
@@ -634,9 +634,9 @@ test.describe("L4 threads on the demo (fast replay)", () => {
   test("conversation card: slower rewrites the reply, undo restores", async ({ page }) => {
     test.setTimeout(300_000);
     const s = service();
-    await openReview(page, "l4-depth-conv");
+    await openReview(page, "l4-slower-conv");
 
-    const snap = await apiJson(s, "GET", "/api/reviews/l4-depth-conv");
+    const snap = await apiJson(s, "GET", "/api/reviews/l4-slower-conv");
     const central = ((snap.json as { pages: { id: string; cards: { id: string; blocks: { id: string; type: string; text?: string }[] }[] }[] }).pages ?? [])
       .find((p) => p.id === "root")?.cards.find((c) => c.id === "central");
     const paras = (central?.blocks ?? []).filter((b) => b.type === "paragraph" && b.text);
@@ -645,7 +645,7 @@ test.describe("L4 threads on the demo (fast replay)", () => {
     const quote = host.text.includes("agree")
       ? "so the message and urllib3's HTTPHeaderDict agree"
       : host.text.slice(0, 12);
-    const created = await apiJson(s, "POST", "/api/reviews/l4-depth-conv/actions", {
+    const created = await apiJson(s, "POST", "/api/reviews/l4-slower-conv/actions", {
       kind: "explain",
       quote,
       anchor: { where: "block", blockId: `central#${host.id}` },
@@ -654,7 +654,7 @@ test.describe("L4 threads on the demo (fast replay)", () => {
     if ((created.json as { jobId?: string }).jobId) {
       const deadline = Date.now() + 60_000;
       for (;;) {
-        const cur = await apiJson(s, "GET", "/api/reviews/l4-depth-conv");
+        const cur = await apiJson(s, "GET", "/api/reviews/l4-slower-conv");
         const ann = ((cur.json as { annotations: { id: string; replies?: { blocks: unknown[] }[] }[] }).annotations ?? []).find(
           (a) => a.id === annId,
         );
@@ -670,7 +670,7 @@ test.describe("L4 threads on the demo (fast replay)", () => {
     await expect(exp).toBeVisible({ timeout: 30_000 });
 
     const replyText = async (): Promise<string> => {
-      const cur = await apiJson(s, "GET", "/api/reviews/l4-depth-conv");
+      const cur = await apiJson(s, "GET", "/api/reviews/l4-slower-conv");
       const ann = ((cur.json as { annotations: { id: string; replies?: { blocks: { type: string; text?: string }[] }[] }[] }).annotations ?? []).find(
         (a) => a.id === annId,
       );
@@ -729,7 +729,7 @@ test.describe("L4 threads on the demo (fast replay)", () => {
     });
   });
 
-  test("reader journey: depth, examples, undo, open as page, ask, go-deeper, contents", async ({ page }) => {
+  test("reader journey: slower rewrites, examples, undo, open as page, ask, go-deeper, contents", async ({ page }) => {
     test.setTimeout(300_000);
     const s = service();
     // Replay (#257): asserts the pipeline's auto-written go-deeper cards
@@ -742,7 +742,7 @@ test.describe("L4 threads on the demo (fast replay)", () => {
     });
     await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
 
-    await test.step("Explain, Deeper, Simpler, examples, undo", async () => {
+    await test.step("Explain, Help me understand twice, examples, undo", async () => {
       await selectText(page, "#C-central", "matches optional whitespace, then CRLF");
       await page.locator('#selbar [data-act="explain"]').click();
       const exp = page.locator("#C-central section.ithread[data-thread]").first();
@@ -750,13 +750,13 @@ test.describe("L4 threads on the demo (fast replay)", () => {
       await expect.soft(exp.locator(".exp-b")).toContainText(/fold|helper|space/i, { timeout: 60_000 });
       const expBody = exp.locator(".exp-b");
       const explained = await expBody.innerText();
-      await clickReplyControl(exp.locator("[data-reply]").first(), "Deeper");
+      await clickReplyControl(exp.locator("[data-reply]").first(), "Help me understand");
       await expect.soft.poll(async () => expBody.innerText(), { timeout: 60_000 }).not.toBe(explained);
       await expect.soft(exp.locator(".working")).toHaveCount(0, { timeout: 60_000 });
       await expect.soft(expBody).not.toBeEmpty({ timeout: 10_000 });
-      const deepened = await expBody.innerText();
-      await clickReplyControl(exp.locator("[data-reply]").first(), "Simpler");
-      await expect.soft.poll(async () => expBody.innerText(), { timeout: 60_000 }).not.toBe(deepened);
+      const slowedOnce = await expBody.innerText();
+      await clickReplyControl(exp.locator("[data-reply]").first(), "Help me understand");
+      await expect.soft.poll(async () => expBody.innerText(), { timeout: 60_000 }).not.toBe(slowedOnce);
       await expect.soft(expBody).not.toBeEmpty();
       // Use examples on the guide card (the thread answers carry no Example
       // asides in this recording), then Undo removes the inserted aside.
@@ -768,9 +768,9 @@ test.describe("L4 threads on the demo (fast replay)", () => {
       await expect.soft(guideAside).toContainText(/mixed SP\/HTAB|one fold/i, { timeout: 10_000 });
       await centralCard.getByRole("button", { name: "Undo" }).first().click();
       await expect.soft(centralCard.locator(".gen-aside")).toHaveCount(0, { timeout: 10_000 });
-      // Undo reverts the Simpler step: the deeper text returns.
+      // Undo reverts the second press: the first rewrite returns.
       await clickReplyControl(exp.locator("[data-reply]").first(), "Undo");
-      await expect.soft.poll(async () => expBody.innerText(), { timeout: 30_000 }).toBe(deepened);
+      await expect.soft.poll(async () => expBody.innerText(), { timeout: 30_000 }).toBe(slowedOnce);
     });
 
     await test.step("close, preview, reopen, open as page, back", async () => {

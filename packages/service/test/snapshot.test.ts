@@ -29,7 +29,7 @@ describe("snapshot build", () => {
     // #359: central Clarity).
     // Journey-only manifest entries (the #351 update-pass reply) are not
     // demo content and are skipped by the builder.
-    expect(counts).toHaveLength(51);
+    expect(counts).toHaveLength(52);
     expect(snapshot.files.map((f) => [f.fileKey, f.hunks.length])).toEqual([
       ["src-urllib3-connection.py", 2],
       ["test-test_connection.py", 3],

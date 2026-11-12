@@ -529,8 +529,9 @@ export type ReplyKind = "ask" | "explain" | "comment" | "persona";
 
 /**
  * One reply inside a thread. Agent answers (`ask`/`explain`) carry blocks
- * like a guide card body, so depth, examples, diagram, undo and second
- * opinion act on the reply through the same lookup, keyed by the reply's
+ * like a guide card body, so slower rewrites, examples, diagram, undo
+ * and second opinion act on the reply through the same lookup, keyed by
+ * the reply's
  * own `ans_…` id. Reviewer comments (`comment`, `persona` later) carry
  * their text as a single paragraph block; only comment-kind replies are
  * submitted to GitHub.
@@ -691,7 +692,7 @@ export interface Thread {
   jobId?: string;
   /**
    * M4: true when the anchor text can no longer be found in its host
-   * (for example after a depth rewrite of the host card).
+   * (for example after a slower rewrite of the host card).
    */
   anchorStale?: boolean;
   /**
@@ -1240,7 +1241,7 @@ export interface Job {
    * at `GET /api/jobs/:id/output`. Absent on jobs from before #207.
    */
   turnRecords?: JobTurnRecord[];
-  /** Card this job works on, when card-scoped (depth/examples/diagram/generate). */
+  /** Card this job works on, when card-scoped (slower/examples/diagram/generate). */
   cardId?: string;
   /**
    * Issue #136: annotation this job works on (conversation fill,

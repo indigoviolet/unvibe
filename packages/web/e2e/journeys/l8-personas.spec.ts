@@ -458,22 +458,22 @@ test.describe("L8 persona runs on cards", () => {
       expect.soft(clip).not.toContain("[[");
     });
 
-    await test.step("depth on the persona tab rewrites the variant, never the Guide version", async () => {
+    await test.step("Help me understand on the persona tab rewrites the variant, never the Guide version", async () => {
       const tabs = page.locator('[data-testid="versions-central"]');
       const card = page.locator("#C-central");
-      // The depth stepper's dots (not the icons) on the persona tab:
-      // deeper rewrites the variant, never the Guide version.
+      // One icon button (no stepper, no pips) on the persona tab: the
+      // press rewrites the variant, never the Guide version.
       const variantTextBefore = await card.locator(".prose, .lst").first().innerText();
-      await card.getByRole("button", { name: "Deeper" }).click();
+      await card.getByRole("button", { name: "Help me understand" }).click();
       const deadline = Date.now() + 90_000;
       for (;;) {
         const variants = await centralVariants(s, reviewId);
-        if (variants[PERSONA_ID]?.level === "deep") break;
-        if (Date.now() > deadline) throw new Error("persona depth never landed");
+        if ((variants[PERSONA_ID]?.revision ?? 0) >= 2) break;
+        if (Date.now() > deadline) throw new Error("persona rewrite never landed");
         await new Promise((r) => setTimeout(r, 500));
       }
-      const afterDepth = (await centralVariants(s, reviewId))[PERSONA_ID]!;
-      expect.soft(afterDepth.revision).toBeGreaterThanOrEqual(2);
+      const afterSlower = (await centralVariants(s, reviewId))[PERSONA_ID]!;
+      expect.soft(afterSlower.revision).toBeGreaterThanOrEqual(2);
       await expect.soft(card.locator(".prose, .lst").first()).not.toHaveText(variantTextBefore, { timeout: 15_000 });
       // Back on Guide: the variant rewrite left it untouched.
       await tabs.locator('[data-version-tab="guide"]').click();
@@ -573,8 +573,9 @@ test.describe("L8 persona runs on cards", () => {
     test.setTimeout(300_000);
     const s = service();
     // Issue #379: the fixed Guide owns the main model and a writing-style
-    // lens. Editing both, then running depth on the Guide version, must
-    // reach the runner on the Guide's model with the lens up front.
+    // lens. Editing both, then pressing Help me understand on the Guide
+    // version, must reach the runner on the Guide's model with the lens
+    // up front.
     const LENS = "Write with short sentences. No jargon without a gloss.";
 
     await test.step("edit the Guide lens through the Settings UI", async () => {
@@ -617,7 +618,7 @@ test.describe("L8 persona runs on cards", () => {
       });
     });
 
-    await test.step("deeper on the Guide version runs on the Guide model with the lens up front", async () => {
+    await test.step("Help me understand on the Guide version runs on the Guide model with the lens up front", async () => {
       const before = (
         (await apiJson(s, "GET", `/api/jobs?review=${reviewId}`)).json as { jobs: { id: string }[] }
       ).jobs.map((j) => j.id);
@@ -629,32 +630,28 @@ test.describe("L8 persona runs on cards", () => {
         await tabs.locator('[data-version-tab="guide"]').click();
       }
       const card = page.locator("#C-central");
-      await card.getByRole("button", { name: "Deeper" }).click();
-      const deadline = Date.now() + 90_000;
-      for (;;) {
-        const res = await apiJson(s, "GET", `/api/reviews/${reviewId}`);
-        const level = ((res.json as { pages: { cards: { id: string; level: string }[] }[] }).pages ?? [])
-          .flatMap((p) => p.cards)
-          .find((c) => c.id === "central")?.level;
-        if (level === "deep") break;
-        if (Date.now() > deadline) throw new Error("guide depth never landed");
-        await new Promise((r) => setTimeout(r, 500));
-      }
-      // The new depth job ran on the Guide's model…
+      const guideTextBefore = await card.locator(".prose, .lst").first().innerText();
+      await card.getByRole("button", { name: "Help me understand" }).click();
+      await expect
+        .soft.poll(
+          async () => card.locator(".prose, .lst").first().innerText(),
+          { timeout: 90_000 },
+        )
+        .not.toBe(guideTextBefore);
+      // The new slower job ran on the Guide's model…
       const after = (await apiJson(s, "GET", `/api/jobs?review=${reviewId}`)).json as {
         jobs: { id: string; kind: string; provider: string; model: string }[];
       };
-      const depth = after.jobs.filter((j) => j.kind === "depth" && !before.includes(j.id)).at(-1);
-      expect(depth).toBeDefined();
-      expect(depth).toMatchObject({ provider: "codex", model: "gpt-6.1-sol", effort: "high" });
+      const slower = after.jobs.filter((j) => j.kind === "slower" && !before.includes(j.id)).at(-1);
+      expect(slower).toBeDefined();
+      expect(slower).toMatchObject({ provider: "codex", model: "gpt-6.1-sol", effort: "high" });
       // …with the lens at the start of the turn and the task rules intact.
-      const full = (await apiJson(s, "GET", `/api/jobs/${depth!.id}`)).json as {
+      const full = (await apiJson(s, "GET", `/api/jobs/${slower!.id}`)).json as {
         job: { promptSnapshot: string; effort: string };
       };
       expect(full.job.effort).toBe("high");
       expect(full.job.promptSnapshot.startsWith(`# Writing style\n\n${LENS}\n\n`)).toBe(true);
-      expect(full.job.promptSnapshot).toContain("# Depth rewrite");
-      await expect.soft(card.locator(".prose, .lst").first()).toContainText("CRLF", { timeout: 15_000 });
+      expect(full.job.promptSnapshot).toContain("# Help me understand");
     });
   });
 });

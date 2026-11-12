@@ -457,8 +457,8 @@ export interface GuideCardInput {
 /**
  * The whole guide as shown → Markdown (issue #384): the review title as
  * a `#` heading, then each main guide card in guide order with its
- * heading as `##` and its Guide-version prose blocks at that card's
- * shown depth. Citations render exactly as #377's card copy does
+ * heading as `##` and its Guide-version prose blocks as shown.
+ * Citations render exactly as #377's card copy does
  * (permalinks on PR reviews, `path:lines` otherwise); diagrams become
  * placeholders; code blocks, expansions, comments, threads, finding
  * pages, the plotlines list and "Updated since…" addenda are left out.

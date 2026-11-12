@@ -282,6 +282,11 @@
       "kind": "slower",
       "key": "expansion:1",
       "file": "slower-expansion-1.md"
+    },
+    {
+      "kind": "slower",
+      "key": "expansion:2",
+      "file": "slower-expansion-2.md"
     }
   ]
 }
