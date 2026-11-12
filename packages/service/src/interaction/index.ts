@@ -21,6 +21,7 @@ export {
   conversationForAnswer,
   mirrorPromotedAnswer,
   targetBlocks,
+  targetUndoDepth,
   targetRevision,
   pushUndo,
   setTargetContent,

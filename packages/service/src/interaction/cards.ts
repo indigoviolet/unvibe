@@ -93,6 +93,11 @@ export function targetBlocks(target: CardTarget): Block[] {
   return target.kind === "page-card" ? target.card.blocks : target.turn.blocks;
 }
 
+/** Undo-stack length: the press ordinal of the next rewrite (issue #387). */
+export function targetUndoDepth(target: CardTarget): number {
+  return target.kind === "page-card" ? target.card.undoStack.length : target.turn.undoStack.length;
+}
+
 export function targetRevision(target: CardTarget): number {
   return target.kind === "page-card" ? target.card.revision : target.turn.revision;
 }

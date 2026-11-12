@@ -22,6 +22,7 @@ import {
   setTargetContent,
   targetBlocks,
   targetRevision,
+  targetUndoDepth,
 } from "../../interaction/index.js";
 import { personaFor, personaVariantPromptText, variantFor } from "./persona.js";
 import { answerEchoTitle, cardTitle, storedCardTitle } from "./events.js";
@@ -54,6 +55,12 @@ export async function slowerAction(
   const revision = personaId
     ? variantFor(live, cardId, personaId)!.revision
     : targetRevision(findCardTarget(live, cardId)!);
+  // Press ordinal (undo-stack length): which rewrite this is for the
+  // unit. Seeded and live reviews boot cards at different revisions,
+  // so the ordinal — not the revision — picks the replay recording.
+  const ordinal = personaId
+    ? variantFor(live, cardId, personaId)!.undoStack.length
+    : targetUndoDepth(findCardTarget(live, cardId)!);
   // Issue #387: one press = one turn against this revision. The
   // revision rides the dedupe key so repeated presses stack instead of
   // collapsing into the still-running job.
@@ -65,13 +72,14 @@ export async function slowerAction(
   };
   const active = findActiveJob(jobs, reviewId, key);
   if (active) return { cardId, jobId: active.id, deduplicated: true };
-  return slowerViaAgent(ctx, cardId, revision, personaId ? { personaId, persona: persona! } : undefined);
+  return slowerViaAgent(ctx, cardId, revision, ordinal, personaId ? { personaId, persona: persona! } : undefined);
 }
 
 async function slowerViaAgent(
   ctx: ActionContext,
   cardId: string,
   revision: number,
+  ordinal: number,
   personaOpts?: { personaId: string; persona: import("@unvibe/shared").Persona },
 ): Promise<{ cardId: string; jobId?: string }> {
   const { pipeline, reviews, reviewId } = ctx;
@@ -89,12 +97,16 @@ async function slowerViaAgent(
     card: personaId ? personaVariantPromptText(snapshot, cardId, personaId) : cardPromptText(snapshot, cardId),
   };
   const capture = captureJobId();
-  // Persona variants carry their own revision count, so a persona press
-  // keys its own recording cluster and never collides with the guide's.
-  // Thread replies carry dynamic `ans_…` ids, so they share one
-  // `expansion:<revision>` cluster like the old depth recordings did.
-  const replayKey =
-    personaId ? `persona:${cardId}:${revision}` : cardId.startsWith("ans_") || cardId.startsWith("ann_") ? `expansion:${revision}` : `${cardId}:${revision}`;
+  // Replay key: the press ordinal, so seeded and live reviews replay
+  // the same sequence. (The dedupe key above stays revision-based:
+  // that one is about correctness, this one only picks a fixture
+  // recording.) Persona variants and thread replies (`ans_…` ids) key
+  // their own clusters and never collide with the guide's.
+  const replayKey = personaId
+    ? `persona:${cardId}:${ordinal + 1}`
+    : cardId.startsWith("ans_") || cardId.startsWith("ann_")
+      ? `expansion:${ordinal + 1}`
+      : `${cardId}:${ordinal + 1}`;
   const replay = isReplayRunner(pipeline.runner) ? { kind: "slower", key: replayKey } : undefined;
   // Issue #50: a rewrite must not open by repeating the card title — for
   // an answer, its question (else the card's quoted text).

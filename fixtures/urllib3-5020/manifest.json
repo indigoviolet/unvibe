@@ -260,43 +260,33 @@
     },
     {
       "kind": "slower",
+      "key": "central:1",
+      "file": "slower-central-press1.md"
+    },
+    {
+      "kind": "slower",
       "key": "central:2",
-      "file": "slower-central-2.md"
+      "file": "slower-central-press2.md"
     },
     {
       "kind": "slower",
-      "key": "central:3",
-      "file": "slower-central-3.md"
+      "key": "expansion:1",
+      "file": "slower-expansion-press1.md"
     },
     {
       "kind": "slower",
-      "key": "g-regex:2",
+      "key": "expansion:2",
+      "file": "slower-expansion-press2.md"
+    },
+    {
+      "kind": "slower",
+      "key": "g-regex:1",
       "file": "slower-g-regex-1.md"
     },
     {
       "kind": "slower",
       "key": "persona:central:1",
       "file": "slower-persona-central-1.md"
-    },
-    {
-      "kind": "slower",
-      "key": "central:1",
-      "file": "slower-central-2.md"
-    },
-    {
-      "kind": "slower",
-      "key": "expansion:2",
-      "file": "slower-expansion-2.md"
-    },
-    {
-      "kind": "slower",
-      "key": "expansion:3",
-      "file": "slower-expansion-3.md"
-    },
-    {
-      "kind": "slower",
-      "key": "central:4",
-      "file": "slower-central-3.md"
     }
   ]
 }
