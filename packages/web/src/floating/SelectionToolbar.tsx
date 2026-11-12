@@ -633,11 +633,14 @@ export function SelectionToolbar() {
       // Issue #388: while ? mode is on the normal toolbar is suspended
       // — a finished selection in a guide card becomes a picked term.
       // Clicks outside the guide (tray included) are ignored here.
+      // Unlike the toolbar path, text inside a link stays pickable (a
+      // glossary term is exactly the jargon readers pick); only real
+      // controls are excluded.
       if (useReview.getState().questionMode) {
         const inGuide =
           (e.target as Element | null) !== null &&
           (e.target as Element).closest?.("#page") !== null &&
-          (e.target as Element | null)?.closest?.("button, a, input, textarea") == null &&
+          (e.target as Element | null)?.closest?.("button, input, textarea") == null &&
           !isReadOnlyVersionNow();
         if (!inGuide) return;
         window.setTimeout(() => {
