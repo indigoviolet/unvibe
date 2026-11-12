@@ -29,6 +29,8 @@ function pr(n: number, title: string, author: string): RepoChange {
 type ChangesOpts = { limit?: number; author?: string; cursor?: string | null };
 const seen: { filter?: string; opts?: ChangesOpts }[] = [];
 let requestedRows: RepoChange[] = [];
+/** Extra scope-"other" rows the mock serves for `--author diana` (#385). */
+let dianaOther: RepoChange[] = [];
 let requestedHasMore = false;
 /** Rows the mock serves as the next page once the client sends a cursor. */
 let nextPageRows: RepoChange[] = [];
@@ -52,6 +54,7 @@ export function releaseNextPage(): void {
 
 function mockPage(): void {
   seen.length = 0;
+  dianaOther = [];
   failNextPage = false;
   nextPageGate = null;
   vi.spyOn(api, "repos").mockResolvedValue({ repos: [REPO] });
@@ -72,7 +75,7 @@ function mockPage(): void {
         opts?.author !== undefined
           ? [
               ...requestedRows.filter((c) => c.author === opts.author),
-              ...(opts.author === "diana" ? [pr(9, "Diana's ask", "diana")] : []),
+              ...(opts.author === "diana" ? [pr(9, "Diana's ask", "diana"), ...dianaOther] : []),
             ]
           : requestedRows;
       // #310: cursor paging like the service — a cursor fetches the next
@@ -315,6 +318,27 @@ describe("author combobox (#297 follow-up)", () => {
     expect((getKeptLists("r1")?.requested ?? []).map((c) => c.title)).toContain("Alice asks");
   });
 
+  it("an author's other PRs land under Not requested of you, only during the search (#385)", async () => {
+    localStorage.setItem(REPO_KEY, "r1");
+    requestedRows = [pr(1, "Alice asks", "alice")];
+    mockPage();
+    // mockPage resets the hook: set it after.
+    dianaOther = [{ ...pr(10, "Diana's other PR", "diana"), reviewScope: "other" as const }];
+    renderPage();
+
+    await screen.findByText("Alice asks");
+    // No third group in the default view.
+    expect(screen.queryByText("Not requested of you")).not.toBeInTheDocument();
+    fireEvent.change(authorInput(), { target: { value: "diana" } });
+    fireEvent.keyDown(authorInput(), { key: "Enter" });
+
+    await screen.findByText("Diana's other PR");
+    expect(screen.getByText("Not requested of you")).toBeInTheDocument();
+    // Once, in its own group — never duplicated under Requested of you.
+    expect(screen.getAllByText("Diana's other PR")).toHaveLength(1);
+    expect(screen.getByText("Diana's ask")).toBeInTheDocument();
+  });
+
   it("an unknown login names itself with a way back, and Show all clears it", async () => {
     localStorage.setItem(REPO_KEY, "r1");
     requestedRows = [pr(1, "Alice asks", "alice")];
@@ -326,7 +350,7 @@ describe("author combobox (#297 follow-up)", () => {
     fireEvent.keyDown(authorInput(), { key: "Enter" });
 
     const empty = await screen.findByTestId("requested-author-search-empty");
-    expect(empty).toHaveTextContent("No PRs by zed.");
+    expect(empty).toHaveTextContent("No open PRs by zed.");
     fireEvent.click(empty.querySelector("button") as HTMLButtonElement);
     await screen.findByText("Alice asks");
     expect(authorInput()).toHaveValue("All");

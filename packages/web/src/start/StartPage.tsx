@@ -112,6 +112,8 @@ function changeKey(c: RepoChange, i: number): string {
  * Review-request scope (#95): rows the service marked team-only read as
  * "team"; everything else (direct rows, other lists, rows stored before
  * the scope existed) reads as direct, as the single list did before.
+ * #385's "other" rows (the typed author's non-requested PRs) never
+ * reach this function — they split into their own group by exact scope.
  */
 export function reviewScopeOf(c: RepoChange): "direct" | "team" {
   return c.reviewScope === "team" ? "team" : "direct";
@@ -196,7 +198,7 @@ export function mergePageCursors(
   token: string | null,
 ): ChangesCursor {
   const next: ChangesCursor = { ...prev };
-  const keys = filter === "authoring" ? (["authoring"] as const) : (["direct", "team"] as const);
+  const keys = filter === "authoring" ? (["authoring"] as const) : (["direct", "team", "reviewed", "authorOther"] as const);
   if (token === null) {
     for (const k of keys) next[k] = null;
     return next;
@@ -1455,8 +1457,14 @@ export function StartPage(): React.JSX.Element {
   // rows. #131 extends the window (and the newest-first order) to "Your
   // PRs" and to Recent branches (by last commit date); Reviews stays
   // unfiltered, ordered by recent activity.
-  const directRequested = requested.filter((c) => reviewScopeOf(c) === "direct");
+  // reviewScopeOf maps "other" to direct, so the direct group must
+  // exclude it explicitly (it has its own group below).
+  const directRequested = requested.filter((c) => reviewScopeOf(c) === "direct" && c.reviewScope !== "other");
   const teamRequested = requested.filter((c) => reviewScopeOf(c) === "team");
+  // #385: the typed author's open PRs that request no review from you
+  // (scope "other"): shown under "Not requested of you" during an
+  // author search only — the default view never receives them.
+  const otherRequested = requested.filter((c) => c.reviewScope === "other");
   const windowMs = RECENCY_WINDOWS.find((w) => w.value === recency)?.ms ?? null;
   const windowEmptyNote = RECENCY_WINDOWS.find((w) => w.value === recency)?.emptyNote ?? "";
   const branchesEmptyNote = RECENCY_WINDOWS.find((w) => w.value === recency)?.branchesNote ?? "";
@@ -1487,6 +1495,9 @@ export function StartPage(): React.JSX.Element {
     .filter((c) => matchesAuthor(c.author, effectiveAuthor))
     .filter((c) => inRecencyWindow(c, windowMs));
   const visibleTeam = teamRequested
+    .filter((c) => matchesAuthor(c.author, effectiveAuthor))
+    .filter((c) => inRecencyWindow(c, windowMs));
+  const visibleOther = otherRequested
     .filter((c) => matchesAuthor(c.author, effectiveAuthor))
     .filter((c) => inRecencyWindow(c, windowMs));
   const visibleAuthoring = [...authoring]
@@ -1926,15 +1937,63 @@ export function StartPage(): React.JSX.Element {
                       />
                     ))
                   )}
+                  {/* #385: the typed author's other open PRs — only
+                      during an author search, after the two requested
+                      groups. Mirrors the team block above. */}
+                  {authorSearch !== null ? (
+                    <>
+                      <div className="subhead">
+                        Not requested of you
+                        {visibleOther.length === 0 && otherRequested.length === 0 && !listErrors.requested ? (
+                          <span className="cnt">0</span>
+                        ) : null}
+                      </div>
+                      {visibleOther.length === 0 ? (
+                        otherRequested.length === 0 ? null : (
+                          <p className="hint subempty" data-testid="requested-other-empty">
+                            {authorEmptyNote("PRs") ?? windowEmptyNote}{" "}
+                            <Button variant="quiet" size="sm" type="button" onClick={showAllLists}>
+                              Show all
+                            </Button>
+                          </p>
+                        )
+                      ) : (
+                        visibleOther.map((c, i) => (
+                          <ChangeRow
+                            key={changeKey(c, i)}
+                            c={c}
+                            i={i}
+                            opening={opening}
+                            owner={selected?.owner ?? null}
+                            name={selected?.name ?? null}
+                            stackInfo={c.prNumber !== undefined ? stacks[c.prNumber] : undefined}
+                            onOpenStackPr={openStackPr}
+                            onOpen={(row, j) =>
+                              openChange(row, j, {
+                                repoId: selectedId,
+                                pr: row.prNumber,
+                                branch: row.branch,
+                                title: row.title,
+                                ...(row.author ? { author: row.author } : {}),
+                              })
+                            }
+                          />
+                        ))
+                      )}
+                    </>
+                  ) : null}
                   {/* #297: a committed typed login that matches no loaded
                       rows: the server already narrowed the groups to it, so
-                      both stay empty and this names it (with the way back). */}
+                      all three stay empty and this names it (with the way
+                      back). #385: the text names what was searched — every
+                      open PR by the author, not just requested ones. */}
                   {authorSearch !== null &&
                   visibleDirect.length === 0 &&
                   visibleTeam.length === 0 &&
+                  visibleOther.length === 0 &&
                   !listErrors.requested ? (
                     <p className="hint subempty" data-testid="requested-author-search-empty">
-                      No PRs by {authorSearch}.{" "}
+                      No open PRs by {authorSearch}.{" "}
                       <Button variant="quiet" size="sm" type="button" onClick={showAllLists}>
                         Show all
                       </Button>
