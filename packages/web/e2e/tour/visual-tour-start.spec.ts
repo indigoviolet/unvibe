@@ -118,6 +118,7 @@ mkdir -p "$LOG"
 printf '%s\\n' "$*" >> "$LOG/calls.log"
 if [ "$1" = "api" ] && [ "$2" = "graphql" ]; then
   case "$*" in
+    *reviewed-by:*) echo '{"data":{"search":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}' ;;
     *"user-review-requested:@me"*) cat "$POOL/direct.json" ;;
     *"review-requested:@me"*) cat "$POOL/team.json" ;;
     *"author:"*) cat "$POOL/authoring.json" ;;
@@ -452,6 +453,7 @@ printf '%s\\n' "$*" >> "$LOG/calls.log"
 sleep 0.2
 if [ "$1" = "api" ] && [ "$2" = "graphql" ]; then
   case "$*" in
+    *reviewed-by:*) echo '{"data":{"search":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}' ;;
     *"author:@me"*) cat "$POOL/authoring.json" ;;
     *"author:"*)
       login=$(printf '%s' "$*" | sed -n 's/.*author:\\([A-Za-z@-]*\\).*/\\1/p')
@@ -672,6 +674,112 @@ test.describe("J297 start-page Load more + author search", () => {
   }
 });
 
+// ---- Already-reviewed + typed-author lists (#385, frames) ----
+/** #385: the default view (reviewed rows inside the existing groups) and
+ * the typed-author view (the extra "Not requested of you" group). */
+const R385_DIRECT: FakePr297[] = [
+  { ...pr297(801, "Harper asks you directly", "harper"), isDraft: true },
+];
+const R385_TEAM: FakePr297[] = [
+  { ...pr297(801, "Harper asks you directly", "harper"), isDraft: true },
+  { ...pr297(802, "Harper asks the team", "harper"), reviewRequests: [{ slug: "core" }] },
+];
+const R385_REVIEWED: FakePr297[] = [pr297(803, "Harper already reviewed", "harper")];
+const R385_OTHER: FakePr297[] = [pr297(804, "Harper works alone", "harper")];
+
+function writeFakeGh385(binDir: string, poolDir: string): void {
+  for (const [name, rows] of [
+    ["direct", R385_DIRECT],
+    ["team", R385_TEAM],
+    ["reviewed", R385_REVIEWED],
+    ["other", R385_OTHER],
+  ] as [string, FakePr297[]][]) {
+    writeFileSync(path.join(poolDir, `${name}.json`), searchPage297(rows, null, false));
+  }
+  const script = `#!/bin/sh
+POOL="${poolDir}"
+if [ "$1" = "api" ] && [ "$2" = "graphql" ]; then
+  case "$*" in
+    *reviewed-by:*) cat "$POOL/reviewed.json" ;;
+    *"user-review-requested:"*) cat "$POOL/direct.json" ;;
+    *"review-requested:"*) cat "$POOL/team.json" ;;
+    *author:harper*) cat "$POOL/other.json" ;;
+    *) echo '{"data":{"search":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}' ;;
+  esac
+  exit 0
+fi
+if [ "$1" = "api" ] && [ "$2" = "user" ]; then echo '{"login":"reviewer"}'; exit 0; fi
+if [ "$1" = "auth" ] && [ "$2" = "status" ]; then echo 'e2e stub: logged in as reviewer'; exit 0; fi
+echo "fake gh: unexpected call: $*" >&2; exit 1
+`;
+  writeFileSync(path.join(binDir, "gh"), script, { mode: 0o755 });
+}
+
+test.describe("J385 already-reviewed and typed-author lists", () => {
+  let repoDir = "";
+  let dataDir = "";
+  let poolDir = "";
+  let fakeBin = "";
+  let svc: RunningService | null = null;
+  let repoId = "";
+
+  test.beforeAll(async () => {
+    repoDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j385-repo-"));
+    dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j385-data-"));
+    poolDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j385-pool-"));
+    fakeBin = mkdtempSync(path.join(os.tmpdir(), "unvibe-j385-bin-"));
+    await makeScratchRepo(repoDir);
+    await git(repoDir, "remote", "add", "origin", "https://github.com/acme/widgets.git");
+    writeFakeGh385(fakeBin, poolDir);
+    writeFakeGitOffline(fakeBin, realGitPath());
+    const fakeShell = writeFakeShell(fakeBin);
+    svc = await startService(dataDir, {
+      agent: "none",
+      extraEnv: { SHELL: fakeShell, PATH: fakeServicePath(fakeBin) },
+    });
+    const repos = await apiJson(svc, "POST", "/api/repos", { path: repoDir });
+    const list = (repos.json as { repos: { id: string; localPath: string }[] }).repos;
+    const registered = list.find((r) => r.localPath === repoDir);
+    if (!registered) throw new Error(`repo not registered: ${JSON.stringify(list)}`);
+    repoId = registered.id;
+  });
+  test.afterAll(async () => {
+    await svc?.stop().catch(() => {});
+    for (const d of [repoDir, dataDir, poolDir, fakeBin]) rmSync(d, { recursive: true, force: true });
+  });
+
+  test("default and typed-author review lists (1440-light)", async ({ page }) => {
+    test.setTimeout(180_000);
+    if (!svc) throw new Error("no service");
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.addInitScript((id) => {
+      try {
+        localStorage.setItem("unvibe.start.repoId", id);
+      } catch {
+        // Start page falls back to no selection; asserts below fail.
+      }
+    }, repoId);
+    await page.goto(`${svc.origin}/?token=${svc.token}`);
+    const prBlock = page.getByTestId("pr-block");
+    // Default view: the reviewed row sits in Requested of you.
+    await expect(prBlock.getByText("Harper already reviewed")).toBeVisible({ timeout: 30_000 });
+    await expect(prBlock.getByText("Harper asks you directly")).toBeVisible();
+    await expect(prBlock.getByText("Harper asks the team")).toBeVisible();
+    await expect(prBlock.getByText("Not requested of you")).toHaveCount(0);
+    await prBlock.getByText("Waiting on your review").scrollIntoViewIfNeeded();
+    await checkLayout(page, "start-385-default-1440-light");
+    await page.screenshot({ path: `${SHOTS}/start-385-default-1440-light.png` });
+    // Typed author: the extra group lands their other open PR.
+    await prBlock.getByLabel("Author", { exact: true }).fill("harper");
+    await prBlock.getByLabel("Author", { exact: true }).press("Enter");
+    await expect(prBlock.getByText("Harper works alone")).toBeVisible({ timeout: 30_000 });
+    await expect(prBlock.getByText("Not requested of you")).toBeVisible();
+    await prBlock.getByText("Waiting on your review").scrollIntoViewIfNeeded();
+    await checkLayout(page, "start-385-author-1440-light");
+    await page.screenshot({ path: `${SHOTS}/start-385-author-1440-light.png` });
+  });
+});
+
 // ---- Stacked PRs (from j321, frames re-added) ----
 /** J321 (#321): stacked PR badges + popover against the real service with a stub gh (3-PR implicit stack). */
 
@@ -707,6 +815,7 @@ EOF
 fi
 if [ "$1" = "api" ] && [ "$2" = "graphql" ]; then
   case "$*" in
+    *reviewed-by:*) echo '{"data":{"search":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}' ;;
     *pullRequests*)
       cat <<'EOF'
 ${JSON.stringify({ data: { repository: { pullRequests: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: stackNodes } } } })}
