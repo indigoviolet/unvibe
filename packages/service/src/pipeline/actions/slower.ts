@@ -14,6 +14,7 @@ import {
   cardPromptText,
   findCardTarget,
   findCardTargetInDraft,
+  guidePromptText,
   markStaleAnchors,
   mergeSlowerText,
   mirrorPromotedAnswer,
@@ -38,7 +39,7 @@ import {
 export async function slowerAction(
   ctx: ActionContext,
   cardId: string,
-  opts?: { personaId?: string },
+  opts?: { personaId?: string; terms?: string[]; guideText?: string },
 ): Promise<{ cardId: string; jobId?: string; deduplicated?: boolean }> {
   const { jobs, reviews, reviewId } = ctx;
   const snapshot = getSnapshotOrThrow(reviews, reviewId);
@@ -72,7 +73,28 @@ export async function slowerAction(
   };
   const active = findActiveJob(jobs, reviewId, key);
   if (active) return { cardId, jobId: active.id, deduplicated: true };
-  return slowerViaAgent(ctx, cardId, revision, ordinal, personaId ? { personaId, persona: persona! } : undefined);
+  return slowerViaAgent(ctx, cardId, revision, ordinal, personaId ? { personaId, persona: persona! } : undefined, opts?.terms?.length ? { terms: opts.terms, guideText: opts.guideText ?? guidePromptText(snapshot) } : undefined);
+}
+
+/**
+ * Issue #388: the `{{terms}}` block for the slower template — the picked
+ * terms as reader context. Empty string when no terms (an ordinary #387
+ * press), so that prompt renders byte-identical.
+ */
+function termsBlockFor(terms: string[]): string {
+  if (terms.length === 0) return "";
+  const listed = terms.map((t) => `- "${t}"`).join("\n");
+  return `\n\n## Terms the reader doesn't understand\n\nThe reader doesn't understand these terms:\n\n${listed}\n\nDefine each where it first matters in this card, in plain words, the first time the reader meets it, and use it consistently afterwards.`;
+}
+
+/**
+ * Issue #388: the `{{guide}}` block for the slower template — the whole
+ * guide, so terms are introduced once and used consistently across
+ * cards. Empty string when absent, so an ordinary press is unaffected.
+ */
+function guideBlockFor(guideText: string): string {
+  if (!guideText) return "";
+  return `\n\n## Whole guide (for consistent use across cards)\n\n${guideText}\n\nIntroduce each reader term once, where it first matters across the guide, and use it consistently in every card.`;
 }
 
 async function slowerViaAgent(
@@ -81,6 +103,7 @@ async function slowerViaAgent(
   revision: number,
   ordinal: number,
   personaOpts?: { personaId: string; persona: import("@unvibe/shared").Persona },
+  termsOpts?: { terms: string[]; guideText: string },
 ): Promise<{ cardId: string; jobId?: string }> {
   const { pipeline, reviews, reviewId } = ctx;
   const snapshot = getSnapshotOrThrow(reviews, reviewId);
@@ -95,6 +118,10 @@ async function slowerViaAgent(
   };
   const variables = {
     card: personaId ? personaVariantPromptText(snapshot, cardId, personaId) : cardPromptText(snapshot, cardId),
+    // Issue #388: the terms block splices right after the card (empty
+    // for an ordinary #387 press, so its prompt renders byte-identical).
+    terms: termsOpts ? termsBlockFor(termsOpts.terms) : "",
+    guide: termsOpts ? guideBlockFor(termsOpts.guideText) : "",
   };
   const capture = captureJobId();
   // Replay key: the press ordinal, so seeded and live reviews replay
@@ -102,11 +129,13 @@ async function slowerViaAgent(
   // that one is about correctness, this one only picks a fixture
   // recording.) Persona variants and thread replies (`ans_…` ids) key
   // their own clusters and never collide with the guide's.
-  const replayKey = personaId
-    ? `persona:${cardId}:${ordinal + 1}`
-    : cardId.startsWith("ans_") || cardId.startsWith("ann_")
-      ? `expansion:${ordinal + 1}`
-      : `${cardId}:${ordinal + 1}`;
+  const replayKey = termsOpts
+    ? `${cardId}:terms:${ordinal + 1}`
+    : personaId
+      ? `persona:${cardId}:${ordinal + 1}`
+      : cardId.startsWith("ans_") || cardId.startsWith("ann_")
+        ? `expansion:${ordinal + 1}`
+        : `${cardId}:${ordinal + 1}`;
   const replay = isReplayRunner(pipeline.runner) ? { kind: "slower", key: replayKey } : undefined;
   // Issue #50: a rewrite must not open by repeating the card title — for
   // an answer, its question (else the card's quoted text).

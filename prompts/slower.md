@@ -1,7 +1,7 @@
 ---
 role: user
 tier: main
-variables: [card]
+variables: [card, guide, terms]
 ---
 
 # Help me understand
@@ -12,7 +12,7 @@ press slows the current text down further, relative to what it says now.
 
 ## Card (current text)
 
-{{card}}
+{{card}}{{terms}}{{guide}}
 
 ## Rules
 

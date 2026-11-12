@@ -518,3 +518,24 @@ export function cardPromptText(snapshot: ReviewSnapshot, cardId: string): string
   }
   throw new Error(`unknown card ${cardId}`);
 }
+
+/**
+ * Issue #388 (? mode): the whole guide as one prompt section, so each
+ * card's rewrite sees every card and terms are introduced once and used
+ * consistently across cards. Guide version only, pending cards skipped
+ * (nothing to rewrite); page order, card order, titles and revisions kept.
+ */
+export function guidePromptText(snapshot: ReviewSnapshot): string {
+  const pages = (snapshot.pages ?? []).map((page) => {
+    const cards = (page.cards ?? [])
+      .filter((c) => !c.pending)
+      .map((c) => {
+        const head = c.title ?? "(untitled)";
+        const body = c.blocks.map((b) => blockPlainText(b)).join("\n\n");
+        return `### ${head} [[card:${c.id}]] (revision ${c.revision})\n\n${body}`;
+      })
+      .join("\n\n");
+    return `## Page: ${page.title}\n\n${cards}`;
+  });
+  return pages.join("\n\n");
+}

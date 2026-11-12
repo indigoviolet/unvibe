@@ -55,6 +55,7 @@ export {
   changedHunksForTurn,
   l4Variables,
   cardPromptText,
+  guidePromptText,
   excerptQuote,
   quoteForPrompt,
 } from "./l4.js";
