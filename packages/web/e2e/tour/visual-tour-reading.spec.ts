@@ -9,6 +9,7 @@ import { cpuThrottleFromEnv } from "../cpu-throttle.js";
 import { checkLayout } from "../layout-check.js";
 import { hoverFresh } from "../hover-fresh.js";
 import { openPopup } from "../select.js";
+import { selectText } from "../select-text.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { tourCombos } from "../tour-matrix.js";
 import { parseBlocks } from "@unvibe/shared";
@@ -121,6 +122,26 @@ test("Help me understand toolbar icon with tooltip (1440-light)", async ({ page 
   await checkLayout(page, "help-me-understand");
   // Full page: the frame must show where the icon sits in the card toolbar.
   await page.screenshot({ path: path.join(SHOTS, "help-me-understand-1440-light.png"), fullPage: true });
+});
+
+// ---- ? mode (#388): two picked terms with highlights and the tray ----
+test("? mode with two picked terms and the tray (1440-light)", async ({ page }) => {
+  if (!svc) throw new Error("service not running");
+  test.setTimeout(240_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+  await expect(page.locator("#C-central")).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator("#C-problem")).toBeVisible({ timeout: 60_000 });
+  await page.getByTestId("question-toggle").click();
+  await expect(page.getByTestId("question-tray")).toBeVisible({ timeout: 15_000 });
+  await selectText(page, "#C-central", "obs-fold", 0, undefined, { waitForBar: false });
+  await selectText(page, "#C-problem", "HTTPMessage", 0, undefined, { waitForBar: false });
+  await expect(page.getByTestId("question-term")).toHaveCount(2, { timeout: 15_000 });
+  await expect(page.locator("mark[data-qterm]")).toHaveCount(2);
+  await checkLayout(page, "question-mode");
+  // Full page: the frame must show the highlights in both cards and the
+  // tray with both terms, Rewrite cards and Cancel.
+  await page.screenshot({ path: path.join(SHOTS, "question-mode-1440-light.png"), fullPage: true });
 });
 
 // ---- j20-critic-concepts-godeeper.spec.ts (frames re-added) ----

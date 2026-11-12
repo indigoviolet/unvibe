@@ -92,6 +92,9 @@ export async function selectText(
   text: string,
   startIn = 0,
   endIn?: number,
+  // Issue #388: ? mode suspends the toolbar, so there is no bar to wait
+  // for — return the raw selected text once the mouseup is dispatched.
+  opts?: { waitForBar?: boolean },
 ): Promise<string> {
   let lastQuote = "";
   await expect
@@ -176,6 +179,13 @@ export async function selectText(
           { rootSelector, text, startIn, endIn },
         );
         if (!found) return "not-found";
+        if (opts?.waitForBar === false) {
+          // Issue #388: ? mode clears the selection when it picks the
+          // term; read the raw text synchronously, before it runs.
+          return await page.evaluate(() =>
+            (getSelection()?.toString() ?? "").trim().replace(/\s+/g, " "),
+          );
+        }
         // Wait for the toolbar to actually appear (a slow loop needs
         // longer than a fixed tick to render it), not a fixed sleep.
         const shown = await page

@@ -1962,6 +1962,99 @@ test.describe("L3 demo guide reading", () => {
     });
   });
 
+  test("? mode picks terms across cards and rewrites every card (#388)", async ({ page }) => {
+    test.setTimeout(300_000);
+    const s = service();
+    if (!s) throw new Error("no service");
+
+    await test.step("? mode picks two terms in different cards, rewrite rewrites every card", async () => {
+      const questionReview = await createDemoReview(s);
+      await openReview(page, questionReview);
+      await expect.soft(page.locator("#C-problem")).toBeVisible({ timeout: 30_000 });
+      // Let the whole guide (findings included) fill before capturing.
+      await expect
+        .poll(
+          async () => {
+            const snap = await apiJson(s, "GET", `/api/reviews/${questionReview}`);
+            const jobs = ((snap.json as { jobs?: { state: string }[] }).jobs ?? []);
+            return jobs.length > 0 && jobs.every((j) => j.state === "done" || j.state === "error" || j.state === "cancelled");
+          },
+          { timeout: 120_000 },
+        )
+        .toBe(true);
+      type CardShape = { id: string; blocks: { type: string; text?: string }[] };
+      const cardParas = async (): Promise<Map<string, string>> => {
+        const cur = await apiJson(s, "GET", `/api/reviews/${questionReview}`);
+        const pages = ((cur.json as { pages: { id: string; cards: CardShape[] }[] }).pages ?? []);
+        const m = new Map<string, string>();
+        for (const p of pages) {
+          for (const c of p.cards) {
+            const t = c.blocks
+              .filter((b) => b.type === "paragraph")
+              .map((b) => b.text ?? "")
+              .join("\n\n");
+            if (t) m.set(c.id, t);
+          }
+        }
+        return m;
+      };
+
+      // Enter ? mode: the toggle presses in and the tray appears.
+      await page.getByTestId("question-toggle").click();
+      await expect.soft(page.getByTestId("question-toggle")).toHaveAttribute("aria-pressed", "true");
+      await expect.soft(page.getByTestId("question-tray")).toBeVisible({ timeout: 15_000 });
+
+      // Pick two terms in different cards: both highlight where picked,
+      // the tray lists both, and the normal toolbar stays suspended.
+      await selectText(page, "#C-central", "obs-fold", 0, undefined, { waitForBar: false });
+      await expect.soft(page.getByTestId("question-term")).toHaveCount(1);
+      await expect.soft(page.locator("#C-central mark[data-qterm]")).toHaveCount(1);
+      await selectText(page, "#C-problem", "HTTPMessage", 0, undefined, { waitForBar: false });
+      await expect.soft(page.getByTestId("question-term")).toHaveCount(2);
+      await expect.soft(page.locator("#C-problem mark[data-qterm]")).toHaveCount(1);
+      await expect.soft(page.getByTestId("question-tray")).toContainText("obs-fold");
+      await expect.soft(page.getByTestId("question-tray")).toContainText("HTTPMessage");
+      await expect.soft(page.locator("#selbar")).toBeHidden();
+
+      // Remove one with ×, then re-add it.
+      await page.getByRole("button", { name: 'Remove "HTTPMessage"' }).click();
+      await expect.soft(page.getByTestId("question-term")).toHaveCount(1);
+      await expect.soft(page.locator("mark[data-qterm]")).toHaveCount(1);
+      await selectText(page, "#C-problem", "HTTPMessage", 0, undefined, { waitForBar: false });
+      await expect.soft(page.getByTestId("question-term")).toHaveCount(2);
+
+      const before = await cardParas();
+      expect.soft(before.size).toBeGreaterThan(1);
+
+      // Rewrite: every guide card changes, the tray clears and the mode
+      // turns off once the rewrite starts.
+      await page.getByTestId("question-rewrite").click();
+      await expect.soft(page.getByTestId("question-tray")).toBeHidden({ timeout: 30_000 });
+      await expect.soft(page.getByTestId("question-toggle")).toHaveAttribute("aria-pressed", "false");
+      await expect.soft(page.locator("mark[data-qterm]")).toHaveCount(0);
+      await expect
+        .poll(
+          async () => {
+            const after = await cardParas();
+            if (after.size !== before.size) return false;
+            return [...before].every(([cid, txt]) => after.get(cid) !== undefined && after.get(cid) !== txt);
+          },
+          { timeout: 120_000 },
+        )
+        .toBe(true);
+
+      // Undo one card: only that card reverts.
+      await page.locator("#C-central").hover();
+      await page.locator("#C-central > .chead .ctl").getByRole("button", { name: "Undo" }).click();
+      await expect.poll(async () => (await cardParas()).get("central"), { timeout: 60_000 }).toBe(before.get("central"));
+      const settled = await cardParas();
+      for (const [cid, txt] of before) {
+        if (cid === "central") continue;
+        expect.soft(settled.get(cid)).not.toBe(txt);
+      }
+    });
+  });
+
   test("a python block highlights, an unknown block stays plain, comment places (#255)", async ({ page }) => {
     test.setTimeout(300_000);
     const s = service();
