@@ -91,6 +91,7 @@ import {
 import {
   canonicalizeD2Source,
   diagramHash,
+  displayCardTitle,
   D2_MIN_VERSION,
   parseReply,
   type DiagramBlock,
@@ -2161,6 +2162,54 @@ test.describe("L3 demo guide reading", () => {
       if (cites.length > 0) {
         expect.soft(clip).toContain("https://github.com/urllib3/urllib3/blob/");
       }
+    });
+  });
+
+  test("review top bar copies the whole guide as Markdown (#384)", async ({ page, context }) => {
+    test.setTimeout(180_000);
+    const s = service();
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]).catch(() => {});
+    await openReview(page, readReview);
+
+    await test.step("the review top bar carries a Copy guide as Markdown control with a tooltip", async () => {
+      const button = page.locator("#reviewbar [data-copy-guide]");
+      await expect.soft(button).toBeVisible();
+      await hoverFresh(page, button);
+      await expect.soft(page.locator("#tip")).toContainText("Copy guide as Markdown", { timeout: 10_000 });
+    });
+
+    await test.step("clicking it copies the title, every card heading in order, and a citation", async () => {
+      await page.locator("#reviewbar [data-copy-guide]").click();
+      await expect.soft(page.locator("#toast")).toContainText("Copied as Markdown", { timeout: 10_000 });
+      const clip = await page.evaluate(() => navigator.clipboard.readText()).catch(() => "");
+      // The review title as `#`.
+      expect.soft(clip.startsWith("# ")).toBe(true);
+      expect.soft(clip.split("\n")[0].length).toBeGreaterThan(2);
+      // One `##` per main card, in guide order (pending cards skipped).
+      type SnapProbe = {
+        pages: {
+          id: string;
+          cards: { id: string; title: string | null; blocks: unknown[]; pending?: unknown }[];
+        }[];
+      };
+      const snap = await apiJson(s, "GET", `/api/reviews/${readReview}`);
+      const root = ((snap.json as unknown as SnapProbe).pages ?? []).find((p) => p.id === "root");
+      const expected = (root?.cards ?? [])
+        .filter((c) => !c.pending && c.blocks.length > 0)
+        .map((c) => `## ${displayCardTitle(c.title, c.blocks as never[])}`);
+      const headings = clip.split("\n").filter((l) => l.startsWith("## "));
+      expect.soft(headings.length).toBeGreaterThanOrEqual(2);
+      expect.soft(headings).toEqual(expected);
+      // The demo is a PR review: cited ranges are head-commit permalinks.
+      const cites = (root?.cards ?? []).flatMap((c) =>
+        (c.blocks as { citations?: { target?: string }[] }[]).flatMap((b) => b.citations ?? []),
+      );
+      if (cites.length > 0) {
+        expect.soft(clip).toContain("https://github.com/urllib3/urllib3/blob/");
+      }
+      // Prose only: no code fences, no link tokens.
+      expect.soft(clip).not.toContain("```");
+      expect.soft(clip).not.toContain("[[");
     });
   });
 
