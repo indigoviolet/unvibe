@@ -280,13 +280,23 @@
     },
     {
       "kind": "slower",
-      "key": "expansion:1",
-      "file": "slower-expansion-1.md"
+      "key": "central:1",
+      "file": "slower-central-2.md"
     },
     {
       "kind": "slower",
       "key": "expansion:2",
       "file": "slower-expansion-2.md"
+    },
+    {
+      "kind": "slower",
+      "key": "expansion:3",
+      "file": "slower-expansion-3.md"
+    },
+    {
+      "kind": "slower",
+      "key": "central:4",
+      "file": "slower-central-3.md"
     }
   ]
 }

@@ -481,11 +481,11 @@ test.describe("L8 persona runs on cards", () => {
         timeout: 15_000,
       });
       await tabs.locator(`[data-version-tab="${PERSONA_ID}"]`).click();
-      await expect.soft(card).toContainText("CRLF is the framing delimiter", { timeout: 15_000 });
+      await expect.soft(card).toContainText("agree with each other", { timeout: 15_000 });
     });
 
     await test.step("Ask on the persona text stays with the persona and wears its colour", async () => {
-      await selectText(page, "#C-central", "framing delimiter");
+      await selectText(page, "#C-central", "agree with each other");
       await page.locator('#selbar [data-act="ask"]').click();
       const composer = page.locator('#C-central .ithread[data-pending-thread]');
       await expect.soft(composer).toBeVisible({ timeout: 10_000 });

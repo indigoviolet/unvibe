@@ -2397,14 +2397,13 @@ test.describe("L3 scratch file tabs", () => {
           id,
           pageId: "root",
           title: id,
-          level: "standard",
           collapsed: false,
           revision: 1,
           blocks: [
             {
               type: "paragraph",
               id: `b-${id}`,
-              text: { standard: text },
+              text,
               citations: [{ target, ...(unverified ? { unverified: true } : {}) }],
             },
           ],
@@ -2576,8 +2575,8 @@ test.describe("L3 scratch file tabs", () => {
         let root = snap.pages.find((p) => p.id === "root");
         if (!root) { root = { id: "root", kind: "root", title: "Guide", cards: [] }; snap.pages.unshift(root); }
         const card = (id: string, text: string, target: string): unknown => ({
-          id, pageId: "root", title: id, level: "standard", collapsed: false, revision: 1,
-          blocks: [{ type: "paragraph", id: `b-${id}`, text: { standard: text }, citations: [{ target }] }],
+          id, pageId: "root", title: id, collapsed: false, revision: 1,
+          blocks: [{ type: "paragraph", id: `b-${id}`, text, citations: [{ target }] }],
           undoStack: [],
         });
         root.cards.push(

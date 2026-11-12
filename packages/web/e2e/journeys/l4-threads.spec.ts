@@ -1490,7 +1490,7 @@ test.describe("L4 threads on the demo (fast replay)", () => {
           annotations?: {
             id: string;
             anchor?: { host?: { kind: string } };
-            replies?: { suggested?: boolean; blocks?: { type: string; text?: { standard?: string } }[] }[];
+            replies?: { suggested?: boolean; blocks?: { type: string; text?: string }[] }[];
           }[];
         }).annotations ?? []
       )
@@ -1499,7 +1499,7 @@ test.describe("L4 threads on the demo (fast replay)", () => {
         .find(({ r }) => r.suggested);
       if (!sugHit) throw new Error("no suggested diff comment found");
       const sugText = (sugHit.r.blocks ?? [])
-        .map((b) => (b.type === "paragraph" ? (b.text?.standard ?? "") : ""))
+        .map((b) => (b.type === "paragraph" ? (b.text ?? "") : ""))
         .join(" ")
         .replace(/<[^>]*>/g, " ")
         .replace(/\s+/g, " ")

@@ -581,7 +581,6 @@ test.describe("J314 loose numbered lists", () => {
         pageId: "root",
         title: "Loose list",
         blocks: parseBlocks("1. First step\n\n2. Second step\n\n3. Third step\n\n4. Fourth step\n"),
-        level: "standard",
         revision: 1,
         undoStack: [],
         collapsed: false,
@@ -744,14 +743,13 @@ test.describe("J81 code citations outside the diff", () => {
         id,
         pageId: "root",
         title: id,
-        level: "standard",
         collapsed: false,
         revision: 1,
         blocks: [
           {
             type: "paragraph",
             id: `b-${id}`,
-            text: { standard: text },
+            text,
             citations: [{ target, ...(unverified ? { unverified: true } : {}) }],
           },
         ],

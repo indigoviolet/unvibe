@@ -561,12 +561,11 @@ test.describe("L2 refresh that empties the diff", () => {
                   id: "c-seed",
                   pageId: "root",
                   title: "Seed guide card",
-                  level: "standard",
                   read: false,
                   collapsed: false,
                   revision: 1,
                   blocks: [
-                    { type: "paragraph", id: "b-seed", text: { standard: "Seed guide text for v1." }, citations: [] },
+                    { type: "paragraph", id: "b-seed", text: "Seed guide text for v1.", citations: [] },
                   ],
                   undoStack: [],
                 },

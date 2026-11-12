@@ -2629,11 +2629,10 @@ test("visual tour document review (#222)", async ({ page }) => {
               {
                 type: "paragraph",
                 id: "b-cite",
-                text: { standard: "The widget constant lives in the second repo." },
+                text: "The widget constant lives in the second repo.",
                 citations: [{ target: `code:src/widget.ts:1@${sha2}` }],
               },
             ],
-            level: "standard",
             revision: 1,
             undoStack: [],
           },
@@ -3104,10 +3103,9 @@ test.describe("visual tour file tab (#81)", () => {
         id,
         pageId: "root",
         title: id,
-        level: "standard",
         collapsed: false,
         revision: 1,
-        blocks: [{ type: "paragraph", id: `b-${id}`, text: { standard: text }, citations: [{ target }] }],
+        blocks: [{ type: "paragraph", id: `b-${id}`, text, citations: [{ target }] }],
         undoStack: [],
       });
       root.cards.push(
@@ -3140,11 +3138,10 @@ test.describe("visual tour file tab (#81)", () => {
                 {
                   type: "paragraph",
                   id: "b1",
-                  text: { standard: "Is beta still the right default?" },
+                  text: "Is beta still the right default?",
                   citations: [],
                 },
               ],
-              level: "standard",
               revision: 1,
               undoStack: [],
             },
@@ -3613,8 +3610,7 @@ test.describe("data reset notice tour (#311)", () => {
               kind: "comment",
               who: "you",
               question: null,
-              blocks: [{ type: "paragraph", id: "b1", text: { standard: "Unposted draft text" }, citations: [] }],
-              level: "standard",
+              blocks: [{ type: "paragraph", id: "b1", text: "Unposted draft text", citations: [] }],
               revision: 1,
               undoStack: [],
             },
@@ -3889,7 +3885,7 @@ test.describe("since-B tour (#351)", () => {
       const para = (id: string, text: string, citations: string[]): unknown => ({
         type: "paragraph",
         id,
-        text: { standard: text },
+        text,
         citations: citations.map((target) => ({ target })),
       });
       // Tour-local resolved feedback links (what `applyUpdateResult`
@@ -3917,7 +3913,6 @@ test.describe("since-B tour (#351)", () => {
             id: "since-obs-fold",
             pageId: "since",
             title: "Obs-fold unfolded",
-            level: "standard",
             collapsed: false,
             revision: 1,
             undoStack: [],
@@ -3934,7 +3929,6 @@ test.describe("since-B tour (#351)", () => {
             id: "since-socket-tests",
             pageId: "since",
             title: "Socket-level tests",
-            level: "standard",
             collapsed: false,
             revision: 1,
             undoStack: [],
@@ -4159,7 +4153,7 @@ test.describe("since-commit tour (#351 step 2)", () => {
       const para = (id: string, text: string, citations: string[]): unknown => ({
         type: "paragraph",
         id,
-        text: { standard: text },
+        text,
         citations: citations.map((target) => ({ target })),
       });
       const prUrl = "https://github.com/urllib3/urllib3/pull/5020";
@@ -4172,7 +4166,6 @@ test.describe("since-commit tour (#351 step 2)", () => {
             id: "since-beta-gamma",
             pageId: "since",
             title: "Beta reworked, gamma added",
-            level: "standard",
             collapsed: false,
             revision: 1,
             undoStack: [],
@@ -4477,7 +4470,6 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
                 id: "problem",
                 pageId: "root",
                 title: "The problem",
-                level: "standard",
                 collapsed: false,
                 revision: 1,
                 undoStack: [],
@@ -4485,7 +4477,7 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
                   {
                     type: "paragraph",
                     id: "b-problem-1",
-                    text: { standard: "Alpha was reworked." },
+                    text: "Alpha was reworked.",
                     citations: [{ target: hid }],
                   },
                 ],
@@ -4504,7 +4496,6 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
               id: "since-tour-1",
               pageId: "since",
               title: "Alpha reworked again",
-              level: "standard",
               collapsed: false,
               revision: 1,
               undoStack: [],
@@ -4512,7 +4503,7 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
                 {
                   type: "paragraph",
                   id: "b-since-tour-1",
-                  text: { standard: "Alpha returns 111 now." },
+                  text: "Alpha returns 111 now.",
                   citations: [{ target: hid }],
                 },
               ],
