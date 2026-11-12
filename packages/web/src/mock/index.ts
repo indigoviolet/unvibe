@@ -1008,7 +1008,7 @@ const DEFAULT_MOCK_SETTINGS: Settings = {
   versionPickerEnabled: false,
   fullAccess: false,
   fullAccessAcknowledgedAt: null,
-  autoGoDeeper: true,
+  autoGoDeeper: false,
   recordTraces: false,
   extensionActiveRepoIds: null,
   extensionModel: { provider: "pi", model: "muse-spark-1.3-contributor", effort: "" },

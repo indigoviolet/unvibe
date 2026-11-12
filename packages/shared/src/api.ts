@@ -1542,7 +1542,7 @@ export interface Settings {
   fullAccessAcknowledgedAt: number | null;
   /**
    * Issue #217: write go-deeper placeholder cards automatically in the
-   * background once the guide lands. On by default; off means a card is
+   * background once the guide lands. Off by default (#389): a card is
    * written only when its Generate button is clicked.
    */
   autoGoDeeper: boolean;
