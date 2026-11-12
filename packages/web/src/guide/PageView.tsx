@@ -8,7 +8,7 @@
  */
 import { Fragment, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { Card, Page, Plotline } from "@unvibe/shared";
-import { DEFAULT_GUIDE_TITLE, isDefaultGuideTitle, PLOTLINE_OTHER_ID, sinceBaselineLabel } from "@unvibe/shared";
+import { DEFAULT_GUIDE_TITLE, guideToMarkdown, isDefaultGuideTitle, PLOTLINE_OTHER_ID, sinceBaselineLabel } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { useIsReadOnlyVersion } from "../comments/readOnly.js";
 import { ErrorBoundary, InlineFallback } from "../components/ErrorBoundary.js";
@@ -18,6 +18,7 @@ import { isLiveJobState, useReview } from "../state/store.js";
 import { revealSource } from "../source/reveal.js";
 import { performFollowUp } from "./actions.js";
 import { CardView } from "./CardView.js";
+import { copyContextFor, copyMarkdownText, useGithubRepo } from "./copyAsMarkdown.js";
 import { contentsModel, plotlineReviewedState } from "./guideUtils.js";
 import { SinceSection } from "./SinceSection.js";
 import { Badge, Card as UiCard, ListRow } from "../ui/index.js";
@@ -31,6 +32,48 @@ interface Props {
   lookupPage: (pageId: string) => Page | undefined;
   onOpenPage: (pageId: string | null) => void;
   onJumpToCard: (cardId: string) => void;
+}
+
+/**
+ * Issue #384: one copy icon in the guide header — the whole guide as
+ * Markdown (review title as `#`, each main card in guide order as `##`
+ * plus its Guide-version prose at shown depth). Pending (Generate)
+ * cards are skipped; collapsed cards copy at their level. Same icon,
+ * tooltip shape and toast as the card copy control (#377). Read-only
+ * like every other toolbar action: no job, no settings.
+ */
+function GuideCopyButton({ title, page }: { title: string; page: Page }) {
+  const githubRepo = useGithubRepo();
+  const copyGuide = (): void => {
+    const snap = useReview.getState().snapshot;
+    if (!snap) {
+      toast("The review is still loading");
+      return;
+    }
+    const { ctx, findPage } = copyContextFor(snap, githubRepo);
+    copyMarkdownText(
+      guideToMarkdown(
+        title,
+        page.cards
+          .filter((c) => !c.pending)
+          .map((c) => ({ title: c.title, blocks: c.blocks, level: c.level })),
+        ctx,
+        { findPage },
+      ),
+    );
+  };
+  return (
+    <button
+      className="ib"
+      type="button"
+      data-tip="Copy guide as Markdown"
+      aria-label="Copy guide as Markdown"
+      data-copy-guide
+      onClick={copyGuide}
+    >
+      <Icon name="copy" />
+    </button>
+  );
 }
 
 /** Finding recheck status line (PRD §8): set by refresh / the update pass. */
@@ -477,6 +520,7 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
       {eyebrow ? <div className={`eyebrow${isFinding ? " find" : ""}`}>{eyebrow}</div> : null}
       <div className="title-row">
         <h1 className="title">{rootTitle}</h1>
+        {page.kind === "root" ? <GuideCopyButton title={rootTitle} page={page} /> : null}
       </div>
       {isFinding && page.summary ? <div className="meta">{page.summary}</div> : null}
       <RecheckStatus page={page} />
