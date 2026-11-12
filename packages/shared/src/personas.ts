@@ -10,7 +10,7 @@
  *
  * Definitions live in settings (`Settings.personas`); the built-in
  * Second opinion and Clarity below are only the seed values. No per-task overrides
- * for Explain, Ask or depth in v1; the shape stays open for them.
+ * for Explain, Ask or slower rewrites in v1; the shape stays open for them.
  *
  * Pure TypeScript: no Node or DOM APIs.
  */
@@ -223,7 +223,8 @@ Do not decide which object resets without additional context.`,
  * owns the main provider + model (replacing `settings.main`) and a
  * writing-style lens that is empty by default, so behaviour is
  * unchanged until the owner writes one. When set, the lens is prefixed
- * to every main-agent writing turn (guide, cards, depth, Explain, Ask)
+ * to every main-agent writing turn (guide, cards, slower rewrites,
+ * Explain, Ask)
  * as a subordinate style section — it governs tone and wording only.
  * No card instruction (its card task is the guide's own), never offered
  * as a run choice on cards, never tinted. After seeding it stays fixed:

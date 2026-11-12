@@ -615,7 +615,6 @@ test.describe("L7 refresh with new commits", () => {
         id: "c-helper",
         pageId: "root",
         title: "Helper card",
-        level: "standard",
         read: false,
         collapsed: false,
         revision: 1,
@@ -623,7 +622,7 @@ test.describe("L7 refresh with new commits", () => {
           {
             type: "paragraph",
             id: "b-helper",
-            text: { standard: "Uses the helper beta value." },
+            text: "Uses the helper beta value.",
             citations: [{ target: `code:helper.py:2@${oldHead}` }],
           },
         ],

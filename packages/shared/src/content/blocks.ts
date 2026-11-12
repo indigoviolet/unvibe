@@ -17,7 +17,7 @@
  * Deliberately excluded:
  * - `CardSnapshot` undo stacks (stale revisions, never rendered; restoring
  *   one makes it live again and therefore findable)
- * - `DepthText` variants (HTML strings, not blocks)
+ * - paragraph `text` (an HTML string, not blocks)
  *
  * Pure helpers only (no Node/DOM).
  */

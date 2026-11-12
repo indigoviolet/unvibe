@@ -403,7 +403,7 @@ export async function applyUpdateResult(
       for (const page of draft.pages) {
         const card = page.cards.find((c) => c.id === rev.cardId);
         if (!card) continue;
-        card.undoStack.push({ blocks: card.blocks, level: card.level });
+        card.undoStack.push({ blocks: card.blocks });
         card.blocks = rev.blocks as typeof card.blocks;
         card.revision = rev.revision > card.revision ? rev.revision : card.revision + 1;
         card.stale = false;

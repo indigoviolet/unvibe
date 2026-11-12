@@ -25,14 +25,13 @@ function pagesWithConversation(): { pages: ReviewSnapshot["pages"]; annotations:
           id: "central",
           pageId: "root",
           title: "Central",
-          level: "standard",
           collapsed: false,
           revision: 1,
           blocks: [
             {
               type: "paragraph",
               id: "b1",
-              text: { standard: "Does the thing [[diff:a-py:1-2]]" },
+              text: "Does the thing [[diff:a-py:1-2]]",
               citations: [{ target: "diff:a-py:1-2" }],
             },
           ],
@@ -66,11 +65,10 @@ function pagesWithConversation(): { pages: ReviewSnapshot["pages"]; annotations:
             {
               type: "paragraph",
               id: "e1",
-              text: { standard: "Explanation [[diff:a-py:1-2]]" },
+              text: "Explanation [[diff:a-py:1-2]]",
               citations: [{ target: "diff:a-py:1-2" }],
             },
           ],
-          level: "standard",
           revision: 1,
           undoStack: [],
         },

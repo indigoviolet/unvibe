@@ -26,8 +26,11 @@
  *   `Settings` loses `main` (the Guide persona owns the provider +
  *   model) and gains the fixed Guide entry in `personas`; stored rows
  *   without it need a reset.
+ * - 8: one repeatable "Help me understand" rewrite replaces the depth
+ *   levels (#387): `level` fields and per-level paragraph text go away;
+ *   stored rows without the new shape need a reset.
  */
-export const DATA_FORMAT = 7;
+export const DATA_FORMAT = 8;
 
 /** Stored format of a data dir: `null` when no stamp is present. */
 export type DataFormatState = "none" | "match" | "mismatch";

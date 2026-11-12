@@ -1,8 +1,9 @@
 // DISABLED(#188): useless — pins internal outline class-clearing detail, no user-visible outcome
 /**
  * Hover-outline regression (issue #111): the guide's mouseover handlers
- * must not strip the depth stepper pips (`.pips i.on`, owned by React).
- * Clearing is scoped to the outline elements the handlers add.
+ * must not strip unrelated React-owned marks (`.kept i.on` stands in for
+ * toolbar icons). Clearing is scoped to the outline elements the
+ * handlers add.
  */
 import { afterEach, describe, expect, test } from "vitest";
 import "@testing-library/jest-dom/vitest";
@@ -17,8 +18,8 @@ function mountPage(): HTMLElement {
   page.id = "page";
   page.innerHTML = `
     <section class="ui-card" id="C-c1">
-      <span class="depth">
-        <span class="pips"><i class="on"></i><i class="on"></i><i class=""></i></span>
+      <span class="kept">
+        <span class="marks"><i class="on"></i><i class="on"></i><i class=""></i></span>
       </span>
       <mark class="anc ex on" data-jump="ann_old">Nav 2</mark>
     </section>
@@ -36,7 +37,7 @@ afterEach(() => {
 });
 
 describe("hover outline (#111)", () => {
-  test("a mouseover leaves depth pips on while clearing mark/card/thread outlines", () => {
+  test("a mouseover leaves kept marks on while clearing mark/card/thread outlines", () => {
     const page = mountPage();
     render(
       <MemoryRouter initialEntries={["/review/demo"]}>
@@ -45,8 +46,8 @@ describe("hover outline (#111)", () => {
       </MemoryRouter>,
     );
     page.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
-    // Pips keep their React-rendered active state.
-    const pips = [...page.querySelectorAll(".pips i")];
+    // Kept marks keep their React-rendered active state.
+    const pips = [...page.querySelectorAll(".marks i")];
     expect(pips).toHaveLength(3);
     expect(pips[0].classList.contains("on")).toBe(true);
     expect(pips[1].classList.contains("on")).toBe(true);

@@ -16,9 +16,6 @@
  * - Inline `concept:`/`page:`/`card:`/`ann:` tokens become links:
  *   `<a class="cx" data-link="<target>">label</a>`. Inline code
  *   (`` `code` ``) is preserved as `<code>` and never token-scanned.
- * - Per-depth text: a `::: simple` / `::: deep` container immediately after
- *   a paragraph attaches its content to that paragraph's `text.simple` /
- *   `text.deep`. With no preceding paragraph it becomes its own paragraph.
  * - Card titles are plain text (`## Title`).
  * - Diagrams: a fenced `d2` block → `DiagramBlock`. A paragraph
  *   starting with `Caption:` right after it becomes the caption. Citation
@@ -30,9 +27,8 @@
  *   rendered the same) → `HeadingBlock` with inline Markdown rendered.
  * - Finding references: a paragraph holding exactly
  *   `Finding: [[page:<id>]]` → `FindingLinkBlock`.
- * - Asides: `::: example`, `::: principle` (or `::: underlying-principle`)
- *   and `::: diagram` containers → `AsideBlock` kinds `Example`,
- *   `Underlying principle`, `Diagram`; inner Markdown is parsed recursively.
+ * - Asides: `::: example` and `::: diagram` containers → `AsideBlock`
+ *   kinds `Example`, `Diagram`; inner Markdown is parsed recursively.
  * - Tables use GitHub Markdown syntax → `TableBlock.html`. Lists may be
  *   ordered or unordered (ordered lists keep their start number in `start`,
  *   absent means 1); each item keeps its own `citations` and the block
@@ -51,7 +47,6 @@ import type {
   AsideBlock,
   Block,
   Citation,
-  DepthText,
   FollowUpItem,
   ListBlock,
   ListItem,
@@ -230,16 +225,10 @@ function parseFollowItem(text: string): FollowUpItem {
 
 type AsideKind = AsideBlock["kind"];
 
-function asideKindFor(name: string): AsideKind | "simple" | "deep" | null {
+function asideKindFor(name: string): AsideKind | null {
   switch (name) {
-    case "simple":
-    case "deep":
-      return name;
     case "example":
       return "Example";
-    case "principle":
-    case "underlying-principle":
-      return "Underlying principle";
     case "diagram":
       return "Diagram";
     default:
@@ -368,8 +357,7 @@ export function parseBlocks(markdown: string, opts?: ParseOptions): Block[] {
       }
     }
     const rendered = renderInline(text);
-    const paraText: DepthText = { standard: rendered.html };
-    blocks.push({ type: "paragraph", id: nextId(), text: paraText, citations: rendered.citations });
+    blocks.push({ type: "paragraph", id: nextId(), text: rendered.html, citations: rendered.citations });
   }
 
   function emitHeading(raw: string): void {
@@ -412,8 +400,7 @@ export function parseBlocks(markdown: string, opts?: ParseOptions): Block[] {
       // No header (unreachable from real table tokens): demote to a
       // paragraph, as the old scanner did without a delimiter row.
       const rendered = renderInline(bodyRows.flat().join(" "));
-      const text: DepthText = { standard: rendered.html };
-      blocks.push({ type: "paragraph", id: nextId(), text, citations: rendered.citations });
+      blocks.push({ type: "paragraph", id: nextId(), text: rendered.html, citations: rendered.citations });
       clearCaptionWait();
       return;
     }
@@ -658,19 +645,6 @@ export function parseBlocks(markdown: string, opts?: ParseOptions): Block[] {
 
   function closeDirective(kind: string, innerLines: string[]): void {
     const mapped = asideKindFor(kind);
-    if (mapped === "simple" || mapped === "deep") {
-      const rendered = renderInline(innerLines.join(" ").trim());
-      const last = blocks[blocks.length - 1];
-      if (last?.type === "paragraph") {
-        last.text[mapped] = rendered.html;
-        last.citations = unionCitations([last.citations, rendered.citations]);
-      } else if (rendered.html) {
-        const text: DepthText = { standard: rendered.html };
-        blocks.push({ type: "paragraph", id: nextId(), text, citations: rendered.citations });
-      }
-      clearCaptionWait();
-      return;
-    }
     if (mapped !== null) {
       const id = nextId();
       const inner = parseBlocks(innerLines.join("\n"), { idPrefix: `${id}-` });
@@ -684,11 +658,11 @@ export function parseBlocks(markdown: string, opts?: ParseOptions): Block[] {
       clearCaptionWait();
       return;
     }
-    // Unknown ::: kind: lenient plain-text fallback (markers dropped).
+    // Unknown ::: kind (including the retired `simple`/`deep`/`principle`
+    // containers): lenient plain-text fallback (markers dropped).
     const rendered = renderInline(innerLines.join(" ").trim());
     if (rendered.html) {
-      const text: DepthText = { standard: rendered.html };
-      blocks.push({ type: "paragraph", id: nextId(), text, citations: rendered.citations });
+      blocks.push({ type: "paragraph", id: nextId(), text: rendered.html, citations: rendered.citations });
     }
     clearCaptionWait();
   }
@@ -834,9 +808,7 @@ export function collectTargets(blocks: Block[]): CollectedTargets {
       switch (b.type) {
         case "paragraph":
           for (const c of b.citations) push(citations, c.target);
-          scanHtml(b.text.standard);
-          if (b.text.simple) scanHtml(b.text.simple);
-          if (b.text.deep) scanHtml(b.text.deep);
+          scanHtml(b.text);
           break;
         case "heading":
           for (const c of b.citations) push(citations, c.target);
@@ -1052,9 +1024,7 @@ export function renderMarkdown(blocks: Block[]): string {
         parts.push(`### ${withCitations(inlineToMarkdown(b.html), b.citations)}`);
         break;
       case "paragraph":
-        parts.push(withCitations(inlineToMarkdown(b.text.standard), b.citations));
-        if (b.text.simple) parts.push(`::: simple\n${inlineToMarkdown(b.text.simple)}\n:::`);
-        if (b.text.deep) parts.push(`::: deep\n${inlineToMarkdown(b.text.deep)}\n:::`);
+        parts.push(withCitations(inlineToMarkdown(b.text), b.citations));
         break;
       case "list": {
         const start = b.ordered ? (b.start ?? 1) : 1;
@@ -1098,7 +1068,7 @@ export function renderMarkdown(blocks: Block[]): string {
         }
         break;
       case "aside": {
-        const name = b.kind === "Example" ? "example" : b.kind === "Diagram" ? "diagram" : "principle";
+        const name = b.kind === "Example" ? "example" : "diagram";
         parts.push(`::: ${name}`);
         parts.push(renderMarkdown(b.inner).trim());
         parts.push(":::");

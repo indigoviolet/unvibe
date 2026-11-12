@@ -54,7 +54,7 @@ function collapse(s: string): string {
 export function blockPlainText(block: Block): string {
   switch (block.type) {
     case "paragraph":
-      return collapse(decodeEntities(stripTags(block.text.standard)));
+      return collapse(decodeEntities(stripTags(block.text)));
     case "heading":
       return collapse(decodeEntities(stripTags(block.html)));
     case "list":

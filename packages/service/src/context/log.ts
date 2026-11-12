@@ -2,13 +2,12 @@
  * Append-only log and change lists (PRD §9.3).
  *
  * What enters the log:
- * - never: UI state — read, collapse, depth (the stepper position), open /
- *   close, Outbox marking. These change nothing the next turn needs.
- * - card-local only: examples, diagrams, depth rewrites. They are logged
- *   with a card scope and only shown to sessions anchored on that card.
- *   (Note: the *rewrite* is logged as a one-line label — the rewritten
- *   text itself travels in the base pack, and the depth *state* never
- *   enters the log.)
+ * - never: UI state — read, collapse, open / close, Outbox marking.
+ *   These change nothing the next turn needs.
+ * - card-local only: examples, diagrams, slower rewrites. They are
+ *   logged with a card scope and only shown to sessions anchored on
+ *   that card. (Note: the *rewrite* is logged as a one-line label —
+ *   the rewritten text itself travels in the base pack.)
  * - one line, once a thread settles: a summary of the thread.
  * - in full: new cards and findings, answers that cited something
  *   outside the base, and contributions.
@@ -31,7 +30,7 @@ export type LogEntryKind =
   | "deletion"
   | "example"
   | "diagram"
-  | "depth-rewrite"
+  | "slower-rewrite"
   | "contribution"
   | "hunk-summary"
   | "update-note";
@@ -43,7 +42,6 @@ export type LogEntryKind =
 export const NEVER_LOGGED_KINDS: ReadonlySet<string> = new Set([
   "read",
   "collapse",
-  "depth",
   "open",
   "close",
   "mark-for-pr",
@@ -51,7 +49,7 @@ export const NEVER_LOGGED_KINDS: ReadonlySet<string> = new Set([
 ]);
 
 /** Kinds that only make sense scoped to a card (PRD §9.3). */
-export const CARD_LOCAL_KINDS: ReadonlySet<string> = new Set(["example", "diagram", "depth-rewrite"]);
+export const CARD_LOCAL_KINDS: ReadonlySet<string> = new Set(["example", "diagram", "slower-rewrite"]);
 
 /**
  * Decide whether an event enters the log. Returns false for UI state and

@@ -192,7 +192,7 @@ describe("open questions as suggested comments (#181)", () => {
             version: 1,
           },
           open: false,
-          replies: [{ id: "ans_t1", kind: "comment", who: "agent", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: QUESTION }, citations: [] }], level: "standard", revision: 1, undoStack: [], suggested: true, suggestedQuestion: true }],
+          replies: [{ id: "ans_t1", kind: "comment", who: "agent", question: null, blocks: [{ type: "paragraph", id: "b1", text: QUESTION, citations: [] }], revision: 1, undoStack: [], suggested: true, suggestedQuestion: true }],
           post: false,
         } as never);
       });
@@ -300,10 +300,9 @@ describe("resolveQuestionAnchor (#181)", () => {
               id: "central",
               pageId: "root",
               title: "Central",
-              level: "standard",
               collapsed: false,
               revision: 1,
-              blocks: [{ type: "paragraph", id: "b1", text: { standard: "Body." }, citations: [] }],
+              blocks: [{ type: "paragraph", id: "b1", text: "Body.", citations: [] }],
               undoStack: [],
             },
           ],

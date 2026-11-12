@@ -115,10 +115,7 @@ function actionAnchorToHost(anchor: ActionAnchor): AnchorHost {
 /** Best-effort plain text of a guide block (for prefix/suffix matching). */
 function blockText(block: unknown): string {
   const b = block as Record<string, unknown>;
-  if (typeof b["text"] === "object" && b["text"] !== null) {
-    const t = b["text"] as Record<string, unknown>;
-    if (typeof t["standard"] === "string") return t["standard"] as string;
-  }
+  if (typeof b["text"] === "string") return b["text"];
   if (typeof b["code"] === "string") return b["code"] as string;
   if (typeof b["html"] === "string") return stripTags(b["html"] as string);
   if (typeof b["source"] === "string" && (b as { type?: string }).type === "diagram") {
@@ -341,7 +338,7 @@ export function commentReply(text: string, opts?: { who?: "you" | "agent"; sugge
   const block: Block = {
     type: "paragraph",
     id: "b1",
-    text: { standard: html },
+    text: html,
     citations: [],
   };
   return {
@@ -350,7 +347,6 @@ export function commentReply(text: string, opts?: { who?: "you" | "agent"; sugge
     who: who === "agent" ? "agent" : "you",
     question: null,
     blocks: [block],
-    level: "standard",
     revision: 1,
     undoStack: [],
     ...(opts?.suggested ? { suggested: true } : {}),
@@ -597,7 +593,7 @@ export function threadPostText(thread: Thread): string {
     const parts: string[] = [];
     for (const b of r.blocks ?? []) {
       if (b.type === "paragraph") {
-        const s = b.text.standard.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+        const s = b.text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
         if (s) parts.push(s);
       } else if (b.type === "list") {
         for (const it of b.items ?? []) {

@@ -7,22 +7,15 @@
  * paragraph / list / table / aside HTML only; `CodeBlock`s render
  * separately and card titles render separately).
  */
-import type { Block, DepthLevel, GlossaryEntry } from "@unvibe/shared";
+import type { Block, GlossaryEntry } from "@unvibe/shared";
 import { linkGlossaryInHtml } from "@unvibe/shared";
-
-function depthHtml(text: { simple?: string; standard: string; deep?: string }, level: DepthLevel): string {
-  if (level === "simple") return text.simple ?? text.standard;
-  if (level === "deep") return text.deep ?? text.standard;
-  return text.standard;
-}
 
 /**
  * Clone card blocks with glossary links applied to the displayed text.
  * One shared `seen` set per card per render, so only the first mention
- * of each term across the card's blocks links. Depth variants other than
- * the card's current level are left alone (they link when shown).
+ * of each term across the card's blocks links.
  */
-export function linkCardBlocks(blocks: Block[], glossary: GlossaryEntry[], level: DepthLevel): Block[] {
+export function linkCardBlocks(blocks: Block[], glossary: GlossaryEntry[]): Block[] {
   if (glossary.length === 0) return blocks;
   const seen = new Set<string>();
   const link = (html: string): string => linkGlossaryInHtml(html, glossary, seen).html;
@@ -30,12 +23,9 @@ export function linkCardBlocks(blocks: Block[], glossary: GlossaryEntry[], level
     list.map((b) => {
       switch (b.type) {
         case "paragraph": {
-          const current = depthHtml(b.text, level);
-          const linked = link(current);
-          if (linked === current) return b;
-          if (level === "simple") return { ...b, text: { ...b.text, simple: linked } };
-          if (level === "deep") return { ...b, text: { ...b.text, deep: linked } };
-          return { ...b, text: { ...b.text, standard: linked } };
+          const linked = link(b.text);
+          if (linked === b.text) return b;
+          return { ...b, text: linked };
         }
         case "list":
           return {

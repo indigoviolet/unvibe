@@ -38,8 +38,6 @@ the reader would expect, rely on, or push back on.
   rationale.
 - Every piece of evidence is cited. A paragraph that states something about
   the change ends with the citations that support it.
-- Three depth levels exist for every card: simple, standard, deep (first
-  principles). Rewrites move one level at a time.
 - Hunk summaries are one line: what the hunk does, not how it does it.
 - **Names.** Use the codebase's own nomenclature: call each thing by the name the code, the change or its description already uses (the exact identifier, file, setting, flag or term, in code formatting when it is one), and prefer the precise name to a general description. Do not invent names for things the code already names. Use one term per thing across the whole guide: when a card, plotline or earlier answer has already named something, every later mention uses that same term, never a synonym, abbreviation or paraphrase. When something has no name in the code, describe it plainly, and keep using that description consistently.
 
@@ -165,12 +163,8 @@ words instead. IDs belong only in link tokens and the trailing JSON.
   never standing alone between two sentences. Inline code uses backticks and is never scanned for tokens.
   Standard inline Markdown (bold, italic, links, code) renders inside a
   block; raw HTML stays escaped.
-- Per-depth text: the paragraph itself is the standard version. A
-  `::: simple` / `::: deep` container immediately after it carries that
-  level's rewrite.
-- Asides: `::: example`, `::: diagram`, or `::: principle` containers
-  become Example / Diagram / Underlying-principle inserts after the
-  paragraph they relate to.
+- Asides: `::: example` and `::: diagram` containers become Example /
+  Diagram inserts after the paragraph they relate to.
 - Diagrams are fenced `d2` blocks (D2 convention source:
   prompts/includes/d2-convention.md): first line `direction:` to suit the
   flow (`right` for pipelines, `down` for chains),
@@ -195,7 +189,7 @@ words instead. IDs belong only in link tokens and the trailing JSON.
 - Tables use GitHub Markdown syntax; lists may be ordered or unordered,
   one item per line.
 - The trailing block holds only the keys the task needs (`title`,
-  `finding`, `findings`, `contribute`, `depth`, `hunk`, `plotlines`,
+  `finding`, `findings`, `contribute`, `slower`, `hunk`, `plotlines`,
   `secondOpinion`, `pendingCards`, `anchor`, `degraded`):
   - `degraded`: one line saying what you could not do (a tool you could
     not reach, a lookup that came back empty, a refused call) and what
@@ -211,8 +205,7 @@ words instead. IDs belong only in link tokens and the trailing JSON.
     and `cardIds`; zero entries is a valid silent reply.
   - `secondOpinion`: `verdict` (`agrees`, `partly` or `disagrees`),
     `reasoning`, and `missed` (anything the card missed).
-  - `depth`: the `level` written (`simple`, `standard` or `deep`) and the
-    `cardId`.
+  - `slower`: the `cardId` the rewritten body belongs to.
   - `hunk`: `summary`, `hiddenReason` (a one-line reason, or null when
     the hunk is interesting), and `score` (one of `mechanical`,
     `routine`, `substantive`, `needs-attention`).

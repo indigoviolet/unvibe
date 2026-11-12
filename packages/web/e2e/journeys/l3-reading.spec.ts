@@ -1082,6 +1082,7 @@ test.describe("L3 demo guide reading", () => {
   let commentReview = "";
   let criticReview = "";
   let diagramReview = "";
+  let slowerReview = "";
 
   test.beforeAll(async () => {
     dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-l3-data-"));
@@ -1108,7 +1109,6 @@ test.describe("L3 demo guide reading", () => {
           pageId: "root",
           title: "Loose list",
           blocks: parseBlocks("1. First step\n\n2. Second step\n\n3. Third step\n\n4. Fourth step\n"),
-          level: "standard",
           revision: 1,
           undoStack: [],
           collapsed: false,
@@ -1133,6 +1133,7 @@ test.describe("L3 demo guide reading", () => {
     commentReview = await createDemoReview(svc);
     criticReview = await createDemoReview(svc);
     diagramReview = await createDemoReview(svc);
+    slowerReview = await createDemoReview(svc);
   });
   test.afterAll(async () => {
     await svc?.stop().catch(() => {});
@@ -1912,81 +1913,52 @@ test.describe("L3 demo guide reading", () => {
       await expect.soft(section).toContainText("host not on the page");
     });
 
-    await test.step("closed explanation → deep → chip → open → back → highlight", async () => {
-      await openReview(page, "j206-seed");
-      await expect.soft(page.locator("#C-g-alt")).toBeVisible({ timeout: 30_000 });
+    await test.step("Help me understand rewrites twice, then undo steps back (#387)", async () => {
+      await openReview(page, slowerReview);
+      await expect.soft(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
 
-      // Create a closed expansion on g-alt#b1 with a standard-only phrase.
-      // Issue #341: the re-recorded deep expansions restate their card, so
-      // no central standard phrase orphans at deep (and raw-HTML staleness
-      // can't span markup). g-alt's deep omits this b1 span, so a
-      // standard→deep step orphans it.
-      const created = await apiJson(s, "POST", `/api/reviews/j206-seed/actions`, {
-        kind: "explain",
-        quote: "The fix has to reach two copies of",
-        anchor: { where: "block", blockId: "g-alt#b1" },
-      });
-      const annId = (created.json as { annotationId: string }).annotationId;
-      if ((created.json as { jobId?: string }).jobId) {
-        const deadline = Date.now() + 60_000;
-        for (;;) {
-          const cur = await apiJson(s, "GET", `/api/reviews/j206-seed`);
-          const ann = ((cur.json as { annotations: { id: string; replies?: { blocks: unknown[] }[] }[] }).annotations ?? []).find(
-            (a) => a.id === annId,
-          );
-          if ((ann?.replies?.[0]?.blocks.length ?? 0) > 0) break;
-          if (Date.now() > deadline) throw new Error("conversation did not fill in time");
-          await new Promise((r) => setTimeout(r, 1000));
-        }
-      }
-      // Close it so only the dotted highlight remains.
-      await apiJson(s, "POST", `/api/reviews/j206-seed/actions`, {
-        kind: "close",
-        annotationId: annId,
-      });
-      await page.reload();
-      await expect.soft(page.locator("#C-g-alt")).toBeVisible({ timeout: 30_000 });
+      const paraText = async (): Promise<string> => {
+        const cur = await apiJson(s, "GET", `/api/reviews/${slowerReview}`);
+        const cards = ((cur.json as { pages: { id: string; cards: { id: string; blocks: { type: string; text?: string }[] }[] }[] }).pages ?? [])
+          .find((p) => p.id === "root")?.cards ?? [];
+        const central = cards.find((c) => c.id === "central");
+        return (central?.blocks ?? []).filter((b) => b.type === "paragraph").map((b) => b.text ?? "").join("\n\n");
+      };
+      const before = await paraText();
+      expect.soft(before).toContain("unfolds every");
 
-      // At standard the dotted highlight lands and the footnote stays hidden.
-      const mark = page.locator(`#C-g-alt mark.anc.exl[data-jump="${annId}"]:not(.fnote)`).first();
-      await expect.soft(mark).toBeVisible({ timeout: 15_000 });
-      const chip = page.locator(`#C-g-alt .lo mark.fnote.exl[data-jump="${annId}"]`);
-      await expect.soft(chip).toBeHidden({ timeout: 10_000 });
+      // The toolbar reveals on card hover (#274): one icon button with
+      // the Help-me-understand tooltip (no text label, no level pips).
+      await page.locator("#C-central").hover();
+      const help = page.locator("#C-central > .chead .ctl").getByRole("button", { name: "Help me understand" });
+      await expect.soft(help).toBeVisible({ timeout: 15_000 });
+      expect.soft(await help.getAttribute("data-tip")).toBe("Help me understand");
 
-      // Step to deep (stored levels: instant, no agent). The phrase is gone,
-      // so the highlight drops and the chip appears on the citations line.
-      // The toolbar reveals on card hover (#274).
-      await page.locator("#C-g-alt").hover();
-      await page.locator("#C-g-alt > .chead .ctl").getByRole("button", { name: "Deeper" }).click();
-      await expect.soft(page.locator(`#C-g-alt mark.anc.exl[data-jump="${annId}"]:not(.fnote)`)).toHaveCount(0, {
-        timeout: 15_000,
-      });
-      await expect.soft(chip).toBeVisible({ timeout: 15_000 });
-      // The chip shares the citations row, not a full-width stub: the chip's
-      // closest `.lo` also holds the <> citations chip.
-      const sameRow = await chip.evaluate((el) => {
-        const lo = el.closest(".lo");
-        return !!lo && !!lo.querySelector("button.lk[data-refs]");
-      });
-      expect.soft(sameRow).toBe(true);
-      await expect.soft(page.locator("#C-g-alt .linkstub")).toHaveCount(0);
+      // First press rewrites the card more slowly (replay central:2).
+      await help.click();
+      await expect
+        .poll(async () => paraText(), { timeout: 60_000 })
+        .toContain("obsolete folded header line");
+      const afterFirst = await paraText();
+      expect.soft(afterFirst).not.toBe(before);
+      await expect.soft(page.locator("#C-central")).toContainText("obsolete folded header line", { timeout: 15_000 });
 
-      // Clicking the chip re-opens the explanation in place.
-      await chip.click();
-      const expCard = page.locator(`#C-g-alt [data-thread="${annId}"]`).first();
-      await expect.soft(expCard).toBeVisible({ timeout: 15_000 });
+      // Second press slows the rewrite further (replay central:3).
+      await page.locator("#C-central").hover();
+      await page.locator("#C-central > .chead .ctl").getByRole("button", { name: "Help me understand" }).click();
+      await expect
+        .poll(async () => paraText(), { timeout: 60_000 })
+        .toContain("Start with what the server sends");
+      const afterSecond = await paraText();
+      expect.soft(afterSecond).not.toBe(afterFirst);
+      await expect.soft(page.locator("#C-central")).toContainText("Start with what the server sends", { timeout: 15_000 });
 
-      // Close it again so the return trip asserts the closed highlight path.
-      await expCard.getByRole("button", { name: "Close" }).click();
-      await expect.soft(page.locator(`#C-g-alt [data-thread="${annId}"]`)).toHaveCount(0, { timeout: 10_000 });
-
-      // Switching back restores the highlight and hides the chip.
-      await page.locator("#C-g-alt").hover();
-      await page.locator("#C-g-alt > .chead .ctl").getByRole("button", { name: "Simpler" }).click();
-      await expect.soft(page.locator(`#C-g-alt mark.anc.exl[data-jump="${annId}"]:not(.fnote)`).first()).toBeVisible({
-        timeout: 15_000,
-      });
-      await expect.soft(chip).toBeHidden({ timeout: 10_000 });
+      // Undo steps back through the presses.
+      await page.locator("#C-central").hover();
+      await page.locator("#C-central > .chead .ctl").getByRole("button", { name: "Undo" }).click();
+      await expect.poll(async () => paraText(), { timeout: 60_000 }).toBe(afterFirst);
+      await expect.soft(page.locator("#C-central")).toContainText("obsolete folded header line", { timeout: 15_000 });
+      await expect.soft(page.locator("#C-central")).not.toContainText("Start with what the server sends", { timeout: 15_000 });
     });
   });
 
@@ -2425,14 +2397,13 @@ test.describe("L3 scratch file tabs", () => {
           id,
           pageId: "root",
           title: id,
-          level: "standard",
           collapsed: false,
           revision: 1,
           blocks: [
             {
               type: "paragraph",
               id: `b-${id}`,
-              text: { standard: text },
+              text,
               citations: [{ target, ...(unverified ? { unverified: true } : {}) }],
             },
           ],
@@ -2604,8 +2575,8 @@ test.describe("L3 scratch file tabs", () => {
         let root = snap.pages.find((p) => p.id === "root");
         if (!root) { root = { id: "root", kind: "root", title: "Guide", cards: [] }; snap.pages.unshift(root); }
         const card = (id: string, text: string, target: string): unknown => ({
-          id, pageId: "root", title: id, level: "standard", collapsed: false, revision: 1,
-          blocks: [{ type: "paragraph", id: `b-${id}`, text: { standard: text }, citations: [{ target }] }],
+          id, pageId: "root", title: id, collapsed: false, revision: 1,
+          blocks: [{ type: "paragraph", id: `b-${id}`, text, citations: [{ target }] }],
           undoStack: [],
         });
         root.cards.push(

@@ -1064,7 +1064,6 @@ export class Pipeline {
           forked.session,
           ctx.signal,
           `Concept page: ${slug}`,
-          "standard",
           blocks,
           (u) => ctx.reportUsage(u),
           (name, detail, extra) => ctx.reportTool(name, detail, extra),
@@ -1082,7 +1081,6 @@ export class Pipeline {
               id: `cc-${slug}`,
               pageId: `c-${slug}`,
               title: null,
-              level: "standard",
               collapsed: false,
               revision: (page.cards[0]?.revision ?? 0) + 1,
               blocks: stored,
@@ -1430,7 +1428,6 @@ export class Pipeline {
     session: Session,
     signal: AbortSignal | undefined,
     card: string,
-    level: string,
     blocks: Block[],
     onUsage?: (u: TokenUsage) => void,
     onTool?: ToolCallback,
@@ -1438,7 +1435,7 @@ export class Pipeline {
   ): Promise<Block[]> {
     const first = await finalizeFresh(this.actionContextFor(reviewId), blocks);
     if (!first.needsRepair) return first.blocks;
-    return this.repairDiagramsInline(reviewId, session, signal, card, level, first, onUsage, onTool, turn);
+    return this.repairDiagramsInline(reviewId, session, signal, card, first, onUsage, onTool, turn);
   }
 
   /**
@@ -1456,7 +1453,6 @@ export class Pipeline {
     session: Session,
     signal: AbortSignal | undefined,
     card: string,
-    level: string,
     first: { blocks: Block[]; messages: string[] },
     onUsage?: (u: TokenUsage) => void,
     onTool?: ToolCallback,
@@ -1464,7 +1460,7 @@ export class Pipeline {
   ): Promise<Block[]> {
     const actx = this.actionContextFor(reviewId);
     try {
-      const variables = buildRepairVariables(card, level, first.messages, first.blocks);
+      const variables = buildRepairVariables(card, first.messages, first.blocks);
       const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner,
         session,
         this.render("diagram", variables),
@@ -2072,7 +2068,6 @@ export class Pipeline {
               session,
               ctx.signal,
               `Guide: ${finalCards.map((c) => c.title ?? "(untitled)").join(" / ")}`,
-              "standard",
               flat,
               (u) => ctx.reportUsage(u),
               (name, detail, extra) => ctx.reportTool(name, detail, extra),
@@ -2166,7 +2161,6 @@ export class Pipeline {
           id: provisionalId,
           pageId: "root",
           title,
-          level: "standard",
           collapsed: false,
           revision: 1,
           blocks: fixed,
@@ -2251,7 +2245,6 @@ export class Pipeline {
             id: c.id,
             pageId: "root",
             title: c.title,
-            level: "standard",
             collapsed: false,
             revision: 1,
             blocks: fixed,
@@ -2277,7 +2270,6 @@ export class Pipeline {
           id: p.id,
           pageId: "root",
           title: p.label,
-          level: "standard",
           collapsed: false,
           revision: 1,
           blocks: [],
@@ -2426,7 +2418,6 @@ export class Pipeline {
                   id: c.id,
                   pageId: applied.pageId,
                   title: c.title,
-                  level: "standard",
                   collapsed: false,
                   revision: 1,
                   blocks: c.blocks,
@@ -3040,7 +3031,6 @@ export class Pipeline {
       forked.session,
       signal,
       direction,
-      "standard",
       blocks,
       (u) => ctx?.reportUsage(u),
       reportToolFrom(ctx),

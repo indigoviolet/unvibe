@@ -1,7 +1,7 @@
 ---
 role: user
 tier: main
-variables: [card, level]
+variables: [card]
 ---
 
 # Diagram
@@ -12,10 +12,6 @@ add one the card already has.
 ## Card
 
 {{card}}
-
-## Level to match
-
-{{level}}
 
 ## Rules
 
@@ -44,6 +40,6 @@ add one the card already has.
 - After the block, two to four lines of prose explaining the diagram
   in order, with citations. Do not start that paragraph with `Caption:` — that
   prefix would make it the diagram's caption instead of a walkthrough.
-- Match the card's level: name the parts at `simple`, use the code's own
-  names at `standard`, show the invariant at `deep`.
+- Match the card's current wording: use the same names and level of
+  detail as the surrounding text.
 - Output the diagram block, the walkthrough, and the trailing JSON block.

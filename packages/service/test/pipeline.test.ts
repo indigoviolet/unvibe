@@ -138,9 +138,9 @@ describe("pipeline demo e2e (replay)", () => {
       // the bare-LF draft by its suggested text instead (Sonnet re-record
       // wording, #341: "a socket test with bare-LF folds").
       const replyText = (r: { blocks?: { type: string }[] }): string =>
-        ((r.blocks ?? []) as { type: string; text?: { standard?: string } }[])
+        ((r.blocks ?? []) as { type: string; text?: string }[])
           .filter((b) => b.type === "paragraph")
-          .map((b) => b.text?.standard ?? "")
+          .map((b) => b.text ?? "")
           .join(" ");
       const tlf = snap.annotations.find((a) =>
         a.replies.some((r) => r.kind === "comment" && r.suggested && replyText(r).includes("bare-LF folds")),
@@ -527,10 +527,9 @@ describe("pipeline failure paths (scripted fakes)", () => {
           id: "central",
           pageId: "root",
           title: "Central",
-          level: "standard",
           collapsed: false,
           revision: 1,
-          blocks: [{ type: "paragraph", id: "b1", text: { standard: "Does [[diff:a-py:1-2]]" }, citations: [{ target: "diff:a-py:1-2" }] }],
+          blocks: [{ type: "paragraph", id: "b1", text: "Does [[diff:a-py:1-2]]", citations: [{ target: "diff:a-py:1-2" }] }],
           undoStack: [],
         });
       });

@@ -90,7 +90,7 @@ describe("refresh integration", () => {
           anchor: { host: { kind: "diff-line", fileKey, line: 2 }, quotedText: "y = 2", prefix: "x = 1", suffix: "", position: 2, version: 1, hunkHash: hash },
           open: true,
           pinned: false,
-          replies: [{ id: "ans_t1", seq: 1, kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "why?" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
+          replies: [{ id: "ans_t1", seq: 1, kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: "why?", citations: [] }], revision: 1, undoStack: [] }],
           post: false,
         });
         draft.pages.push({
@@ -98,8 +98,8 @@ describe("refresh integration", () => {
           kind: "root",
           title: "Guide",
           cards: [{
-            id: "c1", pageId: "p-root", title: "Change", level: "standard", collapsed: false,
-            revision: 1, blocks: [{ type: "paragraph", id: "b1", text: { standard: "adds y" }, citations: [{ target: `h:${fileKey}:${hash}` }] }],
+            id: "c1", pageId: "p-root", title: "Change", collapsed: false,
+            revision: 1, blocks: [{ type: "paragraph", id: "b1", text: "adds y", citations: [{ target: `h:${fileKey}:${hash}` }] }],
             undoStack: [],
           }],
         });
@@ -169,7 +169,7 @@ describe("refresh integration", () => {
           anchor: { host: { kind: "diff-line", fileKey: aKey, line: 3 }, quotedText: "z = 9", prefix: "y = 2", suffix: "", position: 3, version: snap2.version.n, hunkHash: aHash },
           open: true,
           pinned: false,
-          replies: [{ id: "ans_t1", seq: 1, kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "z?" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
+          replies: [{ id: "ans_t1", seq: 1, kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: "z?", citations: [] }], revision: 1, undoStack: [] }],
           post: false,
         });
         draft.pages.push({
@@ -177,12 +177,12 @@ describe("refresh integration", () => {
           kind: "root",
           title: "Guide",
           cards: [{
-            id: "c-a", pageId: "p-root", title: "A", level: "standard", collapsed: false,
-            revision: 1, blocks: [{ type: "paragraph", id: "b1", text: { standard: "touches a" }, citations: [{ target: `h:${aKey}:${aHash}` }] }],
+            id: "c-a", pageId: "p-root", title: "A", collapsed: false,
+            revision: 1, blocks: [{ type: "paragraph", id: "b1", text: "touches a", citations: [{ target: `h:${aKey}:${aHash}` }] }],
             undoStack: [],
           }, {
-            id: "c-b", pageId: "p-root", title: "B", level: "standard", collapsed: false,
-            revision: 1, blocks: [{ type: "paragraph", id: "b2", text: { standard: "touches b" }, citations: [{ target: `h:${hunkHashFor(snap2, "b.py").fileKey}:${bHash}` }] }],
+            id: "c-b", pageId: "p-root", title: "B", collapsed: false,
+            revision: 1, blocks: [{ type: "paragraph", id: "b2", text: "touches b", citations: [{ target: `h:${hunkHashFor(snap2, "b.py").fileKey}:${bHash}` }] }],
             undoStack: [],
           }],
         });
@@ -239,7 +239,7 @@ describe("refresh integration", () => {
           anchor: { host: { kind: "diff-line", fileKey, line: 21 }, quotedText: "tail = 1", prefix: "line20", suffix: "", position: 21, version: 1, hunkHash: hash },
           open: true,
           pinned: false,
-          replies: [{ id: "ans_t1", seq: 1, kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "tail?" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
+          replies: [{ id: "ans_t1", seq: 1, kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: "tail?", citations: [] }], revision: 1, undoStack: [] }],
           post: false,
         });
       });
@@ -287,7 +287,7 @@ describe("refresh integration", () => {
           anchor: { host: { kind: "diff-line", fileKey, line: 3 }, quotedText: "z = 3", prefix: "y = 2", suffix: "", position: 3, version: 1, hunkHash: hash },
           open: true,
           pinned: false,
-          replies: [{ id: "ans_t1", seq: 1, kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "z?" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
+          replies: [{ id: "ans_t1", seq: 1, kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: "z?", citations: [] }], revision: 1, undoStack: [] }],
           post: false,
         });
       });
@@ -642,8 +642,8 @@ describe("refresh integration", () => {
         draft.pages.push({
           id: "p-root", kind: "root", title: "Guide",
           cards: [{
-            id: "c-code", pageId: "p-root", title: "Helper", level: "standard", collapsed: false,
-            revision: 1, blocks: [{ type: "paragraph", id: "b1", text: { standard: "uses beta" }, citations: [{ target: `code:helper.py:2@${snap.version.headSha}` }] }],
+            id: "c-code", pageId: "p-root", title: "Helper", collapsed: false,
+            revision: 1, blocks: [{ type: "paragraph", id: "b1", text: "uses beta", citations: [{ target: `code:helper.py:2@${snap.version.headSha}` }] }],
             undoStack: [],
           }],
         });
@@ -680,8 +680,8 @@ describe("refresh integration", () => {
         draft.pages.push({
           id: "p-root", kind: "root", title: "Guide",
           cards: [{
-            id: "c-code", pageId: "p-root", title: "Helper", level: "standard", collapsed: false,
-            revision: 1, blocks: [{ type: "paragraph", id: "b1", text: { standard: "uses beta" }, citations: [{ target: `code:helper.py:2@${snap.version.headSha}` }] }],
+            id: "c-code", pageId: "p-root", title: "Helper", collapsed: false,
+            revision: 1, blocks: [{ type: "paragraph", id: "b1", text: "uses beta", citations: [{ target: `code:helper.py:2@${snap.version.headSha}` }] }],
             undoStack: [],
           }],
         });
@@ -726,13 +726,13 @@ describe("refresh integration", () => {
           id: "p-root", kind: "root", title: "Guide",
           cards: [
             {
-              id: "c-gone-text", pageId: "p-root", title: "GoneText", level: "standard", collapsed: false,
-              revision: 1, blocks: [{ type: "paragraph", id: "b1", text: { standard: "uses beta" }, citations: [{ target: `code:helper.py:2@${snap.version.headSha}` }] }],
+              id: "c-gone-text", pageId: "p-root", title: "GoneText", collapsed: false,
+              revision: 1, blocks: [{ type: "paragraph", id: "b1", text: "uses beta", citations: [{ target: `code:helper.py:2@${snap.version.headSha}` }] }],
               undoStack: [],
             },
             {
-              id: "c-gone-file", pageId: "p-root", title: "GoneFile", level: "standard", collapsed: false,
-              revision: 1, blocks: [{ type: "paragraph", id: "b2", text: { standard: "uses gone" }, citations: [{ target: `code:gone.py:1@${snap.version.headSha}` }] }],
+              id: "c-gone-file", pageId: "p-root", title: "GoneFile", collapsed: false,
+              revision: 1, blocks: [{ type: "paragraph", id: "b2", text: "uses gone", citations: [{ target: `code:gone.py:1@${snap.version.headSha}` }] }],
               undoStack: [],
             },
           ],

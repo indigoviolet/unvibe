@@ -191,7 +191,7 @@ export function matchSinceFeedback(snapshot: ReviewSnapshot, since: SinceHunks):
     const first = commentReplies[0];
     const firstPara = first?.blocks.find((b) => b.type === "paragraph");
     const text =
-      firstPara && firstPara.type === "paragraph" ? firstPara.text.standard : t.anchor.quotedText;
+      firstPara && firstPara.type === "paragraph" ? firstPara.text : t.anchor.quotedText;
     threads.push({
       threadId: t.id,
       excerpt: excerpt(text, 160),
@@ -239,7 +239,7 @@ export function resolveSinceAnswers(
       if (!t) continue;
       const first = t.replies.find((x) => x.kind === "comment");
       const para = first?.blocks.find((b) => b.type === "paragraph");
-      const text = para && para.type === "paragraph" ? para.text.standard : t.anchor.quotedText;
+      const text = para && para.type === "paragraph" ? para.text : t.anchor.quotedText;
       out.push({ kind: "thread", label: `Thread ${t.id}`, excerpt: excerpt(text, 160), url: `#${t.id}` });
     } else if (r.kind === "conversation") {
       const m = (snapshot.prConversation ?? []).find((x) => String(x.id) === r.id);
@@ -536,7 +536,6 @@ export function buildSinceSectionCards(
       ...(c as Card),
       id,
       pageId: typeof c.pageId === "string" && c.pageId.length > 0 ? c.pageId : "since",
-      level: c.level === "simple" || c.level === "standard" || c.level === "deep" ? c.level : "standard",
       collapsed: c.collapsed === true,
       revision: typeof c.revision === "number" ? c.revision : 1,
       undoStack: Array.isArray(c.undoStack) ? c.undoStack : [],

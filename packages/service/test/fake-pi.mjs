@@ -210,7 +210,7 @@ const KIND_HINTS = [
   [/concept[-_ ]page|concept:\s*[\w-]+/i, "concept-page"],
   [/\bhunk\b|summariz/i, "hunk"],
   [/go[-_ ]deeper|placeholder card|\bgenerate\b/i, "go-deeper"],
-  [/\bdepth\b|simpler|\bdeeper\b/i, "depth"],
+  [/\bslower\b|more slowly|help me understand/i, "slower"],
   [/examples?/i, "examples"],
   [/\bdiagram\b|\bd2\b/i, "diagram"],
   [/\bask\b|question|thread/i, "ask"],
@@ -236,10 +236,8 @@ function extractKey(kind, prompt) {
       for (const k of ["flow", "design", "regex", "check"]) if (lower.includes(k)) return k;
       return null;
     }
-    case "depth": {
-      const card = /central/.test(lower) ? "central" : /problem/.test(lower) ? "problem" : null;
-      const level = /deep/.test(lower) ? "deep" : /simpl/.test(lower) ? "simple" : null;
-      return card && level ? `${card}:${level}` : (card ?? level);
+    case "slower": {
+      return /central/.test(lower) ? "central" : /problem/.test(lower) ? "problem" : null;
     }
     case "examples":
       return /central/.test(lower) ? "central" : /problem/.test(lower) ? "problem" : null;

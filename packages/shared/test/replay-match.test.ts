@@ -269,8 +269,9 @@ describe("extractReplayKey", () => {
     expect(extractReplayKey("hunk", "no key here")).toBeNull();
   });
 
-  it("parses depth card/level pairs", () => {
-    expect(extractReplayKey("depth", "deeper on the central card")).toBe("central:deep");
+  it("parses the slower card", () => {
+    expect(extractReplayKey("slower", "Help me understand the central card")).toBe("central");
+    expect(extractReplayKey("slower", "no key here")).toBeNull();
   });
 });
 

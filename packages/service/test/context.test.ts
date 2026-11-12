@@ -175,7 +175,7 @@ describe("existing review comments in context (issue #168)", () => {
 
 describe("log and change lists (PRD §9.3)", () => {
   it("never logs UI state; card-local kinds need a card scope", () => {
-    for (const kind of ["read", "collapse", "depth", "open", "close", "mark-for-pr"]) {
+    for (const kind of ["read", "collapse", "open", "close", "mark-for-pr"]) {
       expect(NEVER_LOGGED_KINDS.has(kind)).toBe(true);
       expect(shouldEnterLog(kind, { scope: "global" })).toBe(false);
     }

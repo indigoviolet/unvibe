@@ -2,9 +2,9 @@
  * Log taxonomy (PRD §9.3): which interaction events enter the append-only
  * log, with what kind, payload and scope.
  *
- * - never: read, collapse, depth-stepper state, open/close, Outbox marking,
+ * - never: read, collapse, open/close, Outbox marking,
  *   undo (and UI state, not shared knowledge);
- * - local to conversations anchored on that card: examples, diagrams, depth
+ * - local to conversations anchored on that card: examples, diagrams, slower
  *   rewrites (card scope required);
  * - one line once a thread settles: `thread-summary`;
  * - in full: new cards and findings, answers that cited something outside
@@ -29,7 +29,6 @@ export function logEntryForEvent(event: InteractionEvent): TaxonomyResult | null
   switch (event.kind) {
     case "read":
     case "collapse":
-    case "depth-state":
     case "open":
     case "close":
     case "mark-for-pr":
@@ -37,9 +36,9 @@ export function logEntryForEvent(event: InteractionEvent): TaxonomyResult | null
       return null;
     case "example-added":
     case "diagram-added":
-    case "depth-rewrite": {
+    case "slower-rewrite": {
       if (!event.cardId) return null;
-      const kind = event.kind === "example-added" ? "example" : event.kind === "diagram-added" ? "diagram" : "depth-rewrite";
+      const kind = event.kind === "example-added" ? "example" : event.kind === "diagram-added" ? "diagram" : "slower-rewrite";
       const result: TaxonomyResult = {
         kind,
         payload: { text: event.text, ...(event.sessionId ? { sessionId: event.sessionId } : {}) },

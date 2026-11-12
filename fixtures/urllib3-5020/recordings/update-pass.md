@@ -27,7 +27,6 @@ A new follow-up thread starts here, so it gets its own plotline.
         "id": "since-alpha-111",
         "pageId": "since",
         "title": "Alpha reworked",
-        "level": "standard",
         "collapsed": false,
         "revision": 1,
         "undoStack": [],
@@ -35,9 +34,7 @@ A new follow-up thread starts here, so it gets its own plotline.
           {
             "type": "paragraph",
             "id": "b-since-alpha-1",
-            "text": {
-              "standard": "Alpha now returns 111 instead of 11. The rework-alpha commit says the reviewer asked for 111, so this answers that remark. It affects the central card, which still describes the old value — see its addendum."
-            },
+            "text": "Alpha now returns 111 instead of 11. The rework-alpha commit says the reviewer asked for 111, so this answers that remark. It affects the central card, which still describes the old value \u2014 see its addendum.",
             "citations": [
               {
                 "target": "h:src-app.py:659fc4a4a13ac005"
@@ -55,9 +52,7 @@ A new follow-up thread starts here, so it gets its own plotline.
         {
           "type": "paragraph",
           "id": "b-add-alpha-1",
-          "text": {
-            "standard": "Alpha returns 111 now, not 11 as this card says."
-          },
+          "text": "Alpha returns 111 now, not 11 as this card says.",
           "citations": [
             {
               "target": "h:src-app.py:659fc4a4a13ac005"

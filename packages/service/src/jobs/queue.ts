@@ -10,7 +10,7 @@
  *   the job visibly sits in `backing-off`.
  * - Cancellation through `AbortSignal`, while queued, backing off, or
  *   running. An abort always wins over a late success.
- * - Dedupe: identical requests (anchor, kind, depth, base version) share
+ * - Dedupe: identical requests (anchor, kind, revision, base version) share
  *   one job/result while the first is still active.
  * - Every state change, usage report and streamed-text delta is emitted
  *   as a shared `ReviewEvent` via `onEvent`, for the review's event bus.
@@ -114,7 +114,7 @@ export interface EnqueueOptions {
    */
   accessMode?: AccessMode;
   /**
-   * Card the job works on, when card-scoped (depth/examples/diagram/
+   * Card the job works on, when card-scoped (slower/examples/diagram/
    * generate/concept). Carried on the job itself (so
    * snapshots, WS events and the debug views can match it) as well as on
    * the entry (for `text` events).

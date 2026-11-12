@@ -27,7 +27,7 @@ export type FindingConfidence = "low" | "medium" | "high";
 
 /** Structured fields accepted in the trailing JSON block. All optional. */
 export interface ReplyData {
-  /** Title for a single-card reply (explain/ask/depth/examples/diagram). */
+  /** Title for a single-card reply (explain/ask/slower/examples/diagram). */
   title?: string;
   /** Stable card-id hint; the app assigns real IDs. */
   cardId?: string;
@@ -57,8 +57,8 @@ export interface ReplyData {
     reader_notes?: string[] | { text?: string }[];
     replaces?: string;
   };
-  /** Depth rewrite marker: which level the Markdown body is written at. */
-  depth?: { level?: string; cardId?: string };
+  /** Slower-rewrite marker: which card the Markdown body was written for. */
+  slower?: { cardId?: string };
   /** Follow-up suggestions (also writable inline; JSON wins on conflict). */
   followUps?: { label?: string; ask?: string }[];
   /** Hunk-pass result for one hunk (issue #169 adds the score level). */

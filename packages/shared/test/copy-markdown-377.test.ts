@@ -5,7 +5,7 @@
  * citations vs plain path:lines, link labels, and never any `[[`.
  */
 import { describe, expect, it } from "vitest";
-import type { Block, DepthLevel } from "../src/entities.js";
+import type { Block } from "../src/entities.js";
 import {
   blocksToMarkdown,
   cardToMarkdown,
@@ -37,11 +37,11 @@ function localCtx(): CopyMarkdownContext {
 }
 
 function para(html: string, citations: { target: string }[] = [], id = "b1"): Block {
-  return { type: "paragraph", id, text: { standard: html }, citations };
+  return { type: "paragraph", id, text: html, citations };
 }
 
 describe("copy-markdown (#377)", () => {
-  it("renders the title as a heading and the current depth level", () => {
+  it("renders the title as a heading and the shown text", () => {
     const md = cardToMarkdown(
       {
         title: "Retries",
@@ -49,37 +49,19 @@ describe("copy-markdown (#377)", () => {
           {
             type: "paragraph",
             id: "b1",
-            text: { simple: "Simple <code>x</code>.", standard: "Standard <em>y</em>.", deep: "Deep." },
+            text: "Shown <em>y</em>.",
             citations: [],
           },
         ],
       },
-      "simple",
       prCtx(),
     );
-    expect(md).toBe("## Retries\n\nSimple `x`.\n");
-    const deep = cardToMarkdown(
-      {
-        title: "Retries",
-        blocks: [
-          {
-            type: "paragraph",
-            id: "b1",
-            text: { standard: "Standard.", deep: "Deep <strong>z</strong>." },
-            citations: [],
-          },
-        ],
-      },
-      "deep",
-      prCtx(),
-    );
-    expect(deep).toBe("## Retries\n\nDeep **z**.\n");
+    expect(md).toBe("## Retries\n\nShown *y*.\n");
   });
 
   it("falls back to the shared title rule when the reply carried none", () => {
     const md = cardToMarkdown(
       { title: null, blocks: [para("First words here then more text to fill the fallback")] },
-      "standard",
       prCtx(),
     );
     expect(md.startsWith("## ")).toBe(true);
@@ -88,7 +70,7 @@ describe("copy-markdown (#377)", () => {
 
   it("renders a persona variant's own blocks", () => {
     const variantBlocks: Block[] = [para("Persona take.")];
-    const md = cardToMarkdown({ title: "Guide title", blocks: variantBlocks }, "standard", prCtx());
+    const md = cardToMarkdown({ title: "Guide title", blocks: variantBlocks }, prCtx());
     expect(md).toBe("## Guide title\n\nPersona take.\n");
   });
 
@@ -107,7 +89,6 @@ describe("copy-markdown (#377)", () => {
           citations: [{ target: "diff:conn:10-12" }, { target: "diff:sock:5" }],
         },
       ],
-      "standard",
       prCtx(),
     );
     expect(md).toContain("3. First `a` ([conn.py:10–12](https://github.com/acme/app/blob/abc1234/src/conn.py#L10-L12))");
@@ -126,7 +107,6 @@ describe("copy-markdown (#377)", () => {
           citations: [],
         },
       ],
-      "standard",
       prCtx(),
     );
     expect(md).toBe("| Name | When |\n| --- | --- |\n| `retry` | on *fail* |\n");
@@ -143,7 +123,6 @@ describe("copy-markdown (#377)", () => {
           citations: [{ target: "diff:conn:10" }],
         },
       ],
-      "standard",
       localCtx(),
     );
     expect(md).toBe("> **Example**\n> Do **this**. (conn.py:10)\n");
@@ -160,7 +139,6 @@ describe("copy-markdown (#377)", () => {
           citations: [{ target: "code:src/sock.py:1-3" }],
         },
       ],
-      "standard",
       localCtx(),
     );
     expect(md).toBe("```d2\na -> b: read\n```\n\nThe *flow*\n\n(sock.py:1–3)\n");
@@ -172,7 +150,6 @@ describe("copy-markdown (#377)", () => {
         { type: "heading", id: "b1", html: "Why <code>this</code>", citations: [] },
         { type: "code", id: "b2", language: "python", code: "x = 1", citations: [] },
       ],
-      "standard",
       prCtx(),
     );
     expect(md).toBe("### Why `this`\n\n```python\nx = 1\n```\n");
@@ -185,7 +162,6 @@ describe("copy-markdown (#377)", () => {
           'See <a class="cx" data-link="concept:idempotency">retry safely</a> and <a class="cx" data-node="card:central#b2">the rule</a> on <a class="cx" data-link="page:glossary">glossary</a>.',
         ),
       ],
-      "standard",
       prCtx(),
     );
     expect(md).toBe("See retry safely and the rule on glossary.\n");
@@ -195,7 +171,6 @@ describe("copy-markdown (#377)", () => {
   it("cites PR reviews as head-commit permalinks", () => {
     const md = blocksToMarkdown(
       [para("Mutates state.", [{ target: "diff:conn:10-20" }])],
-      "standard",
       prCtx(),
     );
     expect(md).toBe(
@@ -206,7 +181,6 @@ describe("copy-markdown (#377)", () => {
   it("cites hunk ids by their new-side range with a permalink", () => {
     const md = blocksToMarkdown(
       [para("A hunk.", [{ target: "h:conn:deadbeef" }])],
-      "standard",
       prCtx(),
     );
     expect(md).toBe(
@@ -223,7 +197,6 @@ describe("copy-markdown (#377)", () => {
           { target: "code:src/sock.py:1" },
         ]),
       ],
-      "standard",
       localCtx(),
     );
     expect(md).toBe("Mutates state. (conn.py:10–20, sock.py:1)\n");
@@ -232,7 +205,6 @@ describe("copy-markdown (#377)", () => {
   it("renders description and document citations as plain text", () => {
     const md = blocksToMarkdown(
       [para("Context.", [{ target: "desc:d-sync" }, { target: "doc:p3" }])],
-      "standard",
       prCtx(),
     );
     expect(md).toBe("Context. (PR description, Document p3)\n");
@@ -244,7 +216,6 @@ describe("copy-markdown (#377)", () => {
         { type: "finding-link", id: "b1", pageId: "f1", citations: [] },
         { type: "comment-link", id: "b2", diffRef: "diff:conn:42", threadId: "a1", citations: [] },
       ],
-      "standard",
       prCtx(),
       {
         findPage: (id: string) =>
@@ -268,7 +239,6 @@ describe("copy-markdown (#377)", () => {
           citations: [],
         },
       ],
-      "standard",
       prCtx(),
     );
     expect(md).toBe("**Follow up:**\n- Why not here?\n- More — Tell me more\n");
@@ -294,7 +264,6 @@ describe("copy-markdown (#377)", () => {
           },
         ],
       },
-      "standard",
       prCtx(),
       { formatDate: () => "4 Nov" },
     );
@@ -313,7 +282,6 @@ describe("copy-markdown (#377)", () => {
   it("renders a thread answer under its question", () => {
     const md = replyToMarkdown(
       { question: "Why retry?", kind: "ask", blocks: [para("Because <code>x</code>.", [{ target: "diff:sock:7" }])] },
-      "standard",
       localCtx(),
     );
     expect(md).toBe("## Why retry?\n\nBecause `x`. (sock.py:7)\n");
@@ -327,7 +295,7 @@ describe("copy-markdown (#377)", () => {
     } as unknown as ReviewSnapshot;
     const ctx = contextFromSnapshot(snapshot, { owner: "acme", name: "app" });
     expect(ctx.isPR).toBe(true);
-    const md = blocksToMarkdown([para("T.", [{ target: "diff:conn:3" }])], "standard" as DepthLevel, ctx);
+    const md = blocksToMarkdown([para("T.", [{ target: "diff:conn:3" }])], ctx);
     expect(md).toContain("https://github.com/acme/app/blob/ff00ff/src/conn.py#L3");
     const plain = contextFromSnapshot(snapshot, null);
     expect(plain.isPR).toBe(false);
@@ -352,10 +320,10 @@ describe("copy-markdown (#377)", () => {
       },
       { type: "code", id: "b5", code: "y", citations: [] },
       { type: "diagram", id: "b6", source: "x -> y", citations: [] },
-      { type: "aside", id: "b7", kind: "Underlying principle", inner: [para("P.")], citations: [] },
+      { type: "aside", id: "b7", kind: "Example", inner: [para("P.")], citations: [] },
     ];
     for (const ctx of [prCtx(), localCtx()]) {
-      const md = cardToMarkdown({ title: "T", blocks }, "standard", ctx);
+      const md = cardToMarkdown({ title: "T", blocks }, ctx);
       expect(md).not.toContain("[[");
       expect(md).not.toContain("]]");
       expect(md).not.toMatch(/diff:|concept:|card:|page:|desc:|doc:/);

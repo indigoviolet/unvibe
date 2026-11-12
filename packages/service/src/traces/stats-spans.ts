@@ -18,7 +18,7 @@ import { isDocumentReview } from "@unvibe/shared";
 import type { Job, ReviewSnapshot } from "@unvibe/shared";
 
 export const JOB_KINDS = new Set([
-  "reader", "critic", "hunk-pass", "concept", "ask", "depth", "examples",
+  "reader", "critic", "hunk-pass", "concept", "ask", "slower", "examples",
   "diagram", "go-deeper", "update-pass", "summarize",
   "plotline-assign", "consolidate", "persona",
 ]);

@@ -313,8 +313,8 @@ describe("traces (#356)", () => {
           id: "root", kind: "root", title: "CANARYTITLEZEBRA",
           cards: [{
             id: "c1", pageId: "root", title: "CANARYTITLEZEBRA", collapsed: false,
-            blocks: [{ type: "paragraph", id: "b1", text: { standard: "CANARYCARDTEXTX" }, citations: [] }],
-            level: "standard", revision: 1, undoStack: [],
+            blocks: [{ type: "paragraph", id: "b1", text: "CANARYCARDTEXTX", citations: [] }],
+            revision: 1, undoStack: [],
           }],
         }],
         annotations: [{
@@ -323,8 +323,8 @@ describe("traces (#356)", () => {
           open: true, pinned: false, post: true, draft: "CANARYDRAFTXXXX", sessionId: "sess-CANARYSESSIONX",
           replies: [{
             id: "ans_1", kind: "ask", who: "agent", question: "CANARYQUESTIONX",
-            blocks: [{ type: "paragraph", id: "b3", text: { standard: "CANARYCARDTEXTX" }, citations: [] }],
-            level: "standard", revision: 1, undoStack: [],
+            blocks: [{ type: "paragraph", id: "b3", text: "CANARYCARDTEXTX", citations: [] }],
+            revision: 1, undoStack: [],
           }],
         }],
         hunkStates: [], fileStates: [],

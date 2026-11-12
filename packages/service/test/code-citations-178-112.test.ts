@@ -121,14 +121,13 @@ describe("#112 remapCitationTarget (content re-anchor)", () => {
       id: "c1",
       pageId: "root",
       title: "T",
-      level: "standard",
       collapsed: false,
       revision: 1,
       blocks: [
         {
           type: "paragraph",
           id: "b1",
-          text: { standard: "see helper" },
+          text: "see helper",
           citations: [{ target: "code:helper.py:2@aaaa1111", unverified: true }],
         },
       ],

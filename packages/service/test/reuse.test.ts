@@ -1,7 +1,7 @@
 /**
  * PRD §12 result reuse (audit #10): repeating the identical request returns
- * the stored result without an agent call, keyed by (anchor, kind, depth,
- * base version) and invalidated by a new base version. Each case uses the
+ * the stored result without an agent call, keyed by (anchor, kind,
+ * revision, base version) and invalidated by a new base version. Each case uses the
  * scripted fake runner and asserts zero additional runner calls on repeat.
  *
  * Decisions per action (see report):
@@ -9,9 +9,8 @@
  *   deleted or new version → new request.
  * - ask: same anchor+quote+message+version reuses thread; different message,
  *   deleted, or new version → new request.
- * - depth: stored per-level text + principle block are the cache (instant,
- *   reused:true); deleted via undo still reuses the underlying level text
- *   when present (depth versions are kept once made, PRD §4.4).
+ * - slower: every press is a fresh agent turn (no stored levels to reuse);
+ *   two presses at the same revision share one job (dedupe).
  * - examples: saturated card (every paragraph has an example) reuses;
  *   new paragraphs or deleted examples → new request.
  * - diagram: card with a diagram reuses; removed → new request.
@@ -41,7 +40,7 @@ function textEvents(text: string): AgentEvent[] {
 
 const EXPLAIN_REPLY = `An explanation with no citations.\n\n\`\`\`json\n{}\n\`\`\`\n`;
 const ASK_REPLY = `An answer with a cite [[diff:a-py:1-2]].\n\n\`\`\`json\n{}\n\`\`\`\n`;
-const DEPTH_SIMPLE = `A simpler paragraph.\n\n\`\`\`json\n{"depth": {"level": "simple", "cardId": "central"}}\n\`\`\`\n`;
+const SLOWER_REPLY = `A slower paragraph.\n\n\`\`\`json\n{"slower": {"cardId": "central"}}\n\`\`\`\n`;
 const EXAMPLES_REPLY = `::: example\n\`\`\`\nexample one\n\`\`\`\n:::\n\n::: example\n\`\`\`\nexample two\n\`\`\`\n:::\n\n\`\`\`json\n{}\n\`\`\`\n`;
 const DIAGRAM_REPLY = "```d2\ndirection: right\na: \"A\" {link: \"diff:a-py:1-2\"}\nb: \"B\"\na -> b\n```\n\n```json\n{}\n```\n";
 const GODEEPER_REPLY = `Body [[diff:a-py:1-2]]\n\n\`\`\`json\n{"title": "T"}\n\`\`\`\n`;
@@ -55,7 +54,7 @@ function fakeAgents(): FakeAgentRunner {
     { match: "Read the base context", events: textEvents("ready") },
     { match: "## The question\n\nExplain this.", events: textEvents(EXPLAIN_REPLY) },
     { match: "# Ask", events: textEvents(ASK_REPLY) },
-    { match: "# Depth rewrite", events: textEvents(DEPTH_SIMPLE) },
+    { match: "# Help me understand", events: textEvents(SLOWER_REPLY) },
     { match: "# Examples", events: textEvents(EXAMPLES_REPLY) },
     { match: "# Diagram", events: textEvents(DIAGRAM_REPLY) },
     { match: "# Go deeper", events: textEvents(GODEEPER_REPLY) },
@@ -75,20 +74,19 @@ function pagesFor(): ReviewSnapshot["pages"] {
           id: "central",
           pageId: "root",
           title: "Central",
-          level: "standard",
           collapsed: false,
           revision: 1,
           blocks: [
             {
               type: "paragraph",
               id: "b1",
-              text: { standard: "Does the thing [[diff:a-py:1-2]]" },
+              text: "Does the thing [[diff:a-py:1-2]]",
               citations: [{ target: "diff:a-py:1-2" }],
             },
             {
               type: "paragraph",
               id: "b2",
-              text: { standard: "Second paragraph [[diff:a-py:2-3]]" },
+              text: "Second paragraph [[diff:a-py:2-3]]",
               citations: [{ target: "diff:a-py:2-3" }],
             },
           ],
@@ -98,7 +96,6 @@ function pagesFor(): ReviewSnapshot["pages"] {
           id: "g-flow",
           pageId: "root",
           title: null,
-          level: "standard",
           collapsed: false,
           revision: 1,
           blocks: [],
@@ -290,21 +287,22 @@ describe("PRD §12 cross-request reuse (#10)", () => {
     }
   });
 
-  it("depth round-trip reuses cached levels; examples/diagram reuse when saturated", async () => {
+  it("slower has no stored reuse; examples/diagram reuse when saturated", async () => {
     const agents = fakeAgents();
     const { app, ctx, reviewId } = await setupWithAgents(agents);
     try {
-      // Depth to simple (agent), back to standard is cached? Standard exists
-      // from start, so simpler→deeper uses stored text. First drive simple.
-      const down = await postAction(app, reviewId, { kind: "depth", cardId: "central", direction: "simpler" });
-      expect(down.status).toBe(200);
-      if (down.json.jobId) await waitForJob(ctx, down.json.jobId as string);
-      const afterSimple = agents.prompts.length;
-      const up = await postAction(app, reviewId, { kind: "depth", cardId: "central", direction: "deeper" });
-      expect(up.status).toBe(200);
-      expect(up.json.reused).toBe(true);
-      expect(up.json.jobId).toBeUndefined();
-      expect(agents.prompts.length).toBe(afterSimple);
+      // Slower always runs the agent: every press is a fresh turn.
+      const first = await postAction(app, reviewId, { kind: "slower", cardId: "central" });
+      expect(first.status).toBe(200);
+      expect(first.json.jobId).toBeTruthy();
+      if (first.json.jobId) await waitForJob(ctx, first.json.jobId as string);
+      const afterFirst = agents.prompts.length;
+      const second = await postAction(app, reviewId, { kind: "slower", cardId: "central" });
+      expect(second.status).toBe(200);
+      expect(second.json.reused).toBeUndefined();
+      expect(second.json.jobId).toBeTruthy();
+      if (second.json.jobId) await waitForJob(ctx, second.json.jobId as string);
+      expect(agents.prompts.length).toBeGreaterThan(afterFirst);
 
       // Examples: first fills, second reuses.
       const ex1 = await postAction(app, reviewId, { kind: "examples", cardId: "central" });
@@ -385,44 +383,41 @@ describe("PRD §12 cross-request reuse (#10)", () => {
     }
   });
 
-  it("depth responses carry the resulting level (issue #65)", async () => {
+  it("slower presses each run the agent (no stored reuse)", async () => {
     const agents = fakeAgents();
     const { app, ctx, reviewId } = await setupWithAgents(agents);
     try {
-      const levelOf = (): string =>
+      const textOf = (): string =>
         ctx.reviews
           .getSnapshot(reviewId)!
           .pages.flatMap((p) => p.cards)
-          .find((c) => c.id === "central")!.level;
-      expect(levelOf()).toBe("standard");
+          .find((c) => c.id === "central")!
+          .blocks.filter((b) => b.type === "paragraph")
+          .map((b) => (b as { text: string }).text)
+          .join("\n\n");
+      const before = textOf();
 
-      // New agent call: jobId plus the level it will write.
-      const down = await postAction(app, reviewId, { kind: "depth", cardId: "central", direction: "simpler" });
-      expect(down.status).toBe(200);
-      expect(down.json.jobId).toBeTruthy();
-      expect(down.json.level).toBe("simple");
-      await waitForJob(ctx, down.json.jobId as string);
-      expect(levelOf()).toBe("simple");
+      // First press: a fresh agent turn with a job (never reused). The
+      // dedupe key carries the pre-press revision, so a repeat at the
+      // same revision shares the job while a later press starts a new one.
+      const first = await postAction(app, reviewId, { kind: "slower", cardId: "central" });
+      expect(first.status).toBe(200);
+      expect(first.json.jobId).toBeTruthy();
+      expect(first.json.reused).toBeUndefined();
+      expect(ctx.jobs.get(first.json.jobId as string)?.dedupeKey).toBe("card:central|slower|1|v1");
+      await waitForJob(ctx, first.json.jobId as string);
+      expect(textOf()).toContain("A slower paragraph.");
+      expect(textOf()).not.toBe(before);
 
-      // Stored switch: reused, no job, level changed (standard was seed text).
-      const up = await postAction(app, reviewId, { kind: "depth", cardId: "central", direction: "deeper" });
-      expect(up.status).toBe(200);
-      expect(up.json.reused).toBe(true);
-      expect(up.json.jobId).toBeUndefined();
-      expect(up.json.level).toBe("standard");
-      expect(levelOf()).toBe("standard");
-
-      // Already at the limit: reused, no job, level unchanged.
-      const toSimple = await postAction(app, reviewId, { kind: "depth", cardId: "central", direction: "simpler" });
-      expect(toSimple.json.reused).toBe(true);
-      expect(toSimple.json.level).toBe("simple");
-      expect(levelOf()).toBe("simple");
-      const atLimit = await postAction(app, reviewId, { kind: "depth", cardId: "central", direction: "simpler" });
-      expect(atLimit.status).toBe(200);
-      expect(atLimit.json.reused).toBe(true);
-      expect(atLimit.json.jobId).toBeUndefined();
-      expect(atLimit.json.level).toBe("simple");
-      expect(levelOf()).toBe("simple");
+      // The next press runs a new turn (revision moved on).
+      const promptsBefore = agents.prompts.length;
+      const second = await postAction(app, reviewId, { kind: "slower", cardId: "central" });
+      expect(second.status).toBe(200);
+      expect(second.json.jobId).toBeTruthy();
+      expect(second.json.jobId).not.toBe(first.json.jobId);
+      expect(second.json.reused).toBeUndefined();
+      await waitForJob(ctx, second.json.jobId as string);
+      expect(agents.prompts.length).toBeGreaterThan(promptsBefore);
     } finally {
       await app.close();
     }

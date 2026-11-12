@@ -73,11 +73,10 @@ export interface ExistingCommentInput {
   body: string;
 }
 
-/** One guide card's standard-depth prose, already rendered to Markdown. */
+/** One guide card's prose, already rendered to Markdown. */
 export interface GuideCardInput {
   id: string;
   title: string | null;
-  level: string;
   revision: number;
   markdown: string;
 }

@@ -20,15 +20,16 @@ describe("snapshot build", () => {
     const { snapshot, counts } = buildSnapshot(fixturesDir);
     // 69 recordings, all captured live on Claude Sonnet (#341):
     // reader 1 + critic 1 + hunk 8 + go-deeper 4 + concept-page 4
-    // + depth 25 (12 simple + 12 deep-principle + 1 shared expansion)
     // + examples 4 + diagram 2 + explain 8 + ask 12 (incl. 2 thread).
+    // The 25 depth recordings are gone (issue #387: slower rewrites
+    // have 3 recordings, which the on-demand builder does not consume).
     // No second-opinion recordings (#349); the cost ask was dropped —
     // Sonnet cited stdlib files outside the review.
     // + 2 persona recordings (#349 step 2: central second-opinion;
     // #359: central Clarity).
     // Journey-only manifest entries (the #351 update-pass reply) are not
     // demo content and are skipped by the builder.
-    expect(counts).toHaveLength(71);
+    expect(counts).toHaveLength(52);
     expect(snapshot.files.map((f) => [f.fileKey, f.hunks.length])).toEqual([
       ["src-urllib3-connection.py", 2],
       ["test-test_connection.py", 3],

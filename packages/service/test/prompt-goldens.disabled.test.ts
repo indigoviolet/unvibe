@@ -75,9 +75,9 @@ function goldenValues(): Record<string, RenderValues> {
       changed_hunks: "h:conn:h111",
       message: "What about ordering?",
     },
-    depth: { card, level: "deep" },
-    examples: { card, level: "standard" },
-    diagram: { card, level: "standard" },
+    slower: { card },
+    examples: { card },
+    diagram: { card },
     go_deeper: { direction: "Data flow: from the socket to HTTPHeaderDict — follows a folded header to both views.", glossary },
     update_pass: {
       changed_hunks: "### [[h:conn:h111]] reflowed: +1 −1",

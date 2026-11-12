@@ -106,6 +106,23 @@ test("guide copy icon with tooltip (1440-light)", async ({ page }) => {
 });
 
 
+// ---- help me understand (#387): the card toolbar's icon button with its tooltip ----
+test("Help me understand toolbar icon with tooltip (1440-light)", async ({ page }) => {
+  if (!svc) throw new Error("service not running");
+  test.setTimeout(240_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+  await expect(page.locator("#C-central")).toBeVisible({ timeout: 60_000 });
+  await page.locator("#C-central").scrollIntoViewIfNeeded();
+  const button = page.locator('#C-central > .chead .ctl').getByRole("button", { name: "Help me understand" });
+  await expect(button).toBeVisible();
+  await hoverFresh(page, button);
+  await expect(page.locator("#tip")).toContainText("Help me understand", { timeout: 10_000 });
+  await checkLayout(page, "help-me-understand");
+  // Full page: the frame must show where the icon sits in the card toolbar.
+  await page.screenshot({ path: path.join(SHOTS, "help-me-understand-1440-light.png"), fullPage: true });
+});
+
 // ---- j20-critic-concepts-godeeper.spec.ts (frames re-added) ----
 /** J20 (#215/#216/#217): one critic job, concept pages on open, auto go-deeper — real service, replay. */
 
@@ -142,8 +159,11 @@ test.describe("J20 critic, concepts and go-deeper", () => {
     let svc: RunningService | null = null;
     try {
       svc = await startService(dataDir, { agent: "replay" });
+      // Auto go-deeper is off by default since #389: turn it on so
+      // every go-deeper card fills without a click.
+      await apiJson(svc, "PUT", "/api/settings", { autoGoDeeper: true });
       const reviewId = await createDemoReview(svc);
-      // #217 (default on): every go-deeper card fills without a click, in
+      // #217: every go-deeper card fills without a click, in
       // the background; #215: one critic job; #216: no concept pages yet.
       const snap = await poll(
         () => snapshot(svc!, reviewId),
@@ -226,7 +246,10 @@ test.describe("J20 critic, concepts and go-deeper", () => {
     let svc: RunningService | null = null;
     try {
       svc = await startService(dataDir, { agent: "replay" });
-      // Toggle off in Settings (Limits tab) before the review exists.
+      // The toggle starts on (enabled above the default-off since #389)
+      // so the test can toggle it off in Settings (Limits tab) before
+      // the review exists.
+      await apiJson(svc, "PUT", "/api/settings", { autoGoDeeper: true });
       await page.goto(`${svc.origin}/settings?token=${svc.token}`);
       await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible({ timeout: 30_000 });
       await page.getByRole("tab", { name: "Limits" }).click();
@@ -564,7 +587,6 @@ test.describe("J314 loose numbered lists", () => {
         pageId: "root",
         title: "Loose list",
         blocks: parseBlocks("1. First step\n\n2. Second step\n\n3. Third step\n\n4. Fourth step\n"),
-        level: "standard",
         revision: 1,
         undoStack: [],
         collapsed: false,
@@ -727,14 +749,13 @@ test.describe("J81 code citations outside the diff", () => {
         id,
         pageId: "root",
         title: id,
-        level: "standard",
         collapsed: false,
         revision: 1,
         blocks: [
           {
             type: "paragraph",
             id: `b-${id}`,
-            text: { standard: text },
+            text,
             citations: [{ target, ...(unverified ? { unverified: true } : {}) }],
           },
         ],

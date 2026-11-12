@@ -221,7 +221,7 @@ test.describe("L9 settings CRUD", () => {
       "concept_page",
       "ask",
       "ask_turn",
-      "depth",
+      "slower",
       "examples",
       "diagram",
       "go_deeper",

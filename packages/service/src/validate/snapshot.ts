@@ -25,7 +25,7 @@ export interface SnapshotLookupExtra {
 function blockText(block: Block): string {
   switch (block.type) {
     case "paragraph":
-      return [block.text.standard, block.text.simple ?? "", block.text.deep ?? ""].join("\n");
+      return block.text;
     case "heading":
       return block.html;
     case "list":
@@ -187,7 +187,7 @@ export function createSnapshotLookup(
           if (r.kind !== "comment") continue;
           for (const b of r.blocks ?? []) {
             if (b.type === "paragraph") {
-              const plain = b.text.standard.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+              const plain = b.text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
               if (plain) parts.push(plain);
             }
           }

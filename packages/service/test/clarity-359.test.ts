@@ -220,7 +220,7 @@ describe("Clarity seed and prompt composition", () => {
 
 describe("lens in every persona turn (option B)", () => {
   const ASK_REPLY = `The persona's answer about the fold.\n\n\`\`\`json\n{}\n\`\`\`\n`;
-  const DEPTH_SIMPLE = `A simpler variant line.\n\n\`\`\`json\n{"depth": {"level": "simple"}}\n\`\`\`\n`;
+  const SLOWER_VARIANT = `A slower variant line.\n\n\`\`\`json\n{"slower": {"cardId": "problem"}}\n\`\`\`\n`;
   const EXAMPLES_REPLY = `::: example\n\`\`\`\nexample one\n\`\`\`\n:::\n\n\`\`\`json\n{}\n\`\`\`\n`;
   const REPAIRED = `The persona's rewritten version.\n\n\`\`\`json\n{}\n\`\`\`\n`;
 
@@ -234,7 +234,7 @@ describe("lens in every persona turn (option B)", () => {
       { match: "could not be verified", events: textEvents(REPAIRED) },
       { match: "# Persona card", events: textEvents(CLARITY_REWRITE) },
       { match: "# Ask", events: textEvents(ASK_REPLY) },
-      { match: "# Depth rewrite", events: textEvents(DEPTH_SIMPLE) },
+      { match: "# Help me understand", events: textEvents(SLOWER_VARIANT) },
       { match: "# Examples", events: textEvents(EXAMPLES_REPLY) },
     ]);
   }
@@ -285,7 +285,7 @@ describe("lens in every persona turn (option B)", () => {
     }
   }
 
-  it("same-model persona (Clarity): card, explain, ask, depth and examples turns carry the lens; one base", { timeout: 180000 }, async () => {
+  it("same-model persona (Clarity): card, explain, ask, slower and examples turns carry the lens; one base", { timeout: 180000 }, async () => {
     const agents = lensAgents();
     const { app, ctx, id } = await runCard(agents);
     try {
@@ -302,10 +302,10 @@ describe("lens in every persona turn (option B)", () => {
         message: "Why this fold?",
         personaId: "clarity",
       });
-      await runJob(app, ctx, id, { kind: "depth", cardId: "problem", direction: "simpler", personaId: "clarity" });
+      await runJob(app, ctx, id, { kind: "slower", cardId: "problem", personaId: "clarity" });
       await runJob(app, ctx, id, { kind: "examples", cardId: "problem", personaId: "clarity" });
       const lensHead = "You are Clarity";
-      for (const marker of ["# Persona card", "# Ask", "# Depth rewrite", "# Examples"]) {
+      for (const marker of ["# Persona card", "# Ask", "# Help me understand", "# Examples"]) {
         expectLensInTurns(agents, marker, lensHead);
       }
       // No extra base: Clarity shares main's base (same provider/model).

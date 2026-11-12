@@ -22,7 +22,7 @@ function aside(id: string, inner: Block[]): Block {
 }
 
 function paragraph(id: string): Block {
-  return { type: "paragraph", id, text: { standard: "hi" }, citations: [] };
+  return { type: "paragraph", id, text: "hi", citations: [] };
 }
 
 const CARD_HASH = "card-top-00000001";
@@ -54,7 +54,6 @@ function snapshot(): { pages: Page[]; annotations: Thread[] } {
           id: "central",
           pageId: "root",
           title: null,
-          level: "standard",
           collapsed: false,
           revision: 1,
           blocks: [
@@ -91,7 +90,6 @@ function snapshot(): { pages: Page[]; annotations: Thread[] } {
             diagram(SRC[EXP_HASH], EXP_HASH),
             aside("ea1", [diagram(SRC[EXP_ASIDE_HASH], EXP_ASIDE_HASH)]),
           ],
-          level: "standard",
           revision: 2,
           undoStack: [],
         },
@@ -102,7 +100,6 @@ function snapshot(): { pages: Page[]; annotations: Thread[] } {
           who: "agent",
           question: "And then?",
           blocks: [diagram(SRC[TURN2_HASH], TURN2_HASH)],
-          level: "standard",
           revision: 1,
           undoStack: [],
         },
@@ -128,7 +125,6 @@ function snapshot(): { pages: Page[]; annotations: Thread[] } {
           who: "you",
           question: null,
           blocks: [paragraph("c1")],
-          level: "standard",
           revision: 1,
           undoStack: [],
         },

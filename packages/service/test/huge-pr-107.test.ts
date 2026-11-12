@@ -292,14 +292,13 @@ async function makeBigReview(
             id: `c${i}`,
             pageId: "root",
             title: `Card ${i}`,
-            level: "standard",
             collapsed: false,
             revision: 1,
             blocks: [
               {
                 type: "paragraph",
                 id: `b${i}`,
-                text: { standard: `See [[${target}]]` },
+                text: `See [[${target}]]`,
                 citations: [{ target }],
               },
             ],
@@ -388,14 +387,13 @@ describe("top-N auto hunk summaries (#376)", () => {
             id: `c${i}`,
             pageId: "root",
             title: `Card ${i}`,
-            level: "standard",
             collapsed: false,
             revision: 1,
             blocks: [
               {
                 type: "paragraph",
                 id: `b${i}`,
-                text: { standard: `See [[h:${byHash.get(hash)?.fileKey}:${hash}]]` },
+                text: `See [[h:${byHash.get(hash)?.fileKey}:${hash}]]`,
                 citations: [{ target: `h:${byHash.get(hash)?.fileKey}:${hash}` }],
               },
             ],

@@ -36,7 +36,7 @@ describe("BlockView heading (#327)", () => {
     seed();
     const block: Block = { type: "heading", id: "b2", html: "Interfaces with <strong>reach</strong>", citations: [] };
     const { container } = render(
-      <BlockView block={block} level="standard" threads={[]} cardId="c1" onOpenPage={() => {}} onFollowUp={() => {}} />,
+      <BlockView block={block} threads={[]} cardId="c1" onOpenPage={() => {}} onFollowUp={() => {}} />,
     );
     const h = container.querySelector("h3.subhead");
     expect(h).not.toBeNull();

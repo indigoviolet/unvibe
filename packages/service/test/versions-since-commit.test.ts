@@ -149,7 +149,6 @@ describe("since-B step 2: pure context builders", () => {
         id: "since-1",
         pageId: "since",
         title: "Delta",
-        level: "standard",
         collapsed: false,
         revision: 1,
         undoStack: [],
@@ -397,7 +396,7 @@ describe("since-B step 2: the no-review-yet path", () => {
               blocks: [{
                 type: "paragraph",
                 id: "b-s1",
-                text: { standard: "Beta now returns 22 and gamma is new." },
+                text: "Beta now returns 22 and gamma is new.",
                 citations: [{ target: cite }],
               }],
               answers: [{ kind: "commit", id: c1 }],

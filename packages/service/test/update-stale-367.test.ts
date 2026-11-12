@@ -24,7 +24,6 @@ function staleCard(id: string): Card {
     id,
     pageId: "root",
     title: `Card ${id}`,
-    level: "standard",
     collapsed: false,
     revision: 1,
     blocks: [],
@@ -97,7 +96,7 @@ describe("applyUpdateResult option A", () => {
               {
                 type: "paragraph",
                 id: "b1",
-                text: { standard: "Delta explained." },
+                text: "Delta explained.",
                 citations: [],
               },
             ],
@@ -133,7 +132,7 @@ describe("applyUpdateResult option A", () => {
                 {
                   type: "paragraph",
                   id: "b1",
-                  text: { standard: "Delta explained." },
+                  text: "Delta explained.",
                   citations: [],
                 },
               ],
@@ -214,14 +213,13 @@ describe("refresh re-stales cards citing changed hunks", () => {
           id: `card-${hash.slice(0, 6)}`,
           pageId: "root",
           title: `Card ${hash.slice(0, 6)}`,
-          level: "standard",
           collapsed: false,
           revision: 1,
           blocks: [
             {
               type: "paragraph",
               id: "b1",
-              text: { standard: "Review note." },
+              text: "Review note.",
               citations: [{ target: `h:${app!.fileKey}:${hash}` }],
             },
           ],

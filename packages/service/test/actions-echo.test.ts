@@ -164,30 +164,30 @@ Not with this PR. The message is rewritten in place.
     }
   });
 
-  it("depth drops a leading line echoing the card title", { timeout: 90000 }, async () => {
+  it("slower drops a leading line echoing the card title", { timeout: 90000 }, async () => {
     const reply = `The problem
 
-A simpler problem paragraph.
+A slower problem paragraph.
 
 \`\`\`json
-{"depth": {"level": "simple", "cardId": "problem"}}
+{"slower": {"cardId": "problem"}}
 \`\`\`
 `;
-    const agents = fakeWith([{ match: "# Depth rewrite", events: textEvents(reply) }]);
+    const agents = fakeWith([{ match: "# Help me understand", events: textEvents(reply) }]);
     const { app, ctx } = await createApp("tok", { agents });
     try {
       const id = await createDemoReview(app);
       await waitFor(() => !!ctx.reviews.getSnapshot(id)?.pages.find((p) => p.id === "root")?.cards.length);
 
-      const res = await postAction(app, id, { kind: "depth", cardId: "problem", direction: "simpler" });
+      const res = await postAction(app, id, { kind: "slower", cardId: "problem" });
       expect(res.status).toBe(200);
       await waitForJob(ctx, res.json.jobId as string);
       const card = ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "problem")!;
       const first = card.blocks[0];
       expect(first.type).toBe("paragraph");
       if (first.type !== "paragraph") return;
-      expect(first.text.simple).toContain("A simpler problem paragraph.");
-      expect(first.text.simple).not.toContain("The problem\n");
+      expect(first.text).toContain("A slower problem paragraph.");
+      expect(first.text).not.toContain("The problem\n");
     } finally {
       await app.close();
     }

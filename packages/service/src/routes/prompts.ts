@@ -17,7 +17,7 @@
  *   update_pass, consolidate, persona_card) expand against real review
  *   data: source blurb, diff section (with the same budget fallback the
  *   pipeline uses), pinned code, guide, concepts, hunk summaries, the log.
- * - Turn templates (explain, ask, depth, examples, diagram,
+ * - Turn templates (explain, ask, slower, examples, diagram,
  *   go_deeper) have no live anchor "now": their L4 renders with the
  *   review's real change list plus clearly-marked `(…)` placeholders for
  *   the anchor quote, thread, card-under-edit and user message.
@@ -128,7 +128,6 @@ export function guideRevisionForSnapshot(snap: ReviewSnapshot): string {
     p.cards.map((c) => [
       c.id,
       c.title,
-      c.level,
       c.revision,
       c.blocks.map((b) => [b.id, b.type]),
     ]),
@@ -234,7 +233,6 @@ export function toPromptSnapshot(
   const cards: GuideCardInput[] = (root?.cards ?? []).map((c) => ({
     id: c.id,
     title: c.title,
-    level: c.level,
     revision: c.revision,
     markdown: renderMarkdown(c.blocks).trim(),
   }));
@@ -257,7 +255,7 @@ export function toPromptSnapshot(
         slug: p.id.startsWith("c-") ? p.id.slice(2) : p.id,
         title: p.title,
         oneLine:
-          first && first.type === "paragraph" ? plainText(first.text.standard) : "",
+          first && first.type === "paragraph" ? plainText(first.text) : "",
       };
     });
 
@@ -399,7 +397,6 @@ const PH = {
   thread: "(no thread yet)",
   message: "(the reader's message is attached when the action runs)",
   card: "(no card selected)",
-  level: "(target level)",
   direction: "(no placeholder selected)",
   changedHunks: "(no newer version — the update pass lists changed hunks here)",
   staleCards: "(guide is current — affected cards are listed here after a refresh)",
@@ -546,9 +543,9 @@ export function expandAll(lib: TemplateLibrary, snapshot: PromptReviewSnapshot, 
     changed_hunks: "(no changes)",
     message: PH.message,
   });
-  forked("depth", { card: cardText, level: PH.level });
-  forked("examples", { card: cardText, level: PH.level });
-  forked("diagram", { card: cardText, level: PH.level });
+  forked("slower", { card: cardText });
+  forked("examples", { card: cardText });
+  forked("diagram", { card: cardText });
   forked("go_deeper", { direction: PH.direction, glossary: glossaryForPreview });
   forked("update_pass", {
     changed_hunks: PH.changedHunks,

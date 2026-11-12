@@ -11,7 +11,7 @@
  * fails, or the answer needs no job (`accepted: false`, `reused`, no
  * `jobId`). `deduplicated` answers follow the existing job.
  */
-import type { ActionResponse, DepthLevel, ReviewAction, ReviewSnapshot } from "@unvibe/shared";
+import type { ActionResponse, ReviewAction, ReviewSnapshot } from "@unvibe/shared";
 import { api, apiErrorCode, friendlyError } from "../api/client.js";
 import { toast } from "../floating/Toast.js";
 import { INFLIGHT_TTL_MS, inflightExpired, useReview, type InFlightKind } from "../state/store.js";
@@ -100,8 +100,8 @@ function notAvailable(res: ActionResponse): boolean {
 
 /**
  * In-flight key for a persona's version of a card (issue #349 step 2).
- * Every agent run on a variant — the persona run itself plus depth,
- * examples, diagram and undo on it — shares this key, so the variant
+ * Every agent run on a variant — the persona run itself plus slower
+ * rewrites, examples, diagram and undo on it — shares this key, so the variant
  * tab shows exactly one indicator.
  */
 export function personaVariantKey(cardId: string, personaId: string): string {
@@ -113,7 +113,7 @@ function targetForAction(action: ReviewAction): { targetId: string; kind: InFlig
   switch (action.kind) {
     case "persona":
       return { targetId: personaVariantKey(action.cardId, action.personaId), kind: "persona" };
-    case "depth":
+    case "slower":
     case "examples":
     case "diagram":
     case "generate":
@@ -157,26 +157,6 @@ function serverIdFor(action: ReviewAction, res: ActionResponse): string | null {
     default:
       return null;
   }
-}
-
-/**
- * Current level of a page card, its persona variant (issue #349 step 2),
- * or a conversation answer (depth toast baseline).
- */
-function currentLevel(cardId: string, personaId?: string): DepthLevel | undefined {
-  const snap = useReview.getState().snapshot;
-  for (const p of snap?.pages ?? []) {
-    const card = p.cards.find((c) => c.id === cardId);
-    if (card) {
-      if (personaId) return card.variants?.[personaId]?.level;
-      return card.level;
-    }
-  }
-  for (const a of snap?.annotations ?? []) {
-    const turn = (a.replies ?? []).find((t) => t.id === cardId);
-    if (turn) return turn.level;
-  }
-  return undefined;
 }
 
 /**
@@ -331,9 +311,9 @@ export async function performAction(
   // handlers, so everything before the first await runs at click time.
   const target = targetForAction(action);
   // Issue #349 step 2: variant-scoped actions baseline the variant's own
-  // revision/level, not the guide card's.
+  // revision, not the guide card's.
   const actionPersonaId =
-    (action.kind === "depth" ||
+    (action.kind === "slower" ||
       action.kind === "examples" ||
       action.kind === "diagram" ||
       action.kind === "undo" ||
@@ -349,12 +329,6 @@ export async function performAction(
     target && (action.kind === "examples" || action.kind === "diagram")
       ? currentRevision(actionCardId ?? target.targetId, actionPersonaId)
       : undefined;
-  // Depth toast baseline (issue #65): the level at click time. The
-  // service answers a reused depth with the level after the action, so a
-  // stored-level switch (changed) stays silent while already-at-the-limit
-  // (unchanged) toasts.
-  const beforeLevel =
-    target && action.kind === "depth" ? currentLevel(actionCardId ?? target.targetId, actionPersonaId) : undefined;
   if (target) useReview.getState().beginInflight(target.targetId, target.kind);
   // Generation guard: a newer click may re-begin the same key while this
   // request is in flight; only this generation's response may settle it.
@@ -398,19 +372,10 @@ export async function performAction(
   }
   if (notAvailable(res)) return res;
   // Audit-10 (#10) reuse: the service returned the stored result with no job.
-  // Depth toasts only when the level did not change and nothing was added
-  // (issue #65): a stored-level switch answers reused with the new level
-  // and stays silent; already-at-the-limit answers reused with the same
-  // level. Other reuses are silent since the stored content is already
-  // visible.
+  // Reuses are silent since the stored content is already visible,
+  // except examples/diagram repeats that added nothing.
   if (res.reused) {
-    if (action.kind === "depth" && !res.jobId) {
-      // No level to compare (unknown shape): keep today's toast rather
-      // than silently dropping at-the-limit feedback.
-      if (res.level === undefined || res.level === beforeLevel) {
-        toast(action.direction === "simpler" ? "Already at the simplest level" : "Already at the deepest level");
-      }
-    } else if (action.kind === "examples" || action.kind === "diagram") {
+    if (action.kind === "examples" || action.kind === "diagram") {
       toast("Nothing more to add to this card");
     }
   }

@@ -391,7 +391,7 @@ describe("dedupe", () => {
     const { queue } = makeQueue();
     const gate = deferred();
     let secondRuns = 0;
-    const dedupe = { anchor: "card:c1", requestKind: "explain", depth: "standard", baseVersion: "v1" };
+    const dedupe = { anchor: "card:c1", requestKind: "explain", baseVersion: "v1" };
     const first = queue.enqueue(spec({ dedupe, run: (ctx) => gate.promise.then(() => ctx.reportText("hi")) }));
     const second = queue.enqueue(spec({ dedupe, run: async () => void secondRuns++ }));
     expect(second.id).toBe(first.id);
@@ -401,13 +401,13 @@ describe("dedupe", () => {
     expect(queue.get(first.id)?.state).toBe("done");
   });
 
-  it("different depths do not dedupe", async () => {
+  it("different revisions do not dedupe", async () => {
     const { queue } = makeQueue();
     const a = queue.enqueue(
-      spec({ dedupe: { anchor: "x", requestKind: "depth", depth: "simple", baseVersion: "v1" } }),
+      spec({ dedupe: { anchor: "x", requestKind: "slower", revision: 1, baseVersion: "v1" } }),
     );
     const b = queue.enqueue(
-      spec({ dedupe: { anchor: "x", requestKind: "depth", depth: "deep", baseVersion: "v1" } }),
+      spec({ dedupe: { anchor: "x", requestKind: "slower", revision: 2, baseVersion: "v1" } }),
     );
     expect(a.id).not.toBe(b.id);
     await queue.drain();
@@ -543,7 +543,7 @@ describe("persistence and restart recovery", () => {
       onEvent: (_review, e) => events.push(e),
       persist,
     });
-    const dedupe = { anchor: "card:c1", requestKind: "explain", depth: "standard", baseVersion: "v1" };
+    const dedupe = { anchor: "card:c1", requestKind: "explain", baseVersion: "v1" };
     let ran = false;
     expect(() =>
       queue.enqueue(spec({ dedupe, run: async () => void (ran = true) })),

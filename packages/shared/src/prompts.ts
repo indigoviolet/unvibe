@@ -18,7 +18,7 @@ export const PROMPT_TEMPLATE_NAMES = [
   "concept_page",
   "ask",
   "ask_turn",
-  "depth",
+  "slower",
   "examples",
   "diagram",
   "go_deeper",
@@ -45,7 +45,7 @@ export interface PromptLayerSpan {
   cached: boolean;
 }
 
-/** Persona task templates (issue #349): the card task plus the shared Explain / Ask / depth / examples / diagram / concept tasks. */
-export const PERSONA_TASK_TEMPLATES = ["persona_card", "ask", "ask_turn", "depth", "examples", "diagram", "concept_page"] as const;
+/** Persona task templates (issue #349): the card task plus the shared Explain / Ask / slower / examples / diagram / concept tasks. */
+export const PERSONA_TASK_TEMPLATES = ["persona_card", "ask", "ask_turn", "slower", "examples", "diagram", "concept_page"] as const;
 
 export type PersonaTaskTemplate = (typeof PERSONA_TASK_TEMPLATES)[number];

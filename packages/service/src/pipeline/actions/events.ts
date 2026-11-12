@@ -4,8 +4,7 @@
  * append-only log and with what scope).
  *
  * - explain / follow-up answers (new conversation turns) → `new-card`;
- * - agent depth rewrites → `depth-rewrite` (card scope); instant cached
- *   switches → `depth-state` (UI state, never logged);
+ * - agent slower rewrites → `slower-rewrite` (card scope);
  * - examples / diagrams → `example-added` / `diagram-added` (card scope);
  * - ask replies citing fetched `code:` (outside the diff/descriptions in
  *   L1) → `out-of-base-answer` in full; threads themselves settle later

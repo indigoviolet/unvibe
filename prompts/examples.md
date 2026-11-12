@@ -1,7 +1,7 @@
 ---
 role: user
 tier: main
-variables: [card, level]
+variables: [card]
 ---
 
 # Examples
@@ -14,10 +14,6 @@ already has.
 
 {{card}}
 
-## Level to match
-
-{{level}}
-
 ## Rules
 
 - One example per paragraph that needs one; skip paragraphs that are clear
@@ -27,7 +23,7 @@ already has.
   paragraph it relates to, holding a short fenced code block with one or
   two lines of prose saying what it shows. Cite the diff or test lines the
   values come from.
-- Match the card's level: concrete and jargon-free at `simple`, precise
-  at `standard`, exposing the general rule at `deep`.
+- Match the card's current wording: use the same terms and level of
+  detail as the text around the example.
 - Output the card's new blocks in order (each `::: example` where it goes),
   then the trailing `json` block.

@@ -48,7 +48,7 @@ export function GuideCopyButton({ reviewId }: { reviewId: string }): React.JSX.E
         isDefaultGuideTitle(page.title) ? identityTitle : page.title,
         page.cards
           .filter((c) => !c.pending)
-          .map((c) => ({ title: c.title, blocks: c.blocks, level: c.level })),
+          .map((c) => ({ title: c.title, blocks: c.blocks })),
         ctx,
         { findPage },
       ),

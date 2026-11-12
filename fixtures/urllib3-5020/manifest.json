@@ -99,131 +99,6 @@
       "file": "go-deeper-regex.md"
     },
     {
-      "kind": "depth",
-      "key": "problem:simple",
-      "file": "depth-problem-simple.md"
-    },
-    {
-      "kind": "depth",
-      "key": "problem:deep",
-      "file": "depth-problem-deep.md"
-    },
-    {
-      "kind": "depth",
-      "key": "central:simple",
-      "file": "depth-central-simple.md"
-    },
-    {
-      "kind": "depth",
-      "key": "central:deep",
-      "file": "depth-central-deep.md"
-    },
-    {
-      "kind": "depth",
-      "key": "buildup:simple",
-      "file": "depth-buildup-simple.md"
-    },
-    {
-      "kind": "depth",
-      "key": "buildup:deep",
-      "file": "depth-buildup-deep.md"
-    },
-    {
-      "kind": "depth",
-      "key": "decisions:simple",
-      "file": "depth-decisions-simple.md"
-    },
-    {
-      "kind": "depth",
-      "key": "decisions:deep",
-      "file": "depth-decisions-deep.md"
-    },
-    {
-      "kind": "depth",
-      "key": "g-alt:simple",
-      "file": "depth-g-alt-simple.md"
-    },
-    {
-      "kind": "depth",
-      "key": "g-alt:deep",
-      "file": "depth-g-alt-deep.md"
-    },
-    {
-      "kind": "depth",
-      "key": "g-regex:simple",
-      "file": "depth-g-regex-simple.md"
-    },
-    {
-      "kind": "depth",
-      "key": "g-regex:deep",
-      "file": "depth-g-regex-deep.md"
-    },
-    {
-      "kind": "depth",
-      "key": "g-tests:simple",
-      "file": "depth-g-tests-simple.md"
-    },
-    {
-      "kind": "depth",
-      "key": "g-tests:deep",
-      "file": "depth-g-tests-deep.md"
-    },
-    {
-      "kind": "depth",
-      "key": "g-reach:simple",
-      "file": "depth-g-reach-simple.md"
-    },
-    {
-      "kind": "depth",
-      "key": "g-reach:deep",
-      "file": "depth-g-reach-deep.md"
-    },
-    {
-      "kind": "depth",
-      "key": "evidence-adjacent-folds:simple",
-      "file": "depth-evidence-adjacent-folds-simple.md"
-    },
-    {
-      "kind": "depth",
-      "key": "evidence-adjacent-folds:deep",
-      "file": "depth-evidence-adjacent-folds-deep.md"
-    },
-    {
-      "kind": "depth",
-      "key": "assessment-adjacent-folds:simple",
-      "file": "depth-assessment-adjacent-folds-simple.md"
-    },
-    {
-      "kind": "depth",
-      "key": "assessment-adjacent-folds:deep",
-      "file": "depth-assessment-adjacent-folds-deep.md"
-    },
-    {
-      "kind": "depth",
-      "key": "evidence-bare-lf:simple",
-      "file": "depth-evidence-bare-lf-simple.md"
-    },
-    {
-      "kind": "depth",
-      "key": "evidence-bare-lf:deep",
-      "file": "depth-evidence-bare-lf-deep.md"
-    },
-    {
-      "kind": "depth",
-      "key": "assessment-bare-lf:simple",
-      "file": "depth-assessment-bare-lf-simple.md"
-    },
-    {
-      "kind": "depth",
-      "key": "assessment-bare-lf:deep",
-      "file": "depth-assessment-bare-lf-deep.md"
-    },
-    {
-      "kind": "depth",
-      "key": "expansion:deep",
-      "file": "depth-expansion-deep.md"
-    },
-    {
       "kind": "examples",
       "key": "problem",
       "file": "examples-problem.md"
@@ -382,6 +257,36 @@
       "kind": "persona",
       "key": "central:clarity",
       "file": "persona-central-clarity.md"
+    },
+    {
+      "kind": "slower",
+      "key": "central:1",
+      "file": "slower-central-press1.md"
+    },
+    {
+      "kind": "slower",
+      "key": "central:2",
+      "file": "slower-central-press2.md"
+    },
+    {
+      "kind": "slower",
+      "key": "expansion:1",
+      "file": "slower-expansion-press1.md"
+    },
+    {
+      "kind": "slower",
+      "key": "expansion:2",
+      "file": "slower-expansion-press2.md"
+    },
+    {
+      "kind": "slower",
+      "key": "g-regex:1",
+      "file": "slower-g-regex-1.md"
+    },
+    {
+      "kind": "slower",
+      "key": "persona:central:1",
+      "file": "slower-persona-central-1.md"
     }
   ]
 }

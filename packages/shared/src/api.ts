@@ -11,7 +11,6 @@ import type {
   ContextRepoRef,
   ContextRepoSource,
   Contribution,
-  DepthLevel,
   DocumentContent,
   ExistingReviewComment,
   FileState,
@@ -932,14 +931,14 @@ export type ReviewAction =
   | { kind: "note"; quote: string; anchor: ActionAnchor; text?: string; offsets?: SelectionOffsets }
   /**
    * Issue #273: `cardId` is a page-card id or one thread reply's
-   * `ans_…` id. Depth, examples, diagram and undo act on that unit's
-   * own blocks/level/undo stack, so a reply rewrites alone.
+   * `ans_…` id. Slower rewrites, examples, diagram and undo act on that
+   * unit's own blocks/undo stack, so a reply rewrites alone.
    *
    * Issue #349 step 2: `personaId` selects a persona's version of a
-   * page card (its own blocks/level/undo stack and its own session).
+   * page card (its own blocks/undo stack and its own session).
    * Absent means the Guide version.
    */
-  | { kind: "depth"; cardId: string; direction: "simpler" | "deeper"; personaId?: string }
+  | { kind: "slower"; cardId: string; personaId?: string }
   | { kind: "examples"; cardId: string; personaId?: string }
   | { kind: "diagram"; cardId: string; personaId?: string }
   | { kind: "undo"; cardId: string; personaId?: string }
@@ -1034,22 +1033,16 @@ export interface ActionResponse {
   turnId?: string;
   /** M4: page created or targeted (promote/concept). */
   pageId?: string;
-  /** M4: card created or targeted (depth/examples/diagram/undo/collapse/followup). */
+  /** M4: card created or targeted (slower/examples/diagram/undo/collapse/followup). */
   cardId?: string;
   /** M4: true when an identical active request was reused (dedupe, PRD §12). */
   deduplicated?: boolean;
   /**
    * Audit-10 (#10): true when a stored result for the identical request
-   * (anchor, kind, depth, base version, PRD §12) was returned without an
+   * (anchor, kind, revision, base version, PRD §12) was returned without an
    * agent call. No job is created and no tokens are spent.
    */
   reused?: boolean;
-  /**
-   * Depth stepper result (issue #65): the card/answer level after the
-   * action. Lets the client tell a stored-level switch (level changed:
-   * silent) from already-at-the-limit (level unchanged: toast).
-   */
-  level?: DepthLevel;
 }
 
 // --- diagrams (D2 decision addendum) ---------------------------------------

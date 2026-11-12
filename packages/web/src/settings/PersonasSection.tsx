@@ -497,7 +497,7 @@ function PersonaForm({
         htmlFor={`${testIdPrefix}-lens`}
         help={
           fixed
-            ? "Tone and wording for everything the Guide writes (guide, cards, depth, Explain, Ask). Empty means no extra style. The task's own rules stay authoritative."
+            ? "Tone and wording for everything the Guide writes (guide, cards, slower rewrites, Explain, Ask). Empty means no extra style. The task's own rules stay authoritative."
             : "Who the persona is and what it looks for — applied to every task it performs."
         }
         layout="stacked"

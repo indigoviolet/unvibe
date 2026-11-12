@@ -53,9 +53,8 @@ const plain = (s: string): string => s.replace(/<[^>]+>/g, "");
 function replyPlain(reply: { blocks?: Array<{ type: string }> }): string {
   for (const b of ((reply.blocks ?? []) as Array<Record<string, unknown>>)) {
     if (b["type"] === "paragraph") {
-      const t = b["text"] as Record<string, unknown> | undefined;
-      const std = typeof t?.["standard"] === "string" ? (t["standard"] as string) : "";
-      const p = plain(std);
+      const t = b["text"];
+      const p = plain(typeof t === "string" ? t : "");
       if (p) return p.slice(0, 140);
     }
   }

@@ -15,21 +15,21 @@ describe("persona card variants (#349 step 2)", () => {
       isCardVariant({
         personaId: "p1",
         blocks: [],
-        level: "standard",
         revision: 1,
         undoStack: [],
       }),
     ).toBe(true);
     expect(isCardVariant({ blocks: [] })).toBe(false);
-    expect(isCardVariant({ personaId: "p1", blocks: [], level: "extreme", revision: 1, undoStack: [] })).toBe(false);
+    expect(isCardVariant({ personaId: "p1", blocks: [], undoStack: [] })).toBe(false);
+    expect(isCardVariant({ personaId: "p1", blocks: [], revision: 1, undoStack: {}, sessionId: 7 })).toBe(false);
     expect(isCardVariant(null)).toBe(false);
   });
 
   it("cardVariantList returns variants in persona order", () => {
     const list = cardVariantList(
       cardWith({
-        b: { personaId: "b", blocks: [], level: "simple", revision: 1, undoStack: [] },
-        a: { personaId: "a", blocks: [], level: "deep", revision: 2, undoStack: [] },
+        b: { personaId: "b", blocks: [], revision: 1, undoStack: [] },
+        a: { personaId: "a", blocks: [], revision: 2, undoStack: [] },
       }),
       [{ id: "a" }, { id: "b" }, { id: "missing" }],
     );
@@ -40,11 +40,11 @@ describe("persona card variants (#349 step 2)", () => {
     expect(cardHasVersions(cardWith(undefined))).toBe(false);
     expect(cardHasVersions(cardWith({}))).toBe(false);
     expect(
-      cardHasVersions(cardWith({ a: { personaId: "a", blocks: [], level: "standard", revision: 1, undoStack: [] } })),
+      cardHasVersions(cardWith({ a: { personaId: "a", blocks: [], revision: 1, undoStack: [] } })),
     ).toBe(true);
     // A variant whose persona was deleted since still counts as a version.
     expect(
-      cardHasVersions(cardWith({ a: { personaId: "a", blocks: [], level: "standard", revision: 1, undoStack: [] } })),
+      cardHasVersions(cardWith({ a: { personaId: "a", blocks: [], revision: 1, undoStack: [] } })),
     ).toBe(true);
   });
 });
