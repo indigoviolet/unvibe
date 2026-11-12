@@ -51,9 +51,13 @@ function fakePr(n: number, title: string, author = "teammate"): unknown {
 interface GhBodies {
   direct?: unknown[];
   all?: unknown[];
+  reviewed?: unknown[];
+  authorOther?: unknown[];
   /** End cursor the stub reports for each search ("-" = exhausted). */
   directCursor?: string | null;
   allCursor?: string | null;
+  reviewedCursor?: string | null;
+  authorOtherCursor?: string | null;
 }
 
 /** Stub `gh api graphql` by search qualifier; records every `gh` invocation. */
@@ -68,9 +72,22 @@ function stubGh(bodies: GhBodies): { runner: CommandRunner; ghCalls: string[][] 
       if (cmd !== "gh") return real.run(cmd, opts);
       ghCalls.push(opts.args);
       const q = valueOf(opts.args, "q") ?? "";
-      const key = q.includes("user-review-requested:@me") ? "direct" : "all";
-      const rows = key === "direct" ? [...(bodies.direct ?? [])] : [...(bodies.all ?? [])];
-      const endCursor = key === "direct" ? (bodies.directCursor ?? null) : (bodies.allCursor ?? null);
+      const key = q.includes("reviewed-by:@me")
+        ? "reviewed"
+        : q.includes("user-review-requested:@me")
+          ? "direct"
+          : q.includes("review-requested:@me")
+            ? "all"
+            : "authorOther";
+      const rows = [...((key === "direct" ? bodies.direct : key === "all" ? bodies.all : key === "reviewed" ? bodies.reviewed : bodies.authorOther) ?? [])];
+      const endCursor =
+        key === "direct"
+          ? (bodies.directCursor ?? null)
+          : key === "all"
+            ? (bodies.allCursor ?? null)
+            : key === "reviewed"
+              ? (bodies.reviewedCursor ?? null)
+              : (bodies.authorOtherCursor ?? null);
       return {
         stdout: JSON.stringify({
           data: {
@@ -144,9 +161,10 @@ describe("requestedPrs union (#307, GraphQL #310)", () => {
       expect(byNumber.get(301)?.reviewScope).toBe("direct");
       expect(byNumber.get(201)?.reviewScope).toBe("team");
       expect(byNumber.get(202)?.reviewScope).toBe("team");
-      // The team search has another page.
+      // The team search has another page; the reviewed search is
+      // exhausted and there is no author search without a typed login.
       expect(body.hasMore).toBe(true);
-      expect(decodeChangesCursor(body.cursor)).toEqual({ direct: null, team: "t1" });
+      expect(decodeChangesCursor(body.cursor)).toEqual({ direct: null, team: "t1", reviewed: null, authorOther: null });
     } finally {
       await app.close();
     }

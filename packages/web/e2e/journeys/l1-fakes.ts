@@ -168,6 +168,48 @@ const MO_DIRECT_BY_LOGIN: Record<string, L1FakePr[]> = {
   yara: MO_YARA,
 };
 
+// reviewed repo (#385): direct draft, team approved, already-reviewed and
+// author-only PRs (made-up logins only).
+const T701 = "2026-10-04T00:00:00Z";
+const T702 = "2026-10-03T00:00:00Z";
+const T703 = "2026-10-02T00:00:00Z";
+const T704 = "2026-10-01T00:00:00Z";
+const T705 = "2026-09-30T00:00:00Z";
+const T706 = "2026-09-29T00:00:00Z";
+function l1rvPr(n: number, title: string, author: string, extra: Partial<L1FakePr> = {}): L1FakePr {
+  return l1pr(n, title, author, `rv-branch-${n}`, {
+    url: `https://github.com/acme/reviewed/pull/${n}`,
+    ...extra,
+  });
+}
+const RV_AUTHORING: L1FakePr[] = [];
+const RV_DIRECT: L1FakePr[] = [
+  { ...l1rvPr(701, "Iris asks you directly", "iris", { isDraft: true }), updatedAt: T701, userRequests: ["reviewer"] },
+];
+const RV_TEAM: L1FakePr[] = [
+  { ...l1rvPr(701, "Iris asks you directly", "iris", { isDraft: true }), updatedAt: T701, userRequests: ["reviewer"] },
+  { ...l1rvPr(702, "Iris asks the team", "iris", { reviewDecision: "APPROVED" }), updatedAt: T702, teamRequests: ["core"] },
+];
+const RV_REVIEWED: L1FakePr[] = [
+  { ...l1rvPr(703, "Iris already reviewed", "iris"), updatedAt: T703, latestReviews: [{ login: "reviewer", state: "APPROVED" }] },
+  { ...l1rvPr(704, "Juno already reviewed", "juno", { isDraft: true }), updatedAt: T704, latestReviews: [{ login: "reviewer", state: "COMMENTED" }] },
+];
+const RV_DIRECT_IRIS: L1FakePr[] = RV_DIRECT;
+const RV_TEAM_IRIS: L1FakePr[] = RV_TEAM;
+const RV_REVIEWED_IRIS: L1FakePr[] = [RV_REVIEWED[0]!];
+const RV_AUTHOR_IRIS: L1FakePr[] = [
+  ...RV_TEAM,
+  RV_REVIEWED[0]!,
+  { ...l1rvPr(705, "Iris works alone", "iris"), updatedAt: T705 },
+];
+const RV_DIRECT_JUNO: L1FakePr[] = [];
+const RV_TEAM_JUNO: L1FakePr[] = [];
+const RV_REVIEWED_JUNO: L1FakePr[] = [RV_REVIEWED[1]!];
+const RV_AUTHOR_JUNO: L1FakePr[] = [
+  RV_REVIEWED[1]!,
+  { ...l1rvPr(706, "Juno works alone", "juno", { reviewDecision: "APPROVED" }), updatedAt: T706 },
+];
+
 // stack repo (j321): 3-PR implicit stack.
 const ST_STACK = [
   { number: 11, title: "Stack base change", head: "feat-a", base: "main" },
@@ -185,6 +227,18 @@ export function writeL1Pools(poolDir: string): void {
   write("fi-authoring", FI_AUTHORING);
   write("fi-direct", FI_DIRECT);
   write("fi-team", FI_TEAM);
+  write("rv-authoring", RV_AUTHORING);
+  write("rv-direct", RV_DIRECT);
+  write("rv-team", RV_TEAM);
+  write("rv-reviewed", RV_REVIEWED);
+  write("rv-direct-iris", RV_DIRECT_IRIS);
+  write("rv-team-iris", RV_TEAM_IRIS);
+  write("rv-reviewed-iris", RV_REVIEWED_IRIS);
+  write("rv-author-iris", RV_AUTHOR_IRIS);
+  write("rv-direct-juno", RV_DIRECT_JUNO);
+  write("rv-team-juno", RV_TEAM_JUNO);
+  write("rv-reviewed-juno", RV_REVIEWED_JUNO);
+  write("rv-author-juno", RV_AUTHOR_JUNO);
   write("mo-authoring", MO_AUTHORING);
   MO_DIRECT_PAGES.forEach((page, i) =>
     write(`mo-direct-p${i + 1}`, page, `d${i + 1}`, i < 3),
@@ -306,22 +360,59 @@ if [ "$1" = "api" ] && [ "$2" = "graphql" ]; then
       ;;
     *repo:acme/prlist*)
       case "$*" in
+        # #385: the reviewed-by search is empty for this repo (its own
+        # shape lives on acme/reviewed). It must dispatch before
+        # "author:", which its -author:@me qualifier would match.
+        *"reviewed-by:"*) echo '${L1_EMPTY_SEARCH}' ;;
         *"user-review-requested:@me"*) cat "$POOL/pl-direct.json" ;; 
         *"review-requested:@me"*) cat "$POOL/pl-team.json" ;;
-        *"author:"*) cat "$POOL/pl-authoring.json" ;;
+        *"is:pr"*) cat "$POOL/pl-authoring.json" ;;
+        # #385: the author's-other-PRs search is empty for this repo
+        # (its own shape lives on acme/reviewed).
         *) echo '${L1_EMPTY_SEARCH}' ;;
       esac
       ;;
     *repo:acme/filter*)
       case "$*" in
+        *"reviewed-by:"*) echo '${L1_EMPTY_SEARCH}' ;;
         *"user-review-requested:@me"*) cat "$POOL/fi-direct.json" ;;
         *"review-requested:@me"*) cat "$POOL/fi-team.json" ;;
-        *"author:"*) cat "$POOL/fi-authoring.json" ;;
+        *"is:pr"*) cat "$POOL/fi-authoring.json" ;;
+        # #385: the author's-other-PRs search is empty for this repo.
+        *) echo '${L1_EMPTY_SEARCH}' ;;
+      esac
+      ;;
+    *repo:acme/reviewed*)
+      case "$*" in
+        *"is:pr"*) cat "$POOL/rv-authoring.json" ;;
+        *"reviewed-by:"*)
+          case "$*" in
+            *author:iris*) cat "$POOL/rv-reviewed-iris.json" ;;
+            *author:juno*) cat "$POOL/rv-reviewed-juno.json" ;;
+            *) cat "$POOL/rv-reviewed.json" ;;
+          esac ;;
+        *"user-review-requested:"*)
+          case "$*" in
+            *author:iris*) cat "$POOL/rv-direct-iris.json" ;;
+            *author:juno*) cat "$POOL/rv-direct-juno.json" ;;
+            *) cat "$POOL/rv-direct.json" ;;
+          esac ;;
+        *"review-requested:"*)
+          case "$*" in
+            *author:iris*) cat "$POOL/rv-team-iris.json" ;;
+            *author:juno*) cat "$POOL/rv-team-juno.json" ;;
+            *) cat "$POOL/rv-team.json" ;;
+          esac ;;
+        *"author:iris"*) cat "$POOL/rv-author-iris.json" ;;
+        *"author:juno"*) cat "$POOL/rv-author-juno.json" ;;
         *) echo '${L1_EMPTY_SEARCH}' ;;
       esac
       ;;
     *repo:acme/more*)
       case "$*" in
+        # #385: empty here (the shape lives on acme/reviewed); before
+        # "author:@me", which its -author:@me qualifier would match.
+        *"reviewed-by:"*) echo '${L1_EMPTY_SEARCH}' ;;
         *"author:@me"*) cat "$POOL/mo-authoring.json" ;;
         *"author:"*)
           login=$(printf '%s' "$*" | sed -n 's/.*author:\\([A-Za-z@-]*\\).*/\\1/p')
@@ -354,6 +445,7 @@ if [ "$1" = "api" ] && [ "$2" = "graphql" ]; then
       ST=$(cat "$LOG/state" 2>/dev/null || echo open)
       HD=$(cat "$LOG/head" 2>/dev/null || echo unknown)
       case "$*" in
+        *reviewed-by:*) echo '${L1_EMPTY_SEARCH}' ;;
         *search\\(query:*)
           if [ "$ST" = "merged" ]; then echo '${L1_EMPTY_SEARCH}'
           else printf '{"data":{"search":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"__typename":"PullRequest","number":2,"title":"Journey test PR","author":{"login":"author"},"updatedAt":"2026-10-01T00:00:00Z","headRefName":"feature","additions":3,"deletions":1,"changedFiles":2,"url":"https://github.com/acme/app/pull/2","state":"OPEN","isDraft":false,"reviewDecision":"REVIEW_REQUIRED","reviewRequests":{"nodes":[]},"latestReviews":{"nodes":[]}}]}}}\\n'
@@ -368,6 +460,7 @@ if [ "$1" = "api" ] && [ "$2" = "graphql" ]; then
       ;;
     *repo:acme/stack*)
       case "$*" in
+        *reviewed-by:*) echo '${L1_EMPTY_SEARCH}' ;;
         *pullRequests*) cat "$POOL/st-nodes.json" ;;
         *"author:@me"*) cat "$POOL/st-search.json" ;;
         *) echo '${L1_EMPTY_SEARCH}' ;;
@@ -458,6 +551,9 @@ if [ "$1" = "api" ] && [ "$2" = "graphql" ]; then
       ;;
     *repo:acme/progapp*)
       case "$*" in
+        # #385: the reviewed-by search is empty here and never waits for
+        # the release marker (only the review-requested searches hold).
+        *reviewed-by:*) echo '{"data":{"search":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}' ;;
         *search\\(query:*)
           # The review-requested searches wait for the release marker, so
           # the spec can observe the other sections (and the kept rows on

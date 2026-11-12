@@ -82,7 +82,11 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
   - **PRs waiting on your review:** `gh pr list --search "review-requested:@me"`
     split into **requested of you** (direct, `user-review-requested:@me`) and
     **requested of your team** (the rest, with team names), each newest
-    first;
+    first — plus open PRs you already reviewed (`reviewed-by:@me`, minus
+    your own), which land in requested of you unless a requested search
+    still returns them. Typing an author narrows every search to that
+    login and adds their other open PRs under **not requested of you**;
+    drafts and approval status never filter any of these lists;
   - **recent branches** (local and remote, by last commit date, newest
     first with the commit age on each row);
   - one remembered recency filter (1d, 3d, 1w, 2w, All) at the block's

@@ -101,6 +101,21 @@ async function serviceStart(page: Page, svc: RunningService, repoId: string, exp
   await expect(page.getByLabel('Repo', { exact: true })).toContainText(expectRepo ?? repoId, { timeout: 15_000 });
 }
 
+/** Which start-page group a PR row sits under: the nearest preceding `.subhead`. #385: group membership is the assertion (direct vs team vs "Not requested of you"), not just visibility. */
+async function groupOf(page: Page, title: string): Promise<string | null> {
+  return page.evaluate((t) => {
+    const rows = [...document.querySelectorAll(".ci")];
+    const row = rows.find((r) => r.textContent?.includes(t));
+    if (!row) return null;
+    let el: Element | null = row.previousElementSibling;
+    while (el) {
+      if (el.classList.contains("subhead")) return el.textContent;
+      el = el.previousElementSibling;
+    }
+    return null;
+  }, title);
+}
+
 test.describe("L1 start page shell (mock)", () => {
   test("selector, readiness line, lists follow the repo", async ({ page }) => {
     test.setTimeout(180_000);
@@ -675,6 +690,7 @@ test.describe("L1 start page PR lists (service)", () => {
       refresh: tmp("refresh-repo"),
       stack: tmp("stack-repo"),
       bar: tmp("bar-repo"),
+      reviewed: tmp("reviewed-repo"),
     };
     dataDir = tmp("data");
     logDir = tmp("gh");
@@ -689,6 +705,7 @@ test.describe("L1 start page PR lists (service)", () => {
     await git(repoDirs["more"]!, "remote", "add", "origin", "https://github.com/acme/more.git");
     await git(repoDirs["refresh"]!, "remote", "add", "origin", "https://github.com/acme/app.git");
     await git(repoDirs["stack"]!, "remote", "add", "origin", "https://github.com/acme/stack.git");
+    await git(repoDirs["reviewed"]!, "remote", "add", "origin", "https://github.com/acme/reviewed.git");
     await git(
       repoDirs["bar"]!,
       "remote",
@@ -748,6 +765,7 @@ test.describe("L1 start page PR lists (service)", () => {
         refresh: "acme/app",
         stack: "acme/stack",
         bar: "example-org/a-fairly-long-repository-name",
+        reviewed: "acme/reviewed",
       };
       for (const [tag, name] of Object.entries(want)) {
         const id = repoIds[tag];
@@ -909,6 +927,66 @@ test.describe("L1 start page PR lists (service)", () => {
       const calls = readFileSync(path.join(logDir, "calls.log"), "utf8");
       expect.soft(calls).toContain("author:diana");
       await checkLayout(page, "start-pr-list-more-1440-light");
+    });
+  });
+
+  test("already-reviewed and typed-author lists (#385)", async ({ page }) => {
+    test.setTimeout(240_000);
+    if (!svc) throw new Error("no service");
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await serviceStart(page, svc, repoIds["reviewed"]!, "acme/reviewed");
+    const prBlock = page.getByTestId("pr-block");
+
+    await test.step("default view: requested, reviewed and absent rows in their groups", async () => {
+      // A directly requested DRAFT PR lands in Requested of you.
+      await expect.soft(prBlock.getByText("Iris asks you directly")).toBeVisible({ timeout: 30_000 });
+      expect.soft(await groupOf(page, "Iris asks you directly")).toContain("Requested of you");
+      // A team-requested APPROVED PR lands in Requested of your team.
+      await expect.soft(prBlock.getByText("Iris asks the team")).toBeVisible();
+      expect.soft(await groupOf(page, "Iris asks the team")).toContain("Requested of your team");
+      // Already-reviewed open PRs stay in Requested of you.
+      await expect.soft(prBlock.getByText("Iris already reviewed")).toBeVisible();
+      expect.soft(await groupOf(page, "Iris already reviewed")).toContain("Requested of you");
+      await expect.soft(prBlock.getByText("Juno already reviewed")).toBeVisible();
+      expect.soft(await groupOf(page, "Juno already reviewed")).toContain("Requested of you");
+      // Non-requested PRs show nowhere without an author search.
+      await expect.soft(prBlock.getByText("Iris works alone")).toHaveCount(0);
+      await expect.soft(prBlock.getByText("Juno works alone")).toHaveCount(0);
+      await expect.soft(prBlock.getByText("Not requested of you")).toHaveCount(0);
+    });
+
+    await test.step("a typed author narrows the groups and adds their other PRs", async () => {
+      await prBlock.getByLabel("Author", { exact: true }).fill("iris");
+      await prBlock.getByLabel("Author", { exact: true }).press("Enter");
+      await expect.soft(prBlock.getByText("Iris works alone")).toBeVisible({ timeout: 30_000 });
+      expect.soft(await groupOf(page, "Iris works alone")).toContain("Not requested of you");
+      expect.soft(await groupOf(page, "Iris asks you directly")).toContain("Requested of you");
+      expect.soft(await groupOf(page, "Iris asks the team")).toContain("Requested of your team");
+      expect.soft(await groupOf(page, "Iris already reviewed")).toContain("Requested of you");
+      await expect.soft(prBlock.getByText("Juno already reviewed")).toHaveCount(0);
+      await expect.soft(prBlock.getByText("Juno works alone")).toHaveCount(0);
+      await expect.soft(page.getByLabel("Author", { exact: true })).toHaveValue("iris (4)");
+    });
+
+    await test.step("another author gets only their own groups", async () => {
+      await prBlock.getByLabel("Author", { exact: true }).fill("juno");
+      await prBlock.getByLabel("Author", { exact: true }).press("Enter");
+      await expect.soft(prBlock.getByText("Juno works alone")).toBeVisible({ timeout: 30_000 });
+      expect.soft(await groupOf(page, "Juno works alone")).toContain("Not requested of you");
+      expect.soft(await groupOf(page, "Juno already reviewed")).toContain("Requested of you");
+      await expect.soft(prBlock.getByText("Iris asks you directly")).toHaveCount(0);
+      await expect.soft(prBlock.getByText("Iris works alone")).toHaveCount(0);
+      await expect.soft(page.getByLabel("Author", { exact: true })).toHaveValue("juno (2)");
+    });
+
+    await test.step("an author with nothing names them with a way back", async () => {
+      await prBlock.getByLabel("Author", { exact: true }).fill("zed");
+      await prBlock.getByLabel("Author", { exact: true }).press("Enter");
+      await expect.soft(prBlock.getByTestId("requested-author-search-empty")).toContainText("No open PRs by zed.", { timeout: 30_000 });
+      // The way back restores the grouped default view.
+      await prBlock.getByTestId("requested-author-search-empty").getByRole("button", { name: "Show all" }).click();
+      await expect.soft(prBlock.getByText("Iris asks you directly")).toBeVisible({ timeout: 30_000 });
+      await expect.soft(prBlock.getByText("Not requested of you")).toHaveCount(0);
     });
   });
 

@@ -4,7 +4,9 @@
  * - PRs you author: GraphQL search `repo:<o/n> state:open is:pr author:@me`;
  * - PRs awaiting your review: GraphQL searches
  *   `repo:<o/n> review-requested:@me` (direct + team) alongside
- *   `repo:<o/n> user-review-requested:@me` (direct only, #95);
+ *   `repo:<o/n> user-review-requested:@me` (direct only, #95),
+ *   `repo:<o/n> reviewed-by:@me` (already reviewed, #385) and, with a
+ *   typed author, `repo:<o/n> author:<login>` (that author's other PRs);
  * - recent local and remote branches via git;
  * - reviews opened before, with stale state (head moved since fetch).
  *
@@ -525,58 +527,87 @@ async function listPreviousReviews(
  * asking both shows once, as direct). One GraphQL `search` call per list,
  * never per PR. When the direct call fails the distinction is unknown and
  * rows carry no scope (the web shows them as direct, as before). #297:
- * with `author` set, both searches carry `author:<login>` so a typed
- * login fetches that author's PRs from GitHub. #307: the union of both
- * searches (deduplicated by PR number). #310: each search pages with its
- * own `after:` cursor; only the next page is ever fetched.
+ * with `author` set, the requested searches carry `author:<login>` so a
+ * typed login fetches that author's PRs from GitHub. #307: the union of
+ * the searches (deduplicated by PR number). #310: each search pages with
+ * its own `after:` cursor; only the next page is ever fetched. #385:
+ * two more searches join the union — `reviewed-by:@me` (GitHub drops
+ * the review request once you review, so already-reviewed PRs would
+ * otherwise vanish; minus your own PRs via `-author:@me`) and, with
+ * `author` set only, that author's other open PRs (`author:<login>`,
+ * minus the PRs already shown). A reviewed-only PR reads as direct
+ * ("Requested of you"); an author-only PR reads as "other" ("Not
+ * requested of you"). A reviewed PR still in a requested result keeps
+ * that result's group.
  */
 async function requestedPrs(
   runner: CommandRunner,
   repo: Repo,
   limit: number,
   author: string | null,
-  cursors: { direct?: string | null; team?: string | null } = {},
-): Promise<{ changes: RepoChange[]; truncated: boolean; endCursors: { direct: string | null; team: string | null } }> {
+  cursors: { direct?: string | null; team?: string | null; reviewed?: string | null; authorOther?: string | null } = {},
+): Promise<{ changes: RepoChange[]; truncated: boolean; endCursors: ChangesCursor }> {
   const authorArgs = author !== null ? [`author:${author}`] : [];
-  const [direct, all] = await Promise.all([
+  const [direct, all, reviewed, authorOther] = await Promise.all([
     searchPrs(runner, repo, ["user-review-requested:@me", "is:open", ...authorArgs], limit, cursors.direct),
     searchPrs(runner, repo, ["review-requested:@me", "is:open", ...authorArgs], limit, cursors.team),
+    searchPrs(runner, repo, ["reviewed-by:@me", "is:open", "-author:@me", ...authorArgs], limit, cursors.reviewed),
+    // #385: the author's other open PRs exist only during an author
+    // search — without one there is nothing to fetch (an absent cursor
+    // would otherwise read as "fetch the first page").
+    author !== null
+      ? searchPrs(runner, repo, [`author:${author}`, "is:open"], limit, cursors.authorOther)
+      : Promise.resolve({ prs: [] as GhPr[], pageInfo: { hasNextPage: false, endCursor: null } }),
   ]);
-  const truncated = (direct.pageInfo?.hasNextPage ?? false) || (all.pageInfo?.hasNextPage ?? false);
-  const endCursors = {
-    direct: direct.pageInfo && direct.pageInfo.hasNextPage ? direct.pageInfo.endCursor : null,
-    team: all.pageInfo && all.pageInfo.hasNextPage ? all.pageInfo.endCursor : null,
+  const truncated =
+    (direct.pageInfo?.hasNextPage ?? false) ||
+    (all.pageInfo?.hasNextPage ?? false) ||
+    (reviewed.pageInfo?.hasNextPage ?? false) ||
+    (authorOther.pageInfo?.hasNextPage ?? false);
+  const atEnd = (pageInfo: GhPageInfo | null): string | null =>
+    pageInfo && pageInfo.hasNextPage ? pageInfo.endCursor : null;
+  const endCursors: ChangesCursor = {
+    direct: atEnd(direct.pageInfo),
+    team: atEnd(all.pageInfo),
+    reviewed: atEnd(reviewed.pageInfo),
+    authorOther: atEnd(authorOther.pageInfo),
+  };
+  // #307/#385: the union of every search, deduplicated by PR number.
+  // A PR in the requested results keeps that group; reviewed-only rows
+  // read as direct; author-only rows read as "other".
+  const byNumber = new Map<number, GhPr>();
+  const scopes = new Map<number, "direct" | "team" | "other" | undefined>();
+  const add = (pr: GhPr, scope: "direct" | "team" | "other" | undefined): void => {
+    if (!byNumber.has(pr.number)) {
+      byNumber.set(pr.number, pr);
+      scopes.set(pr.number, scope);
+    }
   };
   if (all.prs === null) {
     // The team-inclusive call failed: fall back to the direct rows alone
     // (also [] when that call failed) rather than an empty list.
-    return {
-      changes: (direct.prs ?? []).map((pr) => ({ ...toChange(pr), reviewScope: "direct" as const })).sort(byUpdatedDesc),
-      truncated,
-      endCursors,
-    };
-  }
-  if (direct.prs === null) {
+    for (const pr of direct.prs ?? []) add(pr, "direct");
+  } else if (direct.prs === null) {
     // The distinction is unknown: return the rows without a scope (the
     // web shows unscoped rows as direct, as before) rather than
     // mislabelled.
-    return { changes: all.prs.map(toChange).sort(byUpdatedDesc), truncated, endCursors };
+    for (const pr of all.prs) add(pr, undefined);
+  } else {
+    const directNumbers = new Set(direct.prs.map((pr) => pr.number));
+    // Union, not just the team-inclusive page. Rows both searches
+    // returned show once (as direct); direct rows past the capped team
+    // page are appended (as direct) instead of being dropped.
+    for (const pr of all.prs) add(pr, directNumbers.has(pr.number) ? "direct" : "team");
+    for (const pr of direct.prs) add(pr, "direct");
   }
-  const directNumbers = new Set(direct.prs.map((pr) => pr.number));
-  // #307: union, not just the team-inclusive page. Rows both searches
-  // returned show once (as direct); direct rows past the capped team
-  // page are appended (as direct) instead of being dropped.
-  const byNumber = new Map<number, GhPr>();
-  for (const pr of all.prs) byNumber.set(pr.number, pr);
-  for (const pr of direct.prs) {
-    if (!byNumber.has(pr.number)) byNumber.set(pr.number, pr);
-  }
+  for (const pr of reviewed.prs ?? []) add(pr, "direct");
+  for (const pr of authorOther.prs ?? []) add(pr, "other");
   return {
     changes: [...byNumber.values()]
-      .map((pr) => ({
-        ...toChange(pr),
-        reviewScope: (directNumbers.has(pr.number) ? "direct" : "team") as "direct" | "team",
-      }))
+      .map((pr) => {
+        const scope = scopes.get(pr.number);
+        return scope === undefined ? toChange(pr) : { ...toChange(pr), reviewScope: scope };
+      })
       .sort(byUpdatedDesc),
     truncated,
     endCursors,
@@ -585,8 +616,9 @@ async function requestedPrs(
 
 /**
  * Changes for the start page. `filter` narrows the sections:
- * `authoring` (one GraphQL search), `review-requested` (two GraphQL
- * searches: direct + team-inclusive, #95), `branches` (git only),
+ * `authoring` (one GraphQL search), `review-requested` (direct +
+ * team-inclusive, #95, plus already-reviewed and, with `author`, that
+ * author's other PRs, #385), `branches` (git only),
  * `recent` (branches + previous reviews), `all` (default). #297:
  * `opts.limit` sizes every PR-list page and `opts.author` narrows the
  * review-requested searches to that login. #310: `opts.cursor` carries
@@ -606,7 +638,8 @@ export async function repoChanges(
   // review carry its id (previous-review rows already carry their own).
   const marks = reviewMarksFor(deps.db, repo.id);
   const nextCursor = (c: ChangesCursor): string | null => {
-    const has = c.authoring != null || c.direct != null || c.team != null;
+    const has =
+      c.authoring != null || c.direct != null || c.team != null || c.reviewed != null || c.authorOther != null;
     return has ? encodeChangesCursor(c) : null;
   };
   switch (filter) {
@@ -628,7 +661,12 @@ export async function repoChanges(
       return {
         changes: attachReviewMarks(changes, marks),
         hasMore: truncated,
-        cursor: nextCursor({ direct: endCursors.direct, team: endCursors.team }),
+        cursor: nextCursor({
+          direct: endCursors.direct,
+          team: endCursors.team,
+          reviewed: endCursors.reviewed,
+          authorOther: endCursors.authorOther,
+        }),
       };
     }
     case "branches":
@@ -667,6 +705,8 @@ export async function repoChanges(
           authoring: aMore ? aPage?.endCursor ?? null : null,
           direct: requested.endCursors.direct,
           team: requested.endCursors.team,
+          reviewed: requested.endCursors.reviewed,
+          authorOther: requested.endCursors.authorOther,
         }),
       };
     }
