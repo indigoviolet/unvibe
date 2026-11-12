@@ -4297,9 +4297,11 @@ one-variant union today).
 
 ## Addendum: #384 (branch `feat/384-copy-guide`)
 
-- **Copy guide as Markdown (§4.4):** one copy icon in the guide root
-  header (same icon, tooltip shape and "Copied as Markdown" toast as
-  the card control) copies the whole guide: the review title as `#`,
+- **Copy guide as Markdown (§4.4):** one copy icon in the review top
+  bar with the other review-level icon buttons (Refresh / Debug; same
+  icon, tooltip shape and "Copied as Markdown" toast as the card
+  control), hidden wherever there is no guide (document reviews,
+  loading / failed / empty opens). It copies the whole root guide:
   then each main root card in guide order with its heading as `##` and
   its Guide-version prose at that card's shown depth. A pure converter
   (`guideToMarkdown`, next to #377's in
