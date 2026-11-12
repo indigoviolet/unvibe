@@ -40,6 +40,13 @@ const PATHS: Record<string, JSX.Element> = {
       <path d="M13.5 6.5H6a3.5 3.5 0 000 7h2.5" />
     </>
   ),
+  // Issue #388: the ?-mode toggle (same 16x16 stroke style as the set).
+  question: (
+    <>
+      <path d="M6.3 6.2a2 2 0 1 1 2.7 1.9c-.6.3-.8.8-.8 1.4" />
+      <path d="M8.2 12.4v.3" />
+    </>
+  ),
   bulb: (<path d="M6 13.5h4M6.3 11.2h3.4M8 2.2a4 4 0 00-2.5 7.1v1.9h5V9.3A4 4 0 008 2.2z" />),
   diagram: (
     <>

@@ -12,9 +12,11 @@
  * `jobId`). `deduplicated` answers follow the existing job.
  */
 import type { ActionResponse, ReviewAction, ReviewSnapshot } from "@unvibe/shared";
+import { questionRewriteTargetIds } from "@unvibe/shared";
 import { api, apiErrorCode, friendlyError } from "../api/client.js";
 import { toast } from "../floating/Toast.js";
 import { INFLIGHT_TTL_MS, inflightExpired, useReview, type InFlightKind } from "../state/store.js";
+import { isReadOnlyVersionNow } from "../comments/readOnly.js";
 import {
   askKey,
   conceptKey,
@@ -23,6 +25,7 @@ import {
   updateKey,
 } from "./inflight.js";
 import { NO_AGENT_COPY } from "./expansions/expansionUtils.js";
+import { clearQuestionHighlights } from "./question.js";
 
 function optimistic(fn: (snap: ReviewSnapshot) => ReviewSnapshot): void {
   const { snapshot, setSnapshot } = useReview.getState();
@@ -411,6 +414,63 @@ export function performInsertAction(
   void performAction(reviewId, personaId ? { kind, cardId, personaId } : { kind, cardId }).catch(() => {
     // performAction already toasted; the control stays so the user can retry.
   });
+}
+
+/**
+ * Issue #388 (? mode): Rewrite cards posts one `question-rewrite`
+ * action with the picked terms. Every targeted card gets a synchronous
+ * in-flight entry (issue #46, kind `slower` so each card shows its
+ * usual writing state), handed to that card's job once the response
+ * arrives. After the rewrite starts the tray clears and the mode turns
+ * off; highlights are removed before any rewrite can change the text.
+ */
+export async function performQuestionRewrite(reviewId: string): Promise<void> {
+  const st = useReview.getState();
+  const snap = st.snapshot;
+  if (!snap) {
+    toast("The review is still loading");
+    return;
+  }
+  const terms = st.questionTerms.map((t) => t.text);
+  if (terms.length === 0) return;
+  if (isReadOnlyVersionNow()) {
+    toast("Rewriting is only available on the current version");
+    return;
+  }
+  const targets = questionRewriteTargetIds(snap);
+  for (const cardId of targets) st.beginInflight(cardId, "slower");
+  let res: ActionResponse;
+  try {
+    res = await api.action(reviewId, { kind: "question-rewrite", terms });
+  } catch (err) {
+    const cur = useReview.getState();
+    for (const cardId of targets) cur.clearInflight(cardId);
+    const msg = err instanceof Error ? err.message : String(err);
+    if (apiErrorCode(err) === "no-agent" || /no agent configured/i.test(msg)) {
+      toast(NO_AGENT_COPY);
+    } else {
+      toast(`Couldn't rewrite: ${friendlyError(err)}`);
+    }
+    await resync(reviewId);
+    return;
+  }
+  const cur = useReview.getState();
+  if (!res.accepted) {
+    for (const cardId of targets) cur.clearInflight(cardId);
+    toast("Not available with mock data");
+    await resync(reviewId);
+    return;
+  }
+  const byId = new Map((res.cardJobs ?? []).map((j) => [j.cardId, j.jobId]));
+  for (const cardId of targets) {
+    const jobId = byId.get(cardId);
+    if (jobId) cur.attachInflightJob(cardId, jobId);
+    else cur.clearInflight(cardId);
+  }
+  // The rewrite started: tray clears and the mode turns off. Cards
+  // follow their jobs from here (the entries reap on settle).
+  clearQuestionHighlights();
+  cur.setQuestionMode(false);
 }
 
 /**

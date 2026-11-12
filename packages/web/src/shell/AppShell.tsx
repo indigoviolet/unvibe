@@ -16,6 +16,8 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { GuidePage } from "../guide/GuidePage.js";
+import { QuestionTray } from "../guide/QuestionTray.js";
+import { useReview } from "../state/store.js";
 import { REVEAL_EVENT } from "../source/diff/revealSource.js";
 import { OPEN_FILE_EVENT } from "../source/file/openFile.js";
 import { SourcePane } from "../source/SourcePane.js";
@@ -47,6 +49,9 @@ export function AppShell({ reviewId }: { reviewId: string }) {
   const [sourceOpen, setSourceOpen] = useState<boolean | null>(null); // null = follow width
   const [paneWidth, setPaneWidth] = useState<number>(() => defaultWidth());
   const [tab, setTab] = useState<"desc" | "diff">("diff");
+  // Issue #388: the ? tray docks at the bottom of the guide pane while
+  // the mode is on (never the window, never across the divider).
+  const questionMode = useReview((s) => s.questionMode);
   const drag = useRef<{ x0: number; w0: number } | null>(null);
 
   const sourceVisible = sourceOpen ?? window.innerWidth >= DOCK_WIDTH;
@@ -171,8 +176,14 @@ export function AppShell({ reviewId }: { reviewId: string }) {
         className="cols"
         style={{ gridTemplateColumns: docked ? `minmax(0, 1fr) 6px ${paneWidth}px` : "minmax(0, 1fr)" }}
       >
-        <main className={guideClass} id="page">
+        <main className={guideClass + (questionMode ? " qmode" : "")} id="page">
           <GuidePage reviewId={reviewId} />
+          {questionMode ? (
+            <>
+              <div className="qreserve" aria-hidden="true" />
+              <QuestionTray reviewId={reviewId} />
+            </>
+          ) : null}
         </main>
         <div
           id="handle"

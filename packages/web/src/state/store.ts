@@ -65,6 +65,18 @@ export interface InFlightAction {
 let inflightSeq = 0;
 
 /**
+ * Issue #388 (? mode): one picked term — the selected text plus the
+ * guide card it was picked from (for the tray list and the highlight).
+ */
+export interface QuestionTerm {
+  id: string;
+  text: string;
+  cardId: string;
+}
+
+let questionTermSeq = 0;
+
+/**
  * Safety cap so an in-flight entry can never spin forever (a lost job
  * event, a mock answer with no snapshot job). The cap only applies while
  * no live job is attached: an entry following a queued/running/
@@ -170,6 +182,17 @@ interface ReviewState {
   appendStream: (annotationId: string, jobId: string, delta: string) => void;
   /** Issue #126 (experiment): drop a card's streamed buffer. */
   clearStream: (annotationId: string) => void;
+  /**
+   * Issue #388 (? mode): picking terms the reader doesn't understand.
+   * Transient UI state only — never sent except inside the Rewrite
+   * action, never stored. `clear` resets both.
+   */
+  questionMode: boolean;
+  questionTerms: QuestionTerm[];
+  setQuestionMode: (on: boolean) => void;
+  addQuestionTerm: (term: { text: string; cardId: string }) => string;
+  removeQuestionTerm: (id: string) => void;
+  clearQuestionTerms: () => void;
   clear: () => void;
 }
 
@@ -497,5 +520,19 @@ export const useReview = create<ReviewState>()((set, get) => ({
       delete next[annotationId];
       return { streams: next };
     }),
-  clear: () => set({ snapshot: null, inflight: {}, pending: [], streams: {}, resyncSeq: 0 }),
+  questionMode: false,
+  questionTerms: [],
+  setQuestionMode: (on) =>
+    set(() => (on ? { questionMode: true } : { questionMode: false, questionTerms: [] })),
+  addQuestionTerm: (term) => {
+    // Same text twice is one term (the tray lists each term once).
+    const dup = get().questionTerms.find((t) => t.text === term.text);
+    if (dup) return dup.id;
+    const id = `qt${++questionTermSeq}`;
+    set((s) => ({ questionTerms: [...s.questionTerms, { ...term, id }] }));
+    return id;
+  },
+  removeQuestionTerm: (id) => set((s) => ({ questionTerms: s.questionTerms.filter((t) => t.id !== id) })),
+  clearQuestionTerms: () => set({ questionTerms: [] }),
+  clear: () => set({ snapshot: null, inflight: {}, pending: [], streams: {}, resyncSeq: 0, questionMode: false, questionTerms: [] }),
 }));

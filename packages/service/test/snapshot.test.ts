@@ -27,9 +27,11 @@ describe("snapshot build", () => {
     // Sonnet cited stdlib files outside the review.
     // + 2 persona recordings (#349 step 2: central second-opinion;
     // #359: central Clarity).
+    // + 12 hand-authored terms recordings (issue #388: one slower-with-
+    // terms rewrite per guide card, keys `<card>:terms:1`; journey-covered).
     // Journey-only manifest entries (the #351 update-pass reply) are not
     // demo content and are skipped by the builder.
-    expect(counts).toHaveLength(52);
+    expect(counts).toHaveLength(64);
     expect(snapshot.files.map((f) => [f.fileKey, f.hunks.length])).toEqual([
       ["src-urllib3-connection.py", 2],
       ["test-test_connection.py", 3],
