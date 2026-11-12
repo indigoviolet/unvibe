@@ -393,6 +393,9 @@ describe("M4 actions on the demo review (replay)", () => {
   it("followup answers under the suggestion and consumes it; concept pages fill from a stub", { timeout: 90000 }, async () => {
     const { app, ctx } = await createApp("tok", { agents: replay() });
     try {
+      // g-alt is a go-deeper card: written automatically only with the
+      // setting on (off by default, #389).
+      ctx.settings.update({ autoGoDeeper: true });
       const id = await createDemoReview(app);
       // Issue #341: the re-recorded guide's g-alt card carries
       // 3 follow-ups (not 2).

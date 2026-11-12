@@ -51,7 +51,7 @@ export const DEFAULT_SETTINGS: Settings = {
   fullAccess: false,
   fullAccessAcknowledgedAt: null,
   /** Issue #217: go-deeper cards write themselves after the guide. On by default. */
-  autoGoDeeper: true,
+  autoGoDeeper: false,
   /** Issue #356: record OpenTelemetry performance traces. Off by default. */
   recordTraces: false,
   /** Issue #322: null = never chosen (service defaults to 3 most recent). */
