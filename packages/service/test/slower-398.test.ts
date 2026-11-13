@@ -103,6 +103,17 @@ const FIRST_ANSWER = `First answer body about the fold.
 \`\`\`
 `;
 
+const EXPLAIN_WITH_FOLLOWUP = `An answer paragraph about the fold.
+
+### Follow-ups
+
+- Why this folding?
+
+\`\`\`json
+{}
+\`\`\`
+`;
+
 const DIAGRAM_REPLY = `A diagram of the unfolding.
 
 \`\`\`d2
@@ -237,14 +248,31 @@ describe("replaceSlowerBody pure logic (#398)", () => {
     expect(kept.filter((b) => b.type === "diagram")).toHaveLength(1);
   });
 
-  it("never keeps non-diagram blocks the reply drops", () => {
+  it("keeps dropped follow-ups at their old index, but never other blocks the reply drops", () => {
+    const followUp = { type: "follow-up", id: "b3", items: [{ label: "Why?", question: "Why?" }], citations: [] } as Block;
     const current = [
       para("b1", "One."),
       { type: "aside", id: "b2", kind: "Example", inner: [para("b2-b1", "ex")], citations: [] },
-      { type: "follow-up", id: "b3", items: [], citations: [] },
+      followUp,
     ] as Block[];
     const out = replaceSlowerBody(current, [para("n1", "New.")]);
-    expect(out).toHaveLength(1);
+    expect(out.map((b) => b.type)).toEqual(["paragraph", "follow-up"]);
+    expect(out[1]).toBe(followUp);
+  });
+
+  it("a reply block colliding with a kept block id is restamped; kept ids win", () => {
+    const followUp = { type: "follow-up", id: "b2", items: [{ label: "Why?", question: "Why?" }], citations: [] } as Block;
+    const current = [para("b1", "One."), followUp];
+    const out = replaceSlowerBody(current, [para("b1", "New one."), para("b2", "New two.")]);
+    expect(out.map((b) => b.id)).toEqual(["b1", "b2", "b2-c2"]);
+    expect(out[1]).toBe(followUp);
+  });
+
+  it("a reply carrying its own follow-ups takes over; the old ones are not re-inserted", () => {
+    const old = { type: "follow-up", id: "b9", items: [{ label: "Old?", question: "Old?" }], citations: [] } as Block;
+    const fresh = { type: "follow-up", id: "n9", items: [{ label: "New?", question: "New?" }], citations: [] } as Block;
+    const out = replaceSlowerBody([para("b1", "One."), old], [para("n1", "New."), fresh]);
+    expect(out.filter((b) => b.type === "follow-up")).toEqual([fresh]);
   });
 });
 
@@ -425,6 +453,50 @@ describe("slower wholesale replacement over HTTP (#398)", () => {
           ].blocks,
         ),
       ).toBe(variantBefore);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("an unconsumed follow-up survives a press; undo still byte-identical", { timeout: 120000 }, async () => {
+    const { app, ctx, id } = await openDemo(
+      fakeWith([
+        { match: "## The question\n\nExplain this.", events: textEvents(EXPLAIN_WITH_FOLLOWUP) },
+        { match: "# Help me understand", events: textEvents(SLOWER_RICH) },
+      ]),
+    );
+    try {
+      const ex = await postAction(app, id, {
+        kind: "explain",
+        quote: "raw CRLF",
+        anchor: { where: "block", blockId: "b1" },
+      });
+      expect(ex.status).toBe(200);
+      const annotationId = ex.json.annotationId as string;
+      const turnId = ex.json.turnId as string;
+      if (ex.json.jobId) await waitForJob(ctx, ex.json.jobId as string);
+      const turnBlocks = (): Block[] =>
+        ctx.reviews.getSnapshot(id)!.annotations.find((x) => x.id === annotationId)!.replies!.find((t) => t.id === turnId)!
+          .blocks;
+      await waitFor(() => turnBlocks().length > 0);
+      const followBefore = turnBlocks().find((b) => b.type === "follow-up");
+      expect(followBefore).toBeTruthy();
+      const before = JSON.stringify(turnBlocks());
+
+      const slower = await postAction(app, id, { kind: "slower", cardId: turnId });
+      expect(slower.status).toBe(200);
+      if (slower.json.jobId) await waitForJob(ctx, slower.json.jobId as string);
+      const after = turnBlocks();
+      // The reply became the body; the unconsumed follow-up survived.
+      expect(after.filter((b) => b.type === "paragraph").map((b) => (b as ParagraphBlock).text)).toEqual([
+        expect.stringContaining("skipped step filled in"),
+        expect.stringContaining("terms defined where they first matter"),
+      ]);
+      expect(after.filter((b) => b.type === "follow-up")).toEqual([followBefore]);
+
+      const undo = await postAction(app, id, { kind: "undo", cardId: turnId });
+      expect(undo.status).toBe(200);
+      expect(JSON.stringify(turnBlocks())).toBe(before);
     } finally {
       await app.close();
     }

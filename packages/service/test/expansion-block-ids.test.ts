@@ -249,18 +249,21 @@ describe("answer body block IDs (#116, #136)", () => {
       assertUnique(atFirst);
 
       // Slower and examples act on the answer alone: the card id is the
-      // answer id, and the sibling-free rewrite keeps every block id.
+      // answer id. Issue #398: the reply's blocks become the body
+      // wholesale (fresh parser IDs), while the unconsumed follow-up
+      // survives at its position.
+      const followBefore = turnBlocks().find((b) => b.type === "follow-up");
+      expect(followBefore).toBeTruthy();
       const slower = await postAction(app, id, { kind: "slower", cardId: turnId });
       expect(slower.status).toBe(200);
       if (slower.json.jobId) await waitForJob(ctx, slower.json.jobId as string);
       const atSlower = topIds(turnBlocks());
       assertUnique(atSlower);
-      // Issue #398: the reply's blocks become the body wholesale (fresh
-      // parser IDs), so old IDs are gone and the reply text is stored.
-      expect(turnBlocks().map((b) => (b as { text?: string }).text)).toEqual([
+      expect(turnBlocks().filter((b) => b.type === "paragraph").map((b) => (b as { text?: string }).text)).toEqual([
         "A slower first paragraph.",
         "A slower second paragraph.",
       ]);
+      expect(turnBlocks().filter((b) => b.type === "follow-up")).toEqual([followBefore]);
 
       const undo = await postAction(app, id, { kind: "undo", cardId: turnId });
       expect(undo.status).toBe(200);

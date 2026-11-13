@@ -293,19 +293,47 @@ export function insertDiagrams(blocks: Block[], fresh: Block[]): { blocks: Block
  * swap: reply blocks beyond the old paragraph count, and every
  * non-paragraph reply block, are part of the new body.
  *
- * If the reply drops a diagram block the card had, the diagram is kept,
- * re-inserted at its old position (index among blocks) — the prompt says
- * diagrams are kept. Anything else the reply drops is gone; the
- * pre-press blocks ride the undo stack, so Undo restores the exact body.
+ * Two block kinds survive when the reply drops them, re-inserted at
+ * their old position (index among blocks): diagrams (the prompt says
+ * diagrams are kept) and follow-up suggestion chips (the prompt never
+ * asks the agent to echo them, so dropping them on every press would be
+ * a regression). Anything else the reply drops is gone; the pre-press
+ * blocks ride the undo stack, so Undo restores the exact body. When the
+ * reply carries its own follow-ups, the agent took over and the old
+ * ones are not re-inserted.
  */
 export function replaceSlowerBody(current: Block[], reply: Block[]): Block[] {
   if (reply.length === 0) return current;
-  const out = [...reply];
+  const replyHasFollowUps = reply.some((b) => b.type === "follow-up");
   const kept: { index: number; block: Block }[] = [];
   current.forEach((b, i) => {
     const isDiagram = b.type === "diagram" || (b.type === "aside" && (b as AsideBlock).kind === "Diagram");
-    if (isDiagram && !hasDiagram(out, b)) kept.push({ index: i, block: b });
+    if (isDiagram && !hasDiagram(reply, b)) kept.push({ index: i, block: b });
+    else if (b.type === "follow-up" && !replyHasFollowUps) kept.push({ index: i, block: b });
   });
+  // The reply parses with fresh parser IDs that can collide with the
+  // kept blocks' older IDs (e.g. reply `b2` vs a kept follow-up `b2`):
+  // move the reply side (nothing can anchor to it yet), same `-cN`
+  // shape as the #116 dedupe. Kept blocks keep their IDs, so existing
+  // anchors still find them.
+  const keptIds = new Set(kept.map((k) => k.block.id));
+  const body = [...reply];
+  if (keptIds.size > 0) {
+    const used = new Set([...body.map((b) => b.id), ...current.map((b) => b.id)]);
+    for (let i = 0; i < body.length; i++) {
+      const b = body[i];
+      if (!keptIds.has(b.id)) continue;
+      let n = 2;
+      let id = `${b.id}-c${n}`;
+      while (used.has(id)) {
+        n += 1;
+        id = `${b.id}-c${n}`;
+      }
+      used.add(id);
+      body[i] = b.type === "aside" ? withFreshAsideId(b, id) : { ...b, id };
+    }
+  }
+  const out = [...body];
   for (const { index, block } of kept) {
     out.splice(Math.min(index, out.length), 0, block);
   }
