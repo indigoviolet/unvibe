@@ -42,7 +42,7 @@ function comment(id: string, host: Thread["anchor"]["host"], messages: MsgLike[]
 
 function snapshot(): ReviewSnapshot {
   return {
-    review: { id: "rv_214", repoId: "r", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
+    review: { id: "rv_214", repoId: "r", branch: "b", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: 0 },
     version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
     files: [
       {

@@ -11,7 +11,7 @@ import { createApp } from "../src/server.js";
 
 function emptySnapshot(id: string): ReviewSnapshot {
   return {
-    review: { id, repoId: "rp_x", branch: "feature", versions: [], currentVersion: 1, createdAt: 0 },
+    review: { id, repoId: "rp_x", branch: "feature", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: 0 },
     version: { n: 1, headSha: "a", mergeBaseSha: "b", baseRef: "main", fetchedAt: 0, idMapping: {} },
     files: [],
     pages: [],

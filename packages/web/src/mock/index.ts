@@ -168,6 +168,7 @@ const MOCK_REVIEW: Review = {
   prNumber: 5020,
   versions: [MOCK_VERSION],
   currentVersion: 1,
+  guidePersonaId: "guide",
   createdAt: NOW - 3600000,
 };
 
@@ -1227,6 +1228,7 @@ export function resetMockState(): void {
   mockContributions = seedContributions();
   mockUpdatePending = null;
   mockUpdateDown = false;
+  mockRedoPersonaById.clear();
   mockDiffFilter = undefined;
   try {
     localStorage.removeItem(UPDATE_KEY);
@@ -1392,6 +1394,8 @@ function currentSnapshot(reviewId = "demo", version?: number): ReviewSnapshot {
     review: {
       ...MOCK_REVIEW,
       id: reviewId,
+      // Issue #393: a mock redo-with review keeps its recorded persona.
+      guidePersonaId: mockRedoPersonaById.get(reviewId) ?? MOCK_REVIEW.guidePersonaId,
       // The real demo review uses repoId "demo" (service `pipeline/demo.ts`);
       // the mock snapshot matches so demo-only rules apply (no GitHub
       // link-out, no refresh). The summary list keeps its urllib3 row, so
@@ -2082,6 +2086,9 @@ function mockUpdateBuild(): UpdateBuildInfo | null {
 }
 
 /** #92: loading snapshot for a mock loading list entry. */
+/** Issue #393: guide persona recorded by mock redo-with, by new review id. */
+const mockRedoPersonaById = new Map<string, string>();
+
 function mockLoadingSnapshot(entry: ReviewSummary): ReviewSnapshot {
   const now = Date.now();
   return {
@@ -2092,6 +2099,7 @@ function mockLoadingSnapshot(entry: ReviewSummary): ReviewSnapshot {
       ...(entry.prNumber !== undefined ? { prNumber: entry.prNumber } : {}),
       versions: [],
       currentVersion: 0,
+      guidePersonaId: mockRedoPersonaById.get(entry.id) ?? "guide",
       createdAt: entry.createdAt,
     },
     version: { n: 0, headSha: "", mergeBaseSha: "", baseRef: "", fetchedAt: now, idMapping: {} },
@@ -2120,6 +2128,7 @@ function mockFailedSnapshot(entry: ReviewSummary, error: string): ReviewSnapshot
       ...(entry.prNumber !== undefined ? { prNumber: entry.prNumber } : {}),
       versions: [],
       currentVersion: 0,
+      guidePersonaId: "guide",
       createdAt: entry.createdAt,
     },
     version: { n: 0, headSha: "", mergeBaseSha: "", baseRef: "", fetchedAt: now, idMapping: {} },
@@ -2452,7 +2461,7 @@ export const mockApi = {
     const id = `mock-doc-${now.toString(36)}`;
     const version: Version = { n: 1, headSha: "mockdoc", mergeBaseSha: "mockdoc", baseRef: "document", fetchedAt: now, idMapping: {} };
     return {
-      review: { id, repoId: first?.repoId ?? "demo", branch: "document", versions: [version], currentVersion: 1, createdAt: now },
+      review: { id, repoId: first?.repoId ?? "demo", branch: "document", versions: [version], currentVersion: 1, guidePersonaId: "guide", createdAt: now },
       document,
       contextRepos: body.contextRepos.map((pick) => {
         const r = getRepos().find((x) => x.id === pick.repoId);
@@ -2544,6 +2553,7 @@ export const mockApi = {
           ...(body.pr !== undefined ? { prNumber: body.pr } : {}),
           versions: [],
           currentVersion: 0,
+          guidePersonaId: "guide",
           createdAt: now,
         },
         version: { n: 0, headSha: "", mergeBaseSha: "", baseRef: "", fetchedAt: now, idMapping: {} },
@@ -2599,6 +2609,7 @@ export const mockApi = {
           ...(body.pr !== undefined ? { prNumber: body.pr } : {}),
           versions: [],
           currentVersion: 0,
+          guidePersonaId: "guide",
           createdAt: now,
         },
         version: { n: 0, headSha: "", mergeBaseSha: "", baseRef: "", fetchedAt: now, idMapping: {} },
@@ -2662,7 +2673,7 @@ export const mockApi = {
     return { ok: true };
   },
 
-  redoReview: async (id: string): Promise<ReviewSnapshot> => {
+  redoReview: async (id: string, personaId?: string): Promise<ReviewSnapshot> => {
     await wait(50);
     if (id === "demo")
       throw new Error(`POST /api/reviews/${id}/redo: 409 {"error":"the demo guide can't be re-done"}`);
@@ -2676,8 +2687,10 @@ export const mockApi = {
         `POST /api/reviews/${id}/redo: 409 {"error":"${old.ingestError ?? "the review couldn't be opened"}"}`,
       );
     // Same as delete + create: the old row goes, a new loading review
-    // takes its source (repo, PR/branch, title).
+    // takes its source (repo, PR/branch, title). Issue #393: a persona
+    // choice rides along and the new review records it.
     const newId = `mock-loading-${Date.now().toString(36)}`;
+    mockRedoPersonaById.set(newId, personaId ?? "guide");
     mockReviewList.splice(i, 1);
     const entry = {
       ...old,
@@ -2693,6 +2706,28 @@ export const mockApi = {
     delete (entry as { ingestError?: string }).ingestError;
     mockReviewList.unshift(entry);
     return mockLoadingSnapshot(entry);
+  },
+
+  /**
+   * Issue #393: a fresh install ships no prompt folders, so no fork is
+   * guide-capable and nothing drifts. Tests opt into a forked setup
+   * with the `unvibe.mock.forks` localStorage hook (a serialized
+   * `PromptForksResponse`).
+   */
+  promptForks: async () => {
+    try {
+      const raw = localStorage.getItem("unvibe.mock.forks");
+      if (raw) return JSON.parse(raw) as import("@unvibe/shared").PromptForksResponse;
+    } catch {
+      // Non-fatal: fall through to the fresh-install default.
+    }
+    return {
+      forks: [
+        { personaId: "guide", name: "Guide", enabled: true, guideCapable: false, drifted: [] },
+        { personaId: "second-opinion", name: "Second opinion", enabled: true, guideCapable: false, drifted: [] },
+        { personaId: "clarity", name: "Clarity", enabled: true, guideCapable: false, drifted: [] },
+      ],
+    };
   },
 
   resetData: async (): Promise<ResetDataResponse> => {
@@ -2758,7 +2793,7 @@ export const mockApi = {
           if (entry) return mockLoadingSnapshot(entry);
           const now = Date.now();
           return {
-            review: { id, repoId: "urllib3", branch: "feature", versions: [], currentVersion: 0, createdAt: now },
+            review: { id, repoId: "urllib3", branch: "feature", versions: [], currentVersion: 0, guidePersonaId: "guide", createdAt: now },
             version: { n: 0, headSha: "", mergeBaseSha: "", baseRef: "", fetchedAt: now, idMapping: {} },
             files: [],
             pages: [],
@@ -2789,7 +2824,7 @@ export const mockApi = {
           if (entry) return mockFailedSnapshot(entry, fail);
           const now = Date.now();
           return {
-            review: { id, repoId: "urllib3", branch: "feature", versions: [], currentVersion: 0, createdAt: now },
+            review: { id, repoId: "urllib3", branch: "feature", versions: [], currentVersion: 0, guidePersonaId: "guide", createdAt: now },
             version: { n: 0, headSha: "", mergeBaseSha: "", baseRef: "", fetchedAt: now, idMapping: {} },
             files: [],
             pages: [],

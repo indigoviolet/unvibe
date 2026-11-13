@@ -58,6 +58,7 @@ function snapshotFor(html: string, extra?: Partial<ReviewSnapshot["description"]
       prNumber: 7,
       versions: [],
       currentVersion: 1,
+      guidePersonaId: "guide",
       createdAt: 1,
     },
     version: {

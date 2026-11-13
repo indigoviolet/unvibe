@@ -15,7 +15,7 @@
  * other settings section.
  */
 import { useEffect, useState } from "react";
-import type { ModelInfo, Persona, Settings, ThinkingResponse } from "@unvibe/shared";
+import type { ModelInfo, Persona, PromptForkStatus, Settings, ThinkingResponse } from "@unvibe/shared";
 import { getGuidePersona, nextPersonaColor, slugifyPersonaName, GUIDE_PERSONA_ID } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { Button, Card, Checkbox, Field, InlineConfirm, Input, Select } from "../ui/index.js";
@@ -47,6 +47,7 @@ export function PersonasSection({
     ? { provider: guide.provider, model: guide.model }
     : { provider: "", model: "" };
   const [providers, setProviders] = useState<string[]>(FALLBACK_PROVIDERS);
+  const [forks, setForks] = useState<PromptForkStatus[] | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
@@ -66,6 +67,26 @@ export function PersonasSection({
       cancelled = true;
     };
   }, []);
+
+  // Issue #393: prompt-fork drift per persona (a base template changed
+  // since the fork manifest recorded it). Failure hides the warnings,
+  // never the list.
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .promptForks()
+      .then((r) => {
+        if (!cancelled) setForks(r.forks);
+      })
+      .catch(() => {
+        if (!cancelled) setForks([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const driftById = new Map((forks ?? []).map((f) => [f.personaId, f.drifted] as const));
 
   const saveList = async (next: Persona[]): Promise<Settings> => {
     const saved = await api.saveSettings({ personas: next });
@@ -186,6 +207,17 @@ export function PersonasSection({
                 )}
               </div>
             </div>
+            {(driftById.get(p.id) ?? []).length > 0 ? (
+              <div
+                className="hint"
+                data-testid={`persona-${p.id}-drift`}
+                style={{ marginTop: 4, paddingLeft: 22 }}
+              >
+                <span className="warnline" role="status">
+                  {`Prompt fork behind base: ${(driftById.get(p.id) ?? []).join(", ")}. Re-run: mise run persona:fork -- ${p.id} ${(driftById.get(p.id) ?? []).join(" ")}`}
+                </span>
+              </div>
+            ) : null}
             {editingId === p.id ? (
               <PersonaForm
                 key={p.id}

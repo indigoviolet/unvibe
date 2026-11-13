@@ -83,7 +83,7 @@ function emptyLink(): Thread {
 function seedSnapshot(annotations: Thread[]): void {
   useReview.getState().clear();
   useReview.getState().setSnapshot({
-    review: { id: REVIEW_ID, repoId: "demo", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
+    review: { id: REVIEW_ID, repoId: "demo", branch: "b", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: 0 },
     version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
     files: [file()],
     pages: [],

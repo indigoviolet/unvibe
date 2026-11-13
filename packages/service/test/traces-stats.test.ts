@@ -38,7 +38,7 @@ const T0 = 1_700_000_000_000;
 function snapshot(): ReviewSnapshot {
   return {
     review: {
-      id: "rv-many", repoId: "repo-1", branch: "b", currentVersion: 1, createdAt: T0,
+      id: "rv-many", repoId: "repo-1", branch: "b", currentVersion: 1, guidePersonaId: "guide", createdAt: T0,
       versions: [{ n: 1, headSha: "s", mergeBaseSha: "s", baseRef: "b", fetchedAt: T0, idMapping: {} }],
     },
     version: { n: 1, headSha: "s", mergeBaseSha: "s", baseRef: "b", fetchedAt: T0, idMapping: {} },

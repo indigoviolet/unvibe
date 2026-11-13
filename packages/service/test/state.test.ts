@@ -48,6 +48,7 @@ function makeSnapshot(rev = 1): ReviewSnapshot {
       branch: "feature",
       versions: [],
       currentVersion: 1,
+      guidePersonaId: "guide",
       createdAt: 0,
     },
     version: {

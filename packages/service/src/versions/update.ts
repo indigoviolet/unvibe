@@ -30,7 +30,8 @@ import type {
   TokenUsage,
   UpdatePassResult,
 } from "@unvibe/shared";
-import { isSinceBaseline, isUpdateAvailable, JOB_PRIORITY } from "@unvibe/shared";
+import { GUIDE_PERSONA_ID, isSinceBaseline, isUpdateAvailable, JOB_PRIORITY } from "@unvibe/shared";
+import { withGuideStyleForReview } from "../prompts/personas.js";
 import {
   buildSinceSectionCards,
   formatSinceContext,
@@ -81,6 +82,12 @@ export interface UpdatePassDeps {
   provider?: string;
   model?: string;
   effort: string;
+  /**
+   * Issue #393: the review's Guide persona (template + lens source).
+   * Absent means the built-in Guide (shared template, no lens).
+   */
+  guidePersonaId?: string;
+  lens?: string;
 }
 
 /** Format one hunk for the `{{changed_hunks}}` variable. */
@@ -228,12 +235,24 @@ function capChangedHunks(chunks: string[], capTokens: number): string {
   return kept.length > 0 ? [...kept, notice(omitted)].join("\n\n") : notice(omitted);
 }
 
-/** Render `prompts/update_pass.md` with the update-pass variables. Pure I/O: reads one file. */
+/**
+ * Render the update-pass template with the update-pass variables. Pure
+ * I/O: reads one file. Issue #393: when the review's Guide persona
+ * forks `update_pass.md`, the fork (whole file) renders instead.
+ */
 export function renderUpdatePrompt(
   promptsDir: string,
   vars: { changed_hunks: string; stale_cards: string; findings: string; since_context?: string },
+  guidePersonaId?: string,
 ): string {
-  const raw = fs.readFileSync(path.join(promptsDir, "update_pass.md"), "utf8");
+  const forkFile =
+    guidePersonaId !== undefined && guidePersonaId !== GUIDE_PERSONA_ID
+      ? path.join(promptsDir, "personas", guidePersonaId, "update_pass.md")
+      : null;
+  const raw = fs.readFileSync(
+    forkFile !== null && fs.existsSync(forkFile) ? forkFile : path.join(promptsDir, "update_pass.md"),
+    "utf8",
+  );
   const body = raw.replace(/^---\n[\s\S]*?\n---\n/, "");
   return body
     .replace("{{changed_hunks}}", vars.changed_hunks)
@@ -576,7 +595,15 @@ export function enqueueUpdatePass(
     dedupe: { anchor: "update", requestKind: "update-pass", baseVersion: `v${opts.toVersion}` },
     run: async (ctx) => {
       const vars = buildUpdateVariables(deps.reviews.getSnapshot(opts.reviewId) ?? snapshot);
-      const prompt = renderUpdatePrompt(promptsDir, vars);
+      // Issue #393: fork template + the review's Guide persona lens
+      // (built-in: shared template, no lens — exactly as before).
+      const forkGuide = deps.guidePersonaId !== undefined && deps.guidePersonaId !== GUIDE_PERSONA_ID;
+      const prompt = withGuideStyleForReview(
+        "update_pass",
+        renderUpdatePrompt(promptsDir, vars, deps.guidePersonaId),
+        deps.lens ?? "",
+        forkGuide,
+      );
       ctx.setPromptSnapshot(prompt);
       // Issue #194: the runner executes directly in this job (no nested
       // enqueue — that deadlocked on this job's own dedupe key and sat

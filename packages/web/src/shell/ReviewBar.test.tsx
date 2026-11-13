@@ -9,7 +9,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router";
 import { api } from "../api/client.js";
 import { resetMockState } from "../mock/index.js";
@@ -434,6 +434,57 @@ describe("ReviewBar", () => {
       fireEvent.click(screen.getByRole("button", { name: "Confirm re-do guide" }));
       await waitFor(() => expect(screen.getByTestId("loc")).not.toHaveTextContent("/review/r-old"));
       expect(screen.getByTestId("loc").textContent).toMatch(/^\/review\/mock-loading-/);
+    });
+
+    it("offers Re-do with for a guide-capable persona and records it", async () => {
+      // Issue #393: the mock hook simulates a forked setup (fresh
+      // installs have no guide-capable persona, so no menu).
+      localStorage.setItem(
+        "unvibe.mock.forks",
+        JSON.stringify({
+          forks: [
+            { personaId: "guide", name: "Guide", enabled: true, guideCapable: false, drifted: [] },
+            { personaId: "teach", name: "Teach", enabled: true, guideCapable: true, drifted: [] },
+            { personaId: "quiet", name: "Quiet", enabled: false, guideCapable: true, drifted: [] },
+          ],
+        }),
+      );
+      await renderBarWithLocation("r-old");
+      fireEvent.click(screen.getByRole("button", { name: "Re-do guide" }));
+      const menu = await screen.findByTestId("redo-menu");
+      const items = within(menu);
+      // The plain choice stays; disabled personas are never offered.
+      expect(items.getByRole("menuitem", { name: "Re-do guide" })).toBeInTheDocument();
+      expect(items.getByRole("menuitem", { name: "Re-do with Teach" })).toBeInTheDocument();
+      expect(items.queryByRole("menuitem", { name: "Re-do with Quiet" })).toBeNull();
+      const redo = vi.spyOn(api, "redoReview");
+      fireEvent.click(items.getByRole("menuitem", { name: "Re-do with Teach" }));
+      await screen.findByText("Confirm re-do with Teach");
+      fireEvent.click(screen.getByRole("button", { name: "Confirm re-do with Teach" }));
+      await waitFor(() => expect(screen.getByTestId("loc")).not.toHaveTextContent("/review/r-old"));
+      expect(redo).toHaveBeenCalledWith("r-old", "teach");
+      const newId = (screen.getByTestId("loc").textContent ?? "").replace("/review/", "");
+      expect((await api.review(newId)).review.guidePersonaId).toBe("teach");
+    });
+
+    it("Escape closes the menu without calling", async () => {
+      localStorage.setItem(
+        "unvibe.mock.forks",
+        JSON.stringify({
+          forks: [
+            { personaId: "guide", name: "Guide", enabled: true, guideCapable: false, drifted: [] },
+            { personaId: "teach", name: "Teach", enabled: true, guideCapable: true, drifted: [] },
+          ],
+        }),
+      );
+      await renderBarWithLocation("r-old");
+      const redo = vi.spyOn(api, "redoReview");
+      fireEvent.click(screen.getByRole("button", { name: "Re-do guide" }));
+      await screen.findByTestId("redo-menu");
+      fireEvent.keyDown(document, { key: "Escape" });
+      await waitFor(() => expect(screen.queryByTestId("redo-menu")).toBeNull());
+      expect(redo).not.toHaveBeenCalled();
+      expect(screen.getByTestId("loc")).toHaveTextContent("/review/r-old");
     });
 
     it("cancel closes the confirmation without calling", async () => {

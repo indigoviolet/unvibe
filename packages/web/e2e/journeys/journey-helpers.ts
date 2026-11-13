@@ -1,7 +1,8 @@
 /** Shared helpers for the #188 journeys (real built service only). */
 import { DATA_FORMAT } from "@unvibe/shared";
-import { execFile, execSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { execFile, execFileSync, execSync } from "node:child_process";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -320,4 +321,44 @@ export async function createScratchReview(
   });
   if (created.status !== 201 && created.status !== 200 && created.status !== 202) throw new Error(`review create failed: ${created.status} ${JSON.stringify(created.json)}`);
   return (created.json as { review: { id: string } }).review.id;
+}
+
+const JOURNEYS_DIR = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.resolve(JOURNEYS_DIR, "..", "..", "..", "..");
+const REPO_PROMPTS_DIR = path.join(REPO_ROOT, "prompts");
+const FORK_SCRIPT = path.join(REPO_ROOT, "scripts", "persona-fork.mjs");
+
+/** Forked templates a fixture Teach persona owns (issue #393). */
+export const TEACH_FORK_TEMPLATES = ["reader", "slower", "instructions", "hunk_pass", "update_pass"] as const;
+
+/** Sentinel appended to each fixture fork file (asserted in prompts, never a variable). */
+export const TEACH_SENTINEL: Record<(typeof TEACH_FORK_TEMPLATES)[number], string> = {
+  reader: "FORK-READER-SENTINEL",
+  slower: "FORK-SLOWER-SENTINEL",
+  instructions: "FORK-INSTRUCTIONS-SENTINEL",
+  hunk_pass: "FORK-HUNK-SENTINEL",
+  update_pass: "FORK-UPDATE-SENTINEL",
+};
+
+export const TEACH_LENS = "TEACH-LENS-SENTINEL: explain like a patient tutor, one mechanism at a time.";
+
+/**
+ * Fixture prompt set for the #393 journey and tour (issue #393): a copy
+ * of the repo prompts plus a `teach` fork (built by the real
+ * persona:fork helper, with sentinel lines the tests assert on) and its
+ * manifest. The caller removes the directory when done. Mutating a base
+ * file afterwards makes the fork drift (the drift warning test does
+ * exactly that).
+ */
+export function makeTeachForkPrompts(tag: string): { dir: string } {
+  const dir = mkdtempSync(path.join(os.tmpdir(), `unvibe-393-${tag}-`));
+  cpSync(REPO_PROMPTS_DIR, dir, { recursive: true });
+  execFileSync(process.execPath, [FORK_SCRIPT, "teach", ...TEACH_FORK_TEMPLATES, "--prompts-dir", dir], {
+    timeout: 30000,
+  });
+  for (const name of TEACH_FORK_TEMPLATES) {
+    const file = path.join(dir, "personas", "teach", `${name}.md`);
+    writeFileSync(file, `${readFileSync(file, "utf8")}\n\n${TEACH_SENTINEL[name]}: written by the Teach fork.\n`);
+  }
+  return { dir };
 }

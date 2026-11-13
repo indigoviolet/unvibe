@@ -24,7 +24,7 @@ function job(over: Partial<Job> = {}): Job {
 
 function snap(rev: number, jobs: Job[] = []): ReviewSnapshot {
   return {
-    review: { id: "rv_inflight", repoId: "r", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
+    review: { id: "rv_inflight", repoId: "r", branch: "b", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: 0 },
     version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
     files: [],
     pages: [],

@@ -25,7 +25,7 @@ import type { FastifyInstance, FastifyReply } from "fastify";
 import {
   EXTENSION_OPEN_PATH, EXTENSION_PANEL_PREFIX, EXTENSION_PR_STATUS_PATH,
   capPageCapture, captureHash, estimateTokens, ingestStatusOf, pageKey, parseOpenPrUrl,
-  DEFAULT_REVIEW_VIEW_PREFS,
+  DEFAULT_REVIEW_VIEW_PREFS, GUIDE_PERSONA_ID,
   type AgentRunner, type ExtensionOpenResponse, type ExtensionStatusResponse, type PanelActiveReposResponse,
   type PanelAskRequest, type PanelAskResponse, type PanelThread,
   type ParsedPrUrl,
@@ -167,7 +167,7 @@ export async function registerExtensionRoutes(
       const hash = captureHash(cap.context || cap.url);
       const version: Version = { n: 1, headSha: hash, mergeBaseSha: hash, baseRef: "web", fetchedAt: now, idMapping: {} };
       const snapshot: ReviewSnapshot = {
-        review: { id: reviewId, repoId: active[0]?.id ?? "web", branch: "web", versions: [version], currentVersion: 1, createdAt: now },
+        review: { id: reviewId, repoId: active[0]?.id ?? "web", branch: "web", guidePersonaId: GUIDE_PERSONA_ID, versions: [version], currentVersion: 1, createdAt: now },
         web: { url: cap.url, title: cap.title, pageKey: key, captureHash: hash, context: cap.context, messages: [] },
         version, files: [], pages: [], annotations: [], hunkStates: [], fileStates: [],
         viewPrefs: { ...DEFAULT_REVIEW_VIEW_PREFS }, jobs: [], contributions: [], logTail: [], rev: 1,

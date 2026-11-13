@@ -276,7 +276,7 @@ async function makeBigReview(
     }
   }
   const snap: ReviewSnapshot = {
-    review: { id, repoId: "demo", branch: "main", versions: [], currentVersion: 1, createdAt: Date.now() },
+    review: { id, repoId: "demo", branch: "main", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: Date.now() },
     version: { n: 1, headSha: "abc1234def5678abc1234def5678abc1234def5", mergeBaseSha: "0000000", baseRef: "main", fetchedAt: Date.now(), idMapping: {} },
     files,
     ingest: { status: "ready" },
@@ -457,7 +457,7 @@ describe("top-N auto hunk summaries (#376)", () => {
       };
     });
     const snap: ReviewSnapshot = {
-      review: { id, repoId: "demo", branch: "main", versions: [], currentVersion: 1, createdAt: Date.now() },
+      review: { id, repoId: "demo", branch: "main", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: Date.now() },
       version: { n: 1, headSha: "abc1234def5678abc1234def5678abc1234def5", mergeBaseSha: "0000000", baseRef: "main", fetchedAt: Date.now(), idMapping: {} },
       files: reviewFiles,
       ingest: { status: "ready" },

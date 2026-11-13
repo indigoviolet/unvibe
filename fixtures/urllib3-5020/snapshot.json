@@ -15,7 +15,8 @@
       }
     ],
     "currentVersion": 1,
-    "createdAt": 1760000000000
+    "createdAt": 1760000000000,
+    "guidePersonaId": "guide"
   },
   "version": {
     "n": 1,

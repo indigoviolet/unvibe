@@ -142,6 +142,7 @@ export async function setupReview(
     ...(prNumber !== null ? { prNumber } : {}),
     versions: [version],
     currentVersion: 1,
+    guidePersonaId: "guide",
     createdAt: 1,
   };
   const files = opts.files ?? [sourceFile()];

@@ -34,7 +34,9 @@ import type {
   UpdateReviewResponse,
   Version,
 } from "@unvibe/shared";
-import { DEFAULT_REVIEW_VIEW_PREFS, ingestStatusOf, isCommitSha, isDocumentReview, isReadySnapshot, parseDocumentMarkdown, summarizeComparison } from "@unvibe/shared";
+import { DEFAULT_REVIEW_VIEW_PREFS, GUIDE_PERSONA_ID, ingestStatusOf, isCommitSha, isDocumentReview, isReadySnapshot, parseDocumentMarkdown, summarizeComparison } from "@unvibe/shared";
+import { guidePersonaForReview, isGuideCapable } from "../prompts/personas.js";
+import { resolvePromptsDir } from "../prompts/index.js";
 import { ingestRefusal } from "../reviews/index.js";
 import {
   EmptyDiffError,
@@ -299,8 +301,11 @@ async function runIngestBackground(
       saveVersionFiles(ctx.db, reviewId, snapshot.version!.n, snapshot.files!);
     });
     // One mutate so the UI gets one patch (ready through the usual events).
+    // Issue #393: the finished review keeps the Guide persona the
+    // loading placeholder recorded (redo-with included).
+    const prevGuide = ctx.reviews.getSnapshot(reviewId)?.review.guidePersonaId ?? GUIDE_PERSONA_ID;
     await ctx.reviews.mutate(reviewId, (draft) => {
-      draft.review = { ...snapshot.review };
+      draft.review = { ...snapshot.review, guidePersonaId: prevGuide };
       draft.version = { ...snapshot.version! };
       draft.files = snapshot.files as ReviewSnapshot["files"];
       draft.description = snapshot.description ? { ...snapshot.description } : undefined;
@@ -375,6 +380,8 @@ interface BeginCreateArgs {
   branch?: string;
   title?: string;
   author?: string;
+  /** Issue #393: which Guide persona the new review records. */
+  guidePersonaId: string;
 }
 
 type BeginCreateResult =
@@ -510,6 +517,7 @@ async function beginReviewFromSourceInner(
       repoId: repo.id,
       branch: branchPlaceholder,
       ...(args.pr !== undefined ? { prNumber: args.pr } : {}),
+      guidePersonaId: args.guidePersonaId,
       versions: [],
       currentVersion: 0,
       createdAt: now,
@@ -613,7 +621,7 @@ export async function registerReviews(
         { ...(pipeline ? { pipeline } : {}), autoPipeline },
         pendingIngests,
         inFlightCreates,
-        { repoId, pr },
+        { repoId, pr, guidePersonaId: GUIDE_PERSONA_ID },
       );
       return r.ok ? { ok: true, snapshot: r.snapshot } : { ok: false, status: r.status, error: r.error };
     },
@@ -761,6 +769,8 @@ export async function registerReviews(
           id: reviewId,
           repoId: contextRepos[0].repoId,
           branch: "document",
+          // Issue #393: document reviews never re-do; the built-in Guide stands.
+          guidePersonaId: GUIDE_PERSONA_ID,
           versions: [version],
           currentVersion: 1,
           createdAt: now,
@@ -865,6 +875,7 @@ export async function registerReviews(
         ...(body.pr !== undefined ? { pr: body.pr } : { branch: body.branch }),
         ...(body.title !== undefined ? { title: body.title } : {}),
         ...(body.author !== undefined ? { author: body.author } : {}),
+        guidePersonaId: GUIDE_PERSONA_ID,
       },
     );
     if (!created.ok) return reply.code(created.status).send({ error: created.error });
@@ -902,6 +913,9 @@ export async function registerReviews(
   // refresh/update/resume), while a submit is in flight for the review
   // (delete does not check — redo must never lose a submission), and when
   // the repo is gone (nothing is deleted then).
+  // Issue #393: `Re-do with <persona>` — same semantics, same refusals;
+  // the body names the guide-capable persona and the new review records
+  // it. Absent (or the built-in Guide id) re-does exactly as before.
   app.post("/api/reviews/:id/redo", async (req, reply) => {
     const { id } = req.params as { id: string };
     const snap = ctx.reviews.getSnapshot(id);
@@ -916,6 +930,18 @@ export async function registerReviews(
     if (refusedRedo) return reply.code(409).send({ error: refusedRedo });
     if (readSubmitLease(ctx.db, id)) {
       return reply.code(409).send({ error: "A review is being submitted. Try again when it has finished." });
+    }
+    const body = (req.body ?? {}) as { personaId?: unknown };
+    const requested = typeof body.personaId === "string" && body.personaId.trim() !== "" ? body.personaId : GUIDE_PERSONA_ID;
+    if (requested !== GUIDE_PERSONA_ID) {
+      const settings = (deps as RouteDeps).settings?.get();
+      const persona = settings?.personas?.find((p) => p.id === requested);
+      if (!persona) return reply.code(404).send({ error: `unknown persona ${requested}` });
+      if (!persona.enabled) return reply.code(409).send({ error: `persona "${persona.name}" is disabled` });
+      const dir = deps.promptsDir ?? resolvePromptsDir();
+      if (!dir || !isGuideCapable(dir, requested)) {
+        return reply.code(409).send({ error: `persona "${persona.name}" can't write a guide (its prompt folder holds no reader.md)` });
+      }
     }
     const row = readReviewRow(ctx.db, id);
     if (!row) return reply.code(404).send({ error: "unknown review" });
@@ -940,6 +966,7 @@ export async function registerReviews(
         repoId: row.repoId,
         ...(row.prNumber !== null ? { pr: row.prNumber } : { branch: row.branch }),
         ...(title !== undefined ? { title } : {}),
+        guidePersonaId: requested,
       },
     );
     if (!created.ok) return reply.code(created.status).send({ error: created.error });
@@ -1110,13 +1137,28 @@ export async function registerReviews(
     let provider = "main";
     let model = "main-model";
     let effort = "";
+    // Issue #393: the update pass runs as the review's Guide persona.
+    let updateGuideId: string | undefined;
+    let updateLens = "";
     try {
       const s = (deps as RouteDeps).settings?.get();
       if (s) {
-        const guide = guidePick(s);
-        provider = guide.provider;
-        model = guide.model;
-        effort = guide.effort;
+        const guide = guidePersonaForReview(s.personas ?? [], snapshot.review.guidePersonaId);
+        updateGuideId = guide.id;
+        updateLens = guide.lens;
+        if (guide.id === GUIDE_PERSONA_ID) {
+          const pick = guidePick(s);
+          provider = pick.provider;
+          model = pick.model;
+          effort = pick.effort;
+        } else if (guide.followMain) {
+          const pick = guidePick(s);
+          provider = pick.provider;
+          model = pick.model;
+        } else {
+          provider = guide.provider;
+          model = guide.model;
+        }
       }
     } catch {
       // Keep defaults.
@@ -1133,6 +1175,7 @@ export async function registerReviews(
           provider,
           model,
           effort,
+          ...(updateGuideId !== undefined ? { guidePersonaId: updateGuideId, lens: updateLens } : {}),
         },
         { reviewId: id, toVersion: snapshot.review.currentVersion },
       );

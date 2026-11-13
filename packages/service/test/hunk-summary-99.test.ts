@@ -74,7 +74,7 @@ async function makeReview(ctx: Awaited<ReturnType<typeof createApp>>["ctx"]): Pr
     )
     .run(id, 1, "abc1234def5678abc1234def5678abc1234def5", "0000000", "main", Date.now(), JSON.stringify({}));
   const snap: ReviewSnapshot = {
-    review: { id, repoId: "demo", branch: "main", versions: [], currentVersion: 1, createdAt: Date.now() },
+    review: { id, repoId: "demo", branch: "main", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: Date.now() },
     version: { n: 1, headSha: "abc1234def5678abc1234def5678abc1234def5", mergeBaseSha: "0000000", baseRef: "main", fetchedAt: Date.now(), idMapping: {} },
     files: [
       {
@@ -324,7 +324,7 @@ describe("hunk-pass background stage (#99)", () => {
 
 function multiHunkSnapshot(id: string, hashes: string[]): ReviewSnapshot {
   return {
-    review: { id, repoId: "demo", branch: "main", versions: [], currentVersion: 1, createdAt: Date.now() },
+    review: { id, repoId: "demo", branch: "main", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: Date.now() },
     version: { n: 1, headSha: "abc1234def5678abc1234def5678abc1234def5", mergeBaseSha: "0000000", baseRef: "main", fetchedAt: Date.now(), idMapping: {} },
     files: [
       {

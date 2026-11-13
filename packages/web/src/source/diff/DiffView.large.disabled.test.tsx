@@ -85,6 +85,7 @@ function makeBigSnapshot(): import("@unvibe/shared").ReviewSnapshot {
       branch: "big",
       versions: [],
       currentVersion: 1,
+      guidePersonaId: "guide",
       createdAt: Date.now(),
     },
     version: { n: 1, headSha: "abc1234", mergeBaseSha: "def5678", baseRef: "main", fetchedAt: Date.now(), idMapping: {} },

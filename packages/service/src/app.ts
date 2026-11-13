@@ -260,9 +260,19 @@ function withTimeout<T>(p: Promise<T>, ms: number, onTimeout: () => Promise<T>):
 /**
  * Locate `prompts/` relative to the module when possible (so the esbuild
  * bundle + global install find it outside the repo), falling back to
- * `resolvePromptsDir()` (env / cwd walk-up) for dev/tests.
+ * `resolvePromptsDir()` (env / cwd walk-up) for dev/tests. An explicit
+ * `UNVIBE_PROMPTS_DIR` wins over every layout (issue #393: the journey
+ * and tour point the built service at a fixture prompt set).
  */
 export function resolvePromptsDirForBundle(): string {
+  const override = process.env.UNVIBE_PROMPTS_DIR;
+  if (override) {
+    try {
+      if (fs.existsSync(path.join(override, "instructions.md"))) return override;
+    } catch {
+      // fall through to the layout candidates
+    }
+  }
   const here = path.dirname(fileURLToPath(import.meta.url));
   // dist layout: packages/service/dist/app.js → root prompts/
   // src layout:  packages/service/src/app.ts → root prompts/

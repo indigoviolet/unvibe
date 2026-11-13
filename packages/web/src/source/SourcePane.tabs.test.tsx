@@ -20,6 +20,7 @@ function seed(prNumber?: number): void {
       ...(prNumber !== undefined ? { prNumber } : {}),
       versions: [],
       currentVersion: 1,
+      guidePersonaId: "guide",
       createdAt: 0,
     },
     version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },

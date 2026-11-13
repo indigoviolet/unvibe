@@ -32,12 +32,16 @@ import {
   parseId,
   renderMarkdown,
   type Block,
+  type Persona,
   type PromptExpanded,
+  type PromptForksResponse,
+  type PromptForkStatus,
   type PromptLayerSpan,
   type PromptsResponse,
   type PromptTemplate,
   type ReviewSnapshot,
 } from "@unvibe/shared";
+import { forkDrift, forkPersonaIds, isGuideCapable } from "../prompts/personas.js";
 import {
   buildConceptsSection,
   buildGlossarySection,
@@ -344,8 +348,10 @@ export interface PromptsRouteDeps {
   /**
    * Issue #160: stored settings, so the `?review=` expansion previews the
    * L0 variant the setting selects. Absent → the lock-down preview.
+   * Issue #393: `personas` (when present) names the entries behind
+   * `GET /api/prompt-forks`.
    */
-  settings?: { get(): { fullAccess: boolean } };
+  settings?: { get(): { fullAccess: boolean; personas?: Persona[] } };
 }
 
 /** An expanded prompt with its layer spans (extends the shared contract). */
@@ -648,6 +654,36 @@ export async function registerPrompts(
           .send({ error: "expansion failed", detail: err instanceof Error ? err.message : String(err) });
       }
     }
+    return body;
+  });
+
+  // Issue #393: one call behind the Re-do menu and the Settings drift
+  // warning — every settings persona plus every fork folder, with its
+  // guide capability and drifted files.
+  app.get("/api/prompt-forks", async (_req, reply) => {
+    if (!lib || !dir) {
+      return reply
+        .code(501)
+        .send({ error: "prompts unavailable", detail: loadError ?? `no prompts dir (set UNVIBE_PROMPTS_DIR)` });
+    }
+    let personas: Persona[] = [];
+    try {
+      personas = deps.settings?.get().personas ?? [];
+    } catch {
+      personas = [];
+    }
+    const ids = [...new Set([...personas.map((p) => p.id), ...forkPersonaIds(dir)])].sort();
+    const forks: PromptForkStatus[] = ids.map((personaId) => {
+      const persona = personas.find((p) => p.id === personaId);
+      return {
+        personaId,
+        name: persona?.name ?? personaId,
+        enabled: persona?.enabled ?? false,
+        guideCapable: isGuideCapable(dir, personaId),
+        drifted: forkDrift(dir, personaId, lib),
+      };
+    });
+    const body: PromptForksResponse = { forks };
     return body;
   });
 }

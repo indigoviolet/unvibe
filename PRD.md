@@ -373,7 +373,7 @@ A session started under one setting keeps it until it ends (the posture is part 
 | Entity | Key fields |
 |---|---|
 | Repo | id, owner/name, local path, last opened |
-| Review | id, repo, **branch name**, PR number (optional), versions[], current version |
+| Review | id, repo, **branch name**, PR number (optional), guide persona id, versions[], current version |
 | Version | n, head SHA, merge-base SHA, base ref, fetched at, mapping from the previous version's IDs |
 | File / Hunk | file key, path, category, hunk **content hash**, header, line ranges, `hidden_reason` |
 | HunkState | content hash → folded, reviewed, summary (carried across versions by hash) |
@@ -564,6 +564,7 @@ A new base is built when any of these happens:
 - **Templates** are files (`prompts/<name>.md`) whose front matter gives the role, model tier and variables.
 - **Rendering is deterministic:** stable ordering, no timestamps, the same bytes for the same inputs.
 - **Templates are shown in Settings** (§4.14).
+- **Persona forks:** a persona with id `<id>` may own `prompts/personas/<id>/`. Any template there replaces the shared template of the same name, whole file, for every task that persona's guide runs; the rest fall back to `prompts/`. A persona whose folder holds `reader.md` is guide-capable: it can write a whole guide on its own provider/model (or following main) with its lens as the writing style. A review records its Guide persona; every main-agent task on it resolves templates, model and lens through that persona, and card personas layer their lens on its instructions. Each fork carries a manifest (base-file hashes); `mise run persona:fork` copies base files in and rewrites it, and the app warns where a base file moved on.
 
 | Template | Used by | Key variables |
 |---|---|---|
@@ -613,7 +614,8 @@ POST /api/reviews                        { repoId, pr?, branch?, title?, author?
                                          (fetch + ingest run after the response; demo stays 201 sync)
 GET  /api/reviews/:id                    snapshot: ingest status + (once ready) version, pages, cards, annotations, hunk state, jobs
 POST /api/reviews/:id/retry              re-run a failed ingest
-POST /api/reviews/:id/redo               re-do the guide: delete + create in one call (new id, answers the loading snapshot)
+POST /api/reviews/:id/redo               re-do the guide: delete + create in one call (new id, answers the loading snapshot); optional { personaId } re-does with a guide-capable persona and records it
+GET  /api/prompt-forks                   fork status per persona (guide-capable, drifted files)
 POST /api/reviews/:id/refresh            fetch and compare (no agent; 409 while loading/failed)
 POST /api/reviews/:id/update             run the update pass (409 while loading/failed)
 POST /api/reviews/:id/actions            { kind: explain|ask|note|reply|retry|slower|examples|diagram|undo|

@@ -286,6 +286,10 @@ run = "node scripts/stats-summary.mjs"
 description = "Linux end-to-end: setup, handler start, reuse, idle exit, uninstall"
 run = "mise run build && node scripts/e2e-linux.mjs"
 
+[tasks."persona:fork"]
+description = "Copy base prompt templates into a persona fork and (re)write its manifest (issue #393): persona:fork -- <id> [template ...]"
+run = "node scripts/persona-fork.mjs"
+
 [tasks."e2e:macos"]
 description = "macOS end-to-end: setup, helper app, handler start, reuse, idle exit, uninstall"
 run = "mise run build && node scripts/e2e-macos.mjs"

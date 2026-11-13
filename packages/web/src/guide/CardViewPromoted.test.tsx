@@ -62,7 +62,7 @@ function link(replies: Reply[]): Thread {
 function seed(cards: Card[], annotations: Thread[], jobs: Job[] = []): void {
   useReview.getState().clear();
   useReview.getState().setSnapshot({
-    review: { id: REVIEW_ID, repoId: "r", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
+    review: { id: REVIEW_ID, repoId: "r", branch: "b", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: 0 },
     version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
     files: [],
     pages: [{ id: "p-mock-1", kind: "opened-expansion", title: "fast path", parent: "root", cards }],

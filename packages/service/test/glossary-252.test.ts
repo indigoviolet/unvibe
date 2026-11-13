@@ -40,7 +40,7 @@ function hunk(start: number, hash: string): Hunk {
 
 function seedSnapshot(id: string): ReviewSnapshot {
   return {
-    review: { id, repoId: "demo", branch: "main", versions: [], currentVersion: 1, createdAt: Date.now() },
+    review: { id, repoId: "demo", branch: "main", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: Date.now() },
     version: { n: 1, headSha: "abc1234def5678abc1234def5678abc1234def5", mergeBaseSha: "0000000", baseRef: "main", fetchedAt: Date.now(), idMapping: {} },
     files: [{ fileKey: "a-py", path: "a.py", category: "source", hunks: [hunk(1, "h1"), hunk(10, "h2")] }],
     pages: [{ id: "root", kind: "root", title: "Guide", cards: [] }],
