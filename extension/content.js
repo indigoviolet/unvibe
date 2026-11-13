@@ -44,31 +44,27 @@
     return false;
   }
 
-  // The page is a rendered PR page only when a PR title hook is present
-  // (#392): the classic title (`h1.gh-header-title`) or the Conversation
-  // header title (`h1.pr-title`). A URL match alone is never enough —
-  // GitHub serves other pages (e.g. the SSO re-authentication screen)
-  // under PR URLs, and those have headings but no PR title hook.
-  function hasPrTitle() {
-    return !!document.querySelector("h1.gh-header-title, h1.pr-title");
-  }
-
   // Anchors ONLY in the PR page header (#392). The code/files tabs keep
   // the classic `.gh-header-*` hooks; the Conversation header (title with
   // the Merge status / Code buttons beside it) doesn't use those, so it
   // is found through its actions container's `data-testid` — a stable
   // React hook that survives button-text and class churn, unlike the
-  // removed structural fallbacks. Returns null to fail quietly when no
-  // header hook matches; the broad fallbacks (first "Code" button's
-  // group, first `h1`'s container) are gone, so dialogs and overlays
-  // with headings or matching buttons can never become the anchor.
+  // removed structural fallbacks. These hooks ARE the rendered-PR-page
+  // recognition: they are specific to the PR page header, so other pages
+  // served under PR URLs (e.g. the SSO re-authentication screen, with
+  // headings but no header hook) match nothing. A URL match alone is
+  // never enough. Returns null to fail quietly when no header hook
+  // matches; the broad fallbacks (first "Code" button's group, first
+  // `h1`'s container) are gone, so dialogs and overlays with headings or
+  // matching buttons can never become the anchor.
   function findAnchor() {
-    if (!hasPrTitle()) return null;
+    // Each hook is a specific sub-container of the PR page header —
+    // never the bare outer header alone. The Conversation header has no
+    // `.gh-header-*` hooks at all, hence the single `data-testid` hook.
     const selectors = [
       ".gh-header-actions",
       ".gh-header-meta",
       ".gh-header-show",
-      ".gh-header",
       // Current Conversation header (#333).
       '[data-testid="pr-conversation-header-actions"]',
     ];
