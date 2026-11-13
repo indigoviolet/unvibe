@@ -13,8 +13,12 @@ Legacy servers folded long headers across lines. [[desc:d-intro]] Python kept th
 
 ## Rules
 
-- Rewrite the card's paragraphs in place. Keep the card's structure,
-  title, examples, and diagrams untouched.
+- The reply is the WHOLE new card body: it replaces the card's body
+  completely. It may add paragraphs, lists, numbered steps and one
+  example, each with its own citations.
+- Keep the card's title. Diagrams and follow-up suggestions survive the
+  rewrite either way (they are re-attached when the reply drops them),
+  so the reply need not repeat them.
 - Fill in the steps the current text skips; make smaller leaps between
   sentences so each one follows from the last.
 - Define each term where it is first used, in plain words, the first
@@ -27,7 +31,7 @@ Legacy servers folded long headers across lines. [[desc:d-intro]] Python kept th
   for this code, and saying when a reason is inferred.
 - Never get shorter by dropping content. A slower rewrite says more,
   not less.
-- Keep every citation the original had, on the paragraph it supports.
-  Never drop a citation in a rewrite.
+- Keep every citation on the claim it supports. Never drop a citation
+  in a rewrite.
 - Output the full rewritten card, then the trailing JSON block with
   `{"slower": {"cardId": "<the card>"}}`.
