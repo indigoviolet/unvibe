@@ -4471,16 +4471,27 @@ one-variant union today).
   the old paragraphs' citations on the wrong text. Same path for page
   cards, thread replies, persona variants (rewritten as that persona) and
   the #388 bulk rewrite (one ordinary press per card).
-- **Undo / anchors / citations / diagrams:** the pre-press blocks ride the
-  undo stack as before, so Undo restores the exact previous body;
-  `markStaleAnchors` runs after every replacement (threads whose quoted
-  text vanished get the footnote chip); citation validation with its
-  single repair turn is unchanged (it already runs inside `runInFork`
-  for every template, slower included); a diagram the reply drops is
-  kept, re-inserted at its old index among blocks (the prompt says
-  diagrams are kept). Blocks the reply drops and does not echo (e.g. a
-  parked follow-up, an accepted-correction paragraph the reply does not
-  carry) are gone from the body — Undo is the way back.
+- **Undo / anchors / citations / diagrams / follow-ups:** the pre-press
+  blocks ride the undo stack as before, so Undo restores the exact
+  previous body; `markStaleAnchors` runs after every replacement
+  (threads whose quoted text vanished get the footnote chip); citation
+  validation with its single repair turn is unchanged (it already runs
+  inside `runInFork` for every template, slower included). A diagram the
+  reply drops is kept, re-inserted at its old index among blocks; an
+  unconsumed follow-up block the reply drops is kept the same way (the
+  prompt never asks the agent to echo it). A reply carrying its own
+  follow-ups takes over. Reply blocks whose fresh parser IDs collide
+  with a kept block's ID are restamped (`-cN`, kept IDs win), so stored
+  bodies stay duplicate-free (#116). Blocks the reply drops and does not
+  echo (e.g. an accepted-correction paragraph the reply does not carry)
+  are gone from the body — Undo is the way back.
+- **Prompt:** `prompts/slower.md` now says the reply is the WHOLE new
+  card body (paragraphs, lists, numbered steps, one example, each with
+  its own citations), keeps the title, need not repeat diagrams and
+  follow-ups (re-attached anyway), keeps every citation on its claim,
+  and never gets shorter. Terms/guide blocks and the trailing JSON
+  contract are unchanged. `test/goldens/slower.md` re-rendered; the
+  byte-identical ordinary-press test passes against the new golden.
 - **Stored shape:** unchanged (blocks + revision + undoStack), so no
   `DATA_FORMAT` change.
 - Evidence: service `test/slower-398.test.ts` (rich reply replaces the
@@ -4498,4 +4509,6 @@ one-variant union today).
   text and chips), tour frame
   `packages/web/visual-tour/slower-rewrite-1440-light.png`
   (git-ignored, rewritten card at 1440 light with list, example and
-  chips). Full gates not yet run.
+  chips), `test/expansion-block-ids.test.ts` (unconsumed follow-up
+  survives with a restamped colliding reply ID; undo restores). Full
+  gates not yet run.
