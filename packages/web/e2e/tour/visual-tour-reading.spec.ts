@@ -144,6 +144,58 @@ test("? mode with two picked terms and the tray (1440-light)", async ({ page }) 
   await page.screenshot({ path: path.join(SHOTS, "question-mode-1440-light.png"), fullPage: true });
 });
 
+// ---- slower rewrite (#398): the replaced body with its list, example and chips ----
+test("slower rewrite shows the list, example and correctly placed chips (1440-light)", async ({ page }) => {
+  if (!svc) throw new Error("service not running");
+  test.setTimeout(240_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  // Three slower presses against the tour review (replay central:1, :2,
+  // :3): the third reply carries three paragraphs, a numbered list of
+  // steps and an example walk-through, each with its own citations.
+  // Each press waits for its own recorded text, so presses stay ordered.
+  const pressTexts = ["obsolete folded header line", "Start with what the server sends"];
+  for (let press = 0; press < pressTexts.length; press++) {
+    const acted = await apiJson(svc, "POST", `/api/reviews/${reviewId}/actions`, {
+      kind: "slower",
+      cardId: "central",
+    });
+    if (acted.status !== 200) throw new Error(`slower press ${press + 1} failed: ${acted.status}`);
+    await poll(
+      () => snapshot(svc!, reviewId),
+      (s) => JSON.stringify(s.pages.find((p) => p.id === "root")?.cards.find((c) => c.id === "central"))
+        .includes(pressTexts[press]),
+      90_000,
+    );
+  }
+  const acted = await apiJson(svc, "POST", `/api/reviews/${reviewId}/actions`, {
+    kind: "slower",
+    cardId: "central",
+  });
+  if (acted.status !== 200) throw new Error(`slower press 3 failed: ${acted.status}`);
+  await poll(
+    () => snapshot(svc!, reviewId),
+    (s) => {
+      const central = s.pages.find((p) => p.id === "root")?.cards.find((c) => c.id === "central");
+      // Four paragraphs, the numbered list, the example aside.
+      return !!central && central.blocks.length === 6;
+    },
+    90_000,
+  );
+  await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+  await expect(page.locator("#C-central")).toBeVisible({ timeout: 60_000 });
+  const card = page.locator("#C-central");
+  await card.scrollIntoViewIfNeeded();
+  await expect.soft(card.getByText("A slower look at the same change")).toBeVisible({ timeout: 30_000 });
+  await expect.soft(card.locator("ol.lst > li")).toHaveCount(3);
+  await expect.soft(card.locator(".blk.gen-aside .tag")).toContainText("Example");
+  await checkLayout(page, "slower-rewrite");
+  // Full page: center the example aside so the frame shows the list,
+  // the whole example (code, walk-through, its chip) and the
+  // paragraph chips above it.
+  await card.locator(".blk.gen-aside").evaluate((el) => el.scrollIntoView({ block: "center" }));
+  await page.screenshot({ path: path.join(SHOTS, "slower-rewrite-1440-light.png"), fullPage: true });
+});
+
 // ---- j20-critic-concepts-godeeper.spec.ts (frames re-added) ----
 /** J20 (#215/#216/#217): one critic job, concept pages on open, auto go-deeper — real service, replay. */
 

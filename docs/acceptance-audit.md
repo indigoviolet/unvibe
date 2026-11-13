@@ -4460,3 +4460,42 @@ one-variant union today).
   fork prompts on the re-done review, drift warning), tour frames
   `redo-with-menu`, `redo-with-confirm`, `fork-drift` (inspected).
   Full gates not yet run.
+
+## Addendum: #398 — Help me understand replaces the body wholesale (branch `fix/398-slower-replace-body`)
+
+- **Wholesale replacement (§4.4):** a "Help me understand" press replaces
+  the card body with the reply's parsed blocks wholesale — paragraphs AND
+  lists, asides/examples, headings, tables — each with its OWN citations.
+  The old positional paragraph-slot merge (`mergeSlowerText`, deleted) is
+  gone: it dropped reply blocks beyond the old paragraph count and kept
+  the old paragraphs' citations on the wrong text. Same path for page
+  cards, thread replies, persona variants (rewritten as that persona) and
+  the #388 bulk rewrite (one ordinary press per card).
+- **Undo / anchors / citations / diagrams:** the pre-press blocks ride the
+  undo stack as before, so Undo restores the exact previous body;
+  `markStaleAnchors` runs after every replacement (threads whose quoted
+  text vanished get the footnote chip); citation validation with its
+  single repair turn is unchanged (it already runs inside `runInFork`
+  for every template, slower included); a diagram the reply drops is
+  kept, re-inserted at its old index among blocks (the prompt says
+  diagrams are kept). Blocks the reply drops and does not echo (e.g. a
+  parked follow-up, an accepted-correction paragraph the reply does not
+  carry) are gone from the body — Undo is the way back.
+- **Stored shape:** unchanged (blocks + revision + undoStack), so no
+  `DATA_FORMAT` change.
+- Evidence: service `test/slower-398.test.ts` (rich reply replaces the
+  body exactly with per-paragraph citations, undo restores byte-identical
+  blocks, dropped diagram kept at position through rewrite and undo,
+  invalid citations take the repair turn, persona variant + thread reply
+  + bulk rewrite share the replacement), `test/actions-m4.test.ts`
+  (stack/undo/concurrency updated to wholesale semantics),
+  `test/expansion-block-ids.test.ts` (IDs unique, no longer stable
+  across a slower rewrite; undo restores), `test/snapshot.test.ts`
+  (new `slower-central-press3` replay recording validates clean),
+  journey `e2e/journeys/l3-reading.spec.ts` "Help me understand replaces
+  the body wholesale" (third press replays a list + example, every reply
+  block renders with its chip on the right paragraph, two undos restore
+  text and chips), tour frame
+  `packages/web/visual-tour/slower-rewrite-1440-light.png`
+  (git-ignored, rewritten card at 1440 light with list, example and
+  chips). Full gates not yet run.
