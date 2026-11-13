@@ -270,6 +270,11 @@
     },
     {
       "kind": "slower",
+      "key": "central:3",
+      "file": "slower-central-press3.md"
+    },
+    {
+      "kind": "slower",
       "key": "expansion:1",
       "file": "slower-expansion-press1.md"
     },

@@ -29,9 +29,11 @@ describe("snapshot build", () => {
     // #359: central Clarity).
     // + 12 hand-authored terms recordings (issue #388: one slower-with-
     // terms rewrite per guide card, keys `<card>:terms:1`; journey-covered).
+    // + 1 hand-authored press-3 recording (issue #398: a third slower
+    // press on central with a list and an example; journey-covered).
     // Journey-only manifest entries (the #351 update-pass reply) are not
     // demo content and are skipped by the builder.
-    expect(counts).toHaveLength(64);
+    expect(counts).toHaveLength(65);
     expect(snapshot.files.map((f) => [f.fileKey, f.hunks.length])).toEqual([
       ["src-urllib3-connection.py", 2],
       ["test-test_connection.py", 3],
