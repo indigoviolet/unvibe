@@ -287,25 +287,29 @@ export function insertDiagrams(blocks: Block[], fresh: Block[]): { blocks: Block
 }
 
 /**
- * Merge a slower rewrite into the card: the reply's paragraphs replace
- * the current paragraphs' text in order, keeping the current block ids
- * (anchors keep resolving) and leaving non-paragraph blocks (examples,
- * diagrams, follow-ups) untouched. Length mismatches keep the extra
- * blocks on their current side: surplus current paragraphs keep their
- * text, surplus reply paragraphs are dropped.
+ * Replace the card body with a slower rewrite wholesale (issue #398):
+ * the reply's parsed blocks — paragraphs AND lists, asides/examples,
+ * headings, tables — each with its OWN citations. No positional text
+ * swap: reply blocks beyond the old paragraph count, and every
+ * non-paragraph reply block, are part of the new body.
+ *
+ * If the reply drops a diagram block the card had, the diagram is kept,
+ * re-inserted at its old position (index among blocks) — the prompt says
+ * diagrams are kept. Anything else the reply drops is gone; the
+ * pre-press blocks ride the undo stack, so Undo restores the exact body.
  */
-export function mergeSlowerText(current: Block[], reply: Block[]): Block[] {
-  const replyParas = reply.filter((b) => b.type === "paragraph");
-  if (replyParas.length === 0) return current;
-  let ri = 0;
-  return current.map((b) => {
-    if (b.type !== "paragraph") return b;
-    if (ri >= replyParas.length) return b;
-    const rp = replyParas[ri++];
-    if (rp.type !== "paragraph") return b;
-    if (!rp.text || rp.text === b.text) return b;
-    return { ...b, text: rp.text };
+export function replaceSlowerBody(current: Block[], reply: Block[]): Block[] {
+  if (reply.length === 0) return current;
+  const out = [...reply];
+  const kept: { index: number; block: Block }[] = [];
+  current.forEach((b, i) => {
+    const isDiagram = b.type === "diagram" || (b.type === "aside" && (b as AsideBlock).kind === "Diagram");
+    if (isDiagram && !hasDiagram(out, b)) kept.push({ index: i, block: b });
   });
+  for (const { index, block } of kept) {
+    out.splice(Math.min(index, out.length), 0, block);
+  }
+  return out;
 }
 
 /**
