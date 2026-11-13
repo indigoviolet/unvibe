@@ -123,9 +123,9 @@ test.describe("L8 personas settings", () => {
 
   test("built-ins are seeded and listed", async ({ page }) => {
     const s = service();
-    await test.step("the API seeds the fixed Guide, Second opinion and Clarity", async () => {
+    await test.step("the API seeds the fixed Guide, Second opinion, Clarity and Teach", async () => {
       const list = await personas(s);
-      expect.soft(list).toHaveLength(3);
+      expect.soft(list).toHaveLength(4);
       // Issue #379: the fixed Guide seeds first (the main agent).
       expect.soft(list[0]).toMatchObject({
         id: "guide",
@@ -153,9 +153,12 @@ test.describe("L8 personas settings", () => {
         enabled: true,
       });
       expect.soft(list[2]!.lens).toContain("You are Clarity");
+      // Issue #397: Teach follows the Guide's model and owns a prompt fork.
+      expect.soft(list[3]).toMatchObject({ id: "teach", name: "Teach", followMain: true, enabled: true });
+      expect.soft(list[3]!.lens).toContain("You are Teach");
     });
 
-    await test.step("Settings lists all three with their models", async () => {
+    await test.step("Settings lists all four with their models", async () => {
       await page.setViewportSize({ width: 1440, height: 900 });
       await gotoPersonas(page, s);
       const guideRow = page.getByTestId("persona-guide");
@@ -170,6 +173,9 @@ test.describe("L8 personas settings", () => {
       await expect.soft(clarityRow).toBeVisible();
       await expect.soft(clarityRow).toContainText("Clarity");
       await expect.soft(clarityRow).toContainText("Guide's model (claude/claude-opus-5-5)");
+      const teachRow = page.getByTestId("persona-teach");
+      await expect.soft(teachRow).toBeVisible();
+      await expect.soft(teachRow).toContainText("Guide's model (claude/claude-opus-5-5)");
       await checkLayout(page, "personas-1440-light");
     });
   });
@@ -225,7 +231,7 @@ test.describe("L8 personas settings", () => {
       const seed = await personas(s);
       const added = await apiJson(s, "PUT", "/api/settings", { personas: [...seed, custom] });
       expect(added.status).toBe(200);
-      expect((added.json as { personas: PersonaBody[] }).personas).toHaveLength(4);
+      expect((added.json as { personas: PersonaBody[] }).personas).toHaveLength(5);
       await gotoPersonas(page, s);
       const row = page.getByTestId("persona-perf-sceptic");
       await expect.soft(row).toBeVisible({ timeout: 15_000 });
@@ -262,11 +268,11 @@ test.describe("L8 personas settings", () => {
       await page.keyboard.press("Escape");
       await expect.soft(row.getByText("Confirm delete the “Perf sceptic” persona")).toHaveCount(0);
       await expect.soft(row).toBeVisible();
-      // Confirm: the row goes and the API forgets it (both built-ins stay).
+      // Confirm: the row goes and the API forgets it (the built-ins stay).
       await row.getByRole("button", { name: "Delete Perf sceptic" }).click();
       await row.getByRole("button", { name: "Confirm delete the “Perf sceptic” persona" }).click();
       await expect.soft(row).toHaveCount(0);
-      expect.soft((await personas(s)).map((p) => p.id)).toEqual(["guide", "second-opinion", "clarity"]);
+      expect.soft((await personas(s)).map((p) => p.id)).toEqual(["guide", "second-opinion", "clarity", "teach"]);
     });
   });
 
