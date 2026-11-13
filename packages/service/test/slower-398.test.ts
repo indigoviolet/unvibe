@@ -14,7 +14,7 @@
  * - the #388 bulk path uses the same replacement.
  */
 import { beforeEach, describe, expect, it } from "vitest";
-import type { AgentEvent, AsideBlock, Block, DiagramBlock, ParagraphBlock, ReviewSnapshot } from "@unvibe/shared";
+import type { AgentEvent, Block, DiagramBlock, ParagraphBlock, ReviewSnapshot } from "@unvibe/shared";
 import { questionRewriteTargetIds } from "@unvibe/shared";
 import { FakeAgentRunner } from "../src/agent/fake.js";
 import { replaceSlowerBody } from "../src/interaction/cards.js";
