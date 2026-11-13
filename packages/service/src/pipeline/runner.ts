@@ -31,7 +31,7 @@ import type {
 } from "@unvibe/shared";
 import { canonicalizeTarget, collectTargets, DEFAULT_GUIDE_TITLE, DEFAULT_HIDE_LEVEL, formatGlossaryForPrompt, isDocumentReview, JOB_PRIORITY, normalizeGlossary, normalizePlotlines, parseCards, parseCardsPartial, parseHunkReply, parseId, PLOTLINE_ASSIGN_CAP, resolveHunkScore, selectHunkSummaryTargets, shouldHideAtLevel, splitReply } from "@unvibe/shared";
 import { postureFor } from "@unvibe/shared";
-import { getGuidePersona } from "@unvibe/shared";
+import { GUIDE_PERSONA_ID } from "@unvibe/shared";
 import { validateTarget } from "../validate/index.js";
 import type { HunkReplyResult, HunkSummaryCandidate } from "@unvibe/shared";
 import { attachPartialUsage, DegradedConnError, DegradedTurnError, partialUsageOf, RetryableError, type PartialUsageCarrier } from "../jobs/errors.js";
@@ -41,9 +41,13 @@ import { readCodeSlice } from "../mcp/index.js";
 import { isNoneRunner, isReplayRunner } from "../agent/factory.js";
 import { NoAgentError } from "../agent/none.js";
 import { guideRevisionForSnapshot, toPromptSnapshot } from "../routes/prompts.js";import { buildBasePack, buildLadder } from "../context/index.js";
-import { loadTemplatesDirSync, renderTemplate, resolvePromptsDir } from "../prompts/index.js";
+import { loadTemplatesDirSync, renderTemplate, resolvePromptsDir, type TemplateLibrary } from "../prompts/index.js";
 import { renderSystemPrompt } from "../prompts/access.js";
-import { withGuideStyleForTurn } from "../prompts/personas.js";
+import {
+  guidePersonaForReview,
+  loadPersonaLibrarySync,
+  withGuideStyleForReview,
+} from "../prompts/personas.js";
 import type { SessionManager } from "../sessions/manager.js";
 import { baseKeyString } from "../sessions/manager.js";
 import type { SettingsStore } from "../settings/index.js";
@@ -69,7 +73,7 @@ import {
 import { withReplayMark } from "./replayMark.js";
 import { buildRepairVariables, finalizeFresh, mergeRepairedDiagrams } from "./actions/diagram-finalize.js";
 import type { ActionContext } from "./actions/common.js";
-import { changeListVariable, ingestAgentTurn, templateExpectsGlossary } from "./sharedctx-wire.js";
+import { changeListVariable, ingestAgentTurn } from "./sharedctx-wire.js";
 import type { SharedContextService } from "../sharedctx/service.js";
 import type { RunInForkOptions, RunInForkResult, RunSmallOptions } from "./types.js";
 
@@ -484,6 +488,83 @@ export class Pipeline {
     return `${base}\n\n# Persona lens\n\n${persona!.lens}`;
   }
 
+  /**
+   * Issue #393: the review's Guide persona definition. Every main-agent
+   * task resolves templates, model and lens through it; card personas
+   * layer their lens on top of its instructions.
+   */
+  private guideOf(
+    settings: Awaited<ReturnType<Pipeline["effectiveSettings"]>>,
+    snapshot: ReviewSnapshot,
+  ): Persona {
+    return guidePersonaForReview(settings.personas ?? [], snapshot.review.guidePersonaId);
+  }
+
+  /**
+   * Issue #393: the main-agent role for a review — the built-in Guide's
+   * own pick (provider/model/effort, exactly as before), or the review's
+   * alternate Guide persona resolved like any persona (its own
+   * provider/model, or the Guide's when it follows main; effort is
+   * always the adapter default off the built-in Guide).
+   */
+  private mainRoleFor(
+    settings: Awaited<ReturnType<Pipeline["effectiveSettings"]>>,
+    snapshot: ReviewSnapshot,
+  ): { provider: string; model: string; effort: string } {
+    const guide = this.guideOf(settings, snapshot);
+    if (guide.id === GUIDE_PERSONA_ID) return guidePick(settings);
+    return this.roleFor(settings, guide);
+  }
+
+  /**
+   * The agent role for one turn on a review (issue #393): an explicit
+   * card persona keeps its own provider/model; a card persona following
+   * the main model runs on the review's main provider/model but keeps
+   * the adapter-default effort (a follower never inherits the Guide's
+   * effort — #379 holds on every review); main turns run as the
+   * review's Guide persona outright. The built-in Guide resolves
+   * exactly as before throughout.
+   */
+  private turnRoleFor(
+    settings: Awaited<ReturnType<Pipeline["effectiveSettings"]>>,
+    snapshot: ReviewSnapshot,
+    persona?: Persona,
+  ): { provider: string; model: string; effort: string } {
+    if (persona && !persona.followMain) return this.roleFor(settings, persona);
+    const main = this.mainRoleFor(settings, snapshot);
+    if (!persona) return main;
+    return { provider: main.provider, model: main.model, effort: "" };
+  }
+
+  /**
+   * Issue #393: the template library for a review — the shared templates
+   * with the review's Guide persona fork overlaid (whole-file replaces).
+   * The built-in Guide keeps the shared library untouched.
+   */
+  private libFor(reviewId: string): TemplateLibrary {
+    const snapshot = this.opts.reviews.getSnapshot(reviewId);
+    if (!snapshot) throw new Error(`unknown review ${reviewId}`);
+    return loadPersonaLibrarySync(this.promptsDir, snapshot.review.guidePersonaId);
+  }
+
+  /**
+   * Issue #393: the hunk-pass role for a review. The built-in Guide
+   * keeps the small model (exactly as before); a fork Guide runs the
+   * hunk pass on its own role (its provider/model, or the main model
+   * when it follows main) — the issue lists the hunk pass among the
+   * tasks resolving model through the persona.
+   */
+  private hunkRoleFor(
+    settings: Awaited<ReturnType<Pipeline["effectiveSettings"]>>,
+    snapshot: ReviewSnapshot,
+  ): { provider: string; model: string; effort: string } {
+    const guide = this.guideOf(settings, snapshot);
+    if (guide.id === GUIDE_PERSONA_ID) {
+      return { provider: settings.small.provider, model: settings.small.model, effort: settings.small.effort };
+    }
+    return this.mainRoleFor(settings, snapshot);
+  }
+
   async runInFork(o: RunInForkOptions): Promise<RunInForkResult> {
     const snapshot = this.opts.reviews.getSnapshot(o.reviewId);
     if (!snapshot) throw new Error(`unknown review ${o.reviewId}`);
@@ -493,7 +574,11 @@ export class Pipeline {
     if (isNoneRunner(this.opts.runner)) throw new NoAgentError();
     if (o.persona && o.persona.lens.trim() === "") throw new Error("persona lens must be a non-empty string");
     const settings = await this.effectiveSettings();
-    const { provider, model, effort } = this.roleFor(settings, o.persona);
+    // Issue #393: main-agent turns run as the review's Guide persona (the
+    // built-in Guide resolves exactly as before); card-persona turns keep
+    // their own persona.
+    const guide = this.guideOf(settings, snapshot);
+    const { provider, model, effort } = this.turnRoleFor(settings, snapshot, o.persona);
     // #122: enqueue before awaiting the base, so the click gets its job id
     // at once. The base seq for the change list is read synchronously from
     // the current base (absent → 0, a safe under-approximation: the fork may
@@ -520,10 +605,10 @@ export class Pipeline {
     // Callers that already pass it (Ask first turns, go-deeper, concept)
     // keep theirs; older/test callers that do not are backfilled here so
     // the template always renders (no new mechanism, just the block).
-    if (variables["glossary"] === undefined && templateExpectsGlossary(this.promptsDir, o.template)) {
+    if (variables["glossary"] === undefined && (this.libFor(o.reviewId).get(o.template)?.variables.includes("glossary") ?? false)) {
       variables["glossary"] = this.glossaryForPrompt(snapshot);
     }
-    const template = this.render(o.template, variables);
+    const template = this.renderFor(o.reviewId, o.template, variables);
     let prompt = withReplayMark(template, o.replay && isReplayRunner(this.opts.runner) ? o.replay : undefined);
     // Issue #359 (owner decision, option B): same-model personas fork
     // main's shared base, so the lens travels at the start of every
@@ -531,8 +616,11 @@ export class Pipeline {
     // Issue #379: main writing turns carry the Guide's writing-style
     // lens the same way (system prompt and base stay untouched, so the
     // base never depends on the lens); persona turns never do.
+    // Issue #393: the lens is the review's Guide persona's — the
+    // built-in placement stays exactly (#379), a fork Guide styles the
+    // rest of its listed main tasks too.
     if (o.persona) prompt = `# Persona lens\n\n${o.persona.lens.trim()}\n\n${prompt}`;
-    else prompt = withGuideStyleForTurn(o.template, prompt, getGuidePersona(settings.personas)?.lens ?? "");
+    else prompt = withGuideStyleForReview(o.template, prompt, guide.lens, guide.id !== GUIDE_PERSONA_ID);
 
     let resolveResult!: (r: RunInForkResult) => void;
     let rejectResult!: (e: Error) => void;
@@ -736,16 +824,17 @@ export class Pipeline {
                   baseLogSeq,
                 });
                 prompt = withReplayMark(
-                  this.render(o.retryTemplate, retryVars),
+                  this.renderFor(o.reviewId, o.retryTemplate, retryVars),
                   o.replay && isReplayRunner(this.opts.runner) ? o.replay : undefined,
                 );
                 // Issue #359 (owner decision, option B): the retry is a
                 // persona turn too, so it carries the lens the same way.
                 // Issue #379: a main-writing retry re-renders the full
                 // first-turn prompt, so it carries the Guide lens again.
+                // Issue #393: the review's Guide persona supplies it.
                 if (o.persona) prompt = `# Persona lens\n\n${o.persona.lens.trim()}\n\n${prompt}`;
                 else if (o.retryTemplate) {
-                  prompt = withGuideStyleForTurn(o.retryTemplate, prompt, getGuidePersona(settings.personas)?.lens ?? "");
+                  prompt = withGuideStyleForReview(o.retryTemplate, prompt, guide.lens, guide.id !== GUIDE_PERSONA_ID);
                 }
                 snapshotText = `${snapshotText}\n\n--- retry turn ---\n${prompt}`;
               }
@@ -776,11 +865,11 @@ export class Pipeline {
     const variables: Record<string, unknown> = { ...(o.variables as Record<string, unknown>) };
     // Issue #252: backfill the glossary block for callers that predate it
     // (tests, older code paths); the hunk pass passes its own explicitly.
-    if (variables["glossary"] === undefined && templateExpectsGlossary(this.promptsDir, o.template)) {
+    if (variables["glossary"] === undefined && (this.libFor(o.reviewId).get(o.template)?.variables.includes("glossary") ?? false)) {
       const snap = this.opts.reviews.getSnapshot(o.reviewId);
       variables["glossary"] = snap ? this.glossaryForPrompt(snap) : "(no glossary yet)";
     }
-    const template = this.render(o.template, variables);
+    const template = this.renderFor(o.reviewId, o.template, variables);
     const prompt = withReplayMark(template, o.replay && isReplayRunner(this.opts.runner) ? o.replay : undefined);
     const provider = settings.small.provider;
     const model = settings.small.model;
@@ -1020,7 +1109,7 @@ export class Pipeline {
     }
     const settings = effective;
     const prompt = withReplayMark(
-      this.render("concept_page", {
+      this.renderFor(reviewId, "concept_page", {
         concept: `${slug} — ${existing?.title ?? slug}`,
         mentions: this.mentionsOf(snapshot, slug),
         glossary: this.glossaryForPrompt(snapshot),
@@ -1032,7 +1121,7 @@ export class Pipeline {
     const job = this.opts.jobs.enqueue({
       reviewId,
       kind: "concept",
-      ...roleFields(guidePick(settings)),
+      ...roleFields(this.mainRoleFor(settings, snapshot)),
       priority: JOB_PRIORITY.userRequested,
       dedupe: { anchor: `concept:${slug}`, requestKind: "concept-page", baseVersion: `v${snapshot.version.n}` },
       cardId: `cc-${slug}`,
@@ -1111,17 +1200,27 @@ export class Pipeline {
     const stored = snapshot.hunkStates.find((s) => s.contentHash === contentHash)?.summary;
     if (stored) return { reused: true, summary: stored };
     const settings = await this.effectiveSettings();
+    // Issue #393: the on-demand summary is hunk-pass work — template,
+    // model and lens resolve through the review's Guide persona.
+    const guide = this.guideOf(settings, snapshot);
+    const forkGuide = guide.id !== GUIDE_PERSONA_ID;
+    const role = this.hunkRoleFor(settings, snapshot);
     const hunkText = this.formatHunkForPrompt(snapshot, found.file.fileKey, found.hunk.contentHash);
-    const prompt = withReplayMark(
-      this.render("hunk_pass", { hunk: hunkText, path: found.file.path, plotline: this.plotlineForHunk(snapshot, contentHash), glossary: this.glossaryForPrompt(snapshot) }),
-      isReplayRunner(this.opts.runner)
-        ? { kind: "hunk", key: this.replayKeyForHunk(snapshot, found.file.fileKey, contentHash) ?? undefined }
-        : undefined,
+    const prompt = withGuideStyleForReview(
+      "hunk_pass",
+      withReplayMark(
+        this.renderFor(reviewId, "hunk_pass", { hunk: hunkText, path: found.file.path, plotline: this.plotlineForHunk(snapshot, contentHash), glossary: this.glossaryForPrompt(snapshot) }),
+        isReplayRunner(this.opts.runner)
+          ? { kind: "hunk", key: this.replayKeyForHunk(snapshot, found.file.fileKey, contentHash) ?? undefined }
+          : undefined,
+      ),
+      guide.lens,
+      forkGuide,
     );
     return this.opts.jobs.enqueue({
       reviewId,
       kind: "summarize",
-      ...roleFields(settings.small),
+      ...roleFields(role),
       priority: JOB_PRIORITY.userRequested,
       dedupe: { anchor: `hunk:${contentHash}`, requestKind: "summarize", baseVersion: `v${snapshot.version.n}` },
       accessMode: postureFor(settings, "summarize"),
@@ -1133,7 +1232,7 @@ export class Pipeline {
         // turn, which runs inside `runner.start`; its usage lands on this
         // turn (see startSessionForJob), not on the summary turn.
         const session = await this.startSessionForJob(ctx, reviewId, {
-          ...roleFields(settings.small),
+          ...roleFields(role),
           cwd: this.worktreeOf(reviewId),
           systemPrompt: "",
           readOnly: postureFor(settings, "summarize") !== "full",
@@ -1202,8 +1301,14 @@ export class Pipeline {
 
   // -- internals ------------------------------------------------------
 
-  private render(template: string, variables: Record<string, unknown>): string {
-    const lib = loadTemplatesDirSync(this.promptsDir);
+  /**
+   * Issue #393: render a template for a review — the shared template
+   * with the review's Guide persona fork overlaid. Every review-scoped
+   * render goes through here, so a fork replaces its templates whole
+   * for every task the review runs.
+   */
+  private renderFor(reviewId: string, template: string, variables: Record<string, unknown>): string {
+    const lib = this.libFor(reviewId);
     const tpl = lib.get(template);
     if (!tpl) throw new Error(`unknown prompt template ${template}`);
     return renderTemplate(tpl, variables);
@@ -1237,7 +1342,8 @@ export class Pipeline {
       const text = await buildDocumentBaseText(this.opts.commands, snapshot);
       return `Read the base context below and reply with exactly \`ready\` and nothing else.\n\n${text}`;
     }
-    const promptSnap = toPromptSnapshot(snapshot, { model: guidePick(settings).model });
+    // Issue #393: the ladder budgets for the review's Guide persona model.
+    const promptSnap = toPromptSnapshot(snapshot, { model: this.mainRoleFor(settings, snapshot).model });
     const pack = buildBasePack(promptSnap, instructions, { inlineBudgetTokens: settings.inlineBudgetTokens });
     return `Read the base context below and reply with exactly \`ready\` and nothing else.\n\n${pack.user}`;
   }
@@ -1463,7 +1569,7 @@ export class Pipeline {
       const variables = buildRepairVariables(card, first.messages, first.blocks);
       const { text, usage } = await collectTracked(this.opts.sessions, this.opts.runner,
         session,
-        this.render("diagram", variables),
+        this.renderFor(reviewId, "diagram", variables),
         signal,
         () => {},
         onTool,
@@ -1563,9 +1669,13 @@ export class Pipeline {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
     const settings = await this.effectiveSettings();
-    const lib = loadTemplatesDirSync(this.promptsDir);
+    // Issue #393: the base instructions come from the review's Guide
+    // persona fork (card personas layer their lens on top of them); the
+    // main role is the review's Guide persona (the built-in resolves
+    // exactly as before).
+    const lib = this.libFor(reviewId);
     const instructions = this.instructionsFor(lib, settings, persona);
-    const role = this.roleFor(settings, persona);
+    const role = this.turnRoleFor(settings, snapshot, persona);
     // Document reviews build their pack from the document + repo maps
     // (#222); change reviews from L1+L1b+L2. The ready prefix is shared.
     const isDocument = isDocumentReview(snapshot);
@@ -1741,10 +1851,12 @@ export class Pipeline {
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
     const effective = settings ?? (await this.effectiveSettings());
-    const lib = loadTemplatesDirSync(this.promptsDir);
+    // Issue #393: fork instructions + the review's Guide persona role
+    // (see `ensureBaseForRole`).
+    const lib = this.libFor(reviewId);
     const instructions = this.instructionsFor(lib, effective, persona);
     const packText = await this.basePackTextFor(snapshot, instructions, effective);
-    const role = this.roleFor(effective, persona);
+    const role = this.turnRoleFor(effective, snapshot, persona);
     const base = await this.opts.sessions.getBase({
       key: {
         reviewId,
@@ -1805,13 +1917,18 @@ export class Pipeline {
     const settings = await this.effectiveSettings();
     const snapshot = this.opts.reviews.getSnapshot(reviewId);
     if (!snapshot) throw new Error(`unknown review ${reviewId}`);
-    const promptSnap = toPromptSnapshot(snapshot, { model: guidePick(settings).model });
+    // Issue #393: the reader runs as the review's Guide persona —
+    // its model, its fork templates, its lens as the writing style.
+    const guide = this.guideOf(settings, snapshot);
+    const forkGuide = guide.id !== GUIDE_PERSONA_ID;
+    const mainRole = this.mainRoleFor(settings, snapshot);
+    const promptSnap = toPromptSnapshot(snapshot, { model: mainRole.model });
     // One ladder call for both halves (issue #107): source + diff come
     // from the same rung, so the reader prompt stays under the hard cap.
     const ladder = buildLadder(promptSnap, { inlineBudgetTokens: settings.inlineBudgetTokens });
     const source = ladder.source;
     const diff = ladder.diff;
-    const lib = loadTemplatesDirSync(this.promptsDir);
+    const lib = this.libFor(reviewId);
     const instructions = renderSystemPrompt(lib, postureFor(settings));
     const readerTemplateBody = lib.get("reader")?.body ?? "";
     // Issue #252: the reader-result parser stores only trailing-JSON
@@ -1872,12 +1989,13 @@ export class Pipeline {
     // Issue #379: the guide is a main writing turn, so it carries the
     // Guide's writing-style lens up front (empty lens: unchanged). The
     // session's system prompt stays the base alone, like every base.
-    prompt = withGuideStyleForTurn("reader", prompt, getGuidePersona(settings.personas)?.lens ?? "");
+    // Issue #393: the review's Guide persona supplies the lens.
+    prompt = withGuideStyleForReview("reader", prompt, guide.lens, forkGuide);
     this.setStage(reviewId, "reader", "running");
     return this.opts.jobs.enqueue({
       reviewId,
       kind: "reader",
-      ...roleFields(guidePick(settings)),
+      ...roleFields(mainRole),
       priority: JOB_PRIORITY.visible,
       dedupe: { anchor: "guide", requestKind: "reader", baseVersion: `v${snapshot.version.n}` },
       run: async (ctx) => {
@@ -1896,7 +2014,7 @@ export class Pipeline {
         for (let attempt = 0; ; attempt++) {
           const mcp = this.opts.mcp.issueSession(reviewId, `reader-${reviewId}`, "reader");
           const session = await this.opts.runner.start({
-            ...roleFields(guidePick(settings)),
+            ...roleFields(mainRole),
             cwd: this.worktreeOf(reviewId),
             systemPrompt: instructions,
             readOnly: postureFor(settings) !== "full",
@@ -2171,10 +2289,14 @@ export class Pipeline {
     });
   }
 
-  /** Reader template text the reply answers (keys off `requestedReaderFields`). */
-  private readerTemplateBody(): string {
+  /**
+   * Reader template text the reply answers (keys off
+   * `requestedReaderFields`). Issue #393: the review's Guide persona
+   * fork decides which fields the reply may carry.
+   */
+  private readerTemplateBody(reviewId: string): string {
     try {
-      return loadTemplatesDirSync(this.promptsDir).get("reader")?.body ?? "";
+      return this.libFor(reviewId).get("reader")?.body ?? "";
     } catch {
       return "";
     }
@@ -2189,7 +2311,7 @@ export class Pipeline {
     const applied = readerApply(
       cards.map((c) => ({ title: c.title, blocks: c.blocks })),
       (data ?? null) as Record<string, unknown> | null,
-      this.readerTemplateBody(),
+      this.readerTemplateBody(reviewId),
     );
     // Issue #169: validate the reader's plotline hunk IDs like any other
     // ID before storing. Unknown IDs are dropped, a twice-claimed hunk
@@ -2373,15 +2495,20 @@ export class Pipeline {
     if (!snapshot) return [];
     this.setStage(reviewId, "critic", "running");
     const settings = await this.effectiveSettings();
-    const lib = loadTemplatesDirSync(this.promptsDir);
-    const basePrompt = renderTemplate(lib.get("critic")!, {});
+    // Issue #393: the critic resolves template, model and lens through
+    // the review's Guide persona (the built-in keeps no lens on the
+    // critic, exactly as before).
+    const guide = this.guideOf(settings, snapshot);
+    const forkGuide = guide.id !== GUIDE_PERSONA_ID;
+    const lib = this.libFor(reviewId);
+    const basePrompt = withGuideStyleForReview("critic", renderTemplate(lib.get("critic")!, {}), guide.lens, forkGuide);
     // #215: one critic job per review; its reply carries its findings (usually 1-3, all kept).
     const replay = isReplayRunner(this.opts.runner);
     const prompt = replay ? withReplayMark(basePrompt, { kind: "critic" }) : basePrompt;
     const job = this.opts.jobs.enqueue({
       reviewId,
       kind: "critic",
-      ...roleFields(guidePick(settings)),
+      ...roleFields(this.mainRoleFor(settings, snapshot)),
       priority: JOB_PRIORITY.background,
       dedupe: { anchor: "finding:critic", requestKind: "critic", baseVersion: `v${snapshot.version.n}` },
       run: async (ctx) => {
@@ -2600,7 +2727,7 @@ export class Pipeline {
     reviewId: string,
     snapshot: ReviewSnapshot,
     targets: string[],
-    small: { provider: string; model: string; effort: string },
+    settings: Awaited<ReturnType<Pipeline["effectiveSettings"]>>,
     hunkPassAccess: AccessMode,
   ): Job[] {
     if (targets.length === 0) {
@@ -2618,7 +2745,7 @@ export class Pipeline {
       const found = byHash.get(hash);
       if (!found) continue;
       jobs.push(
-        this.enqueueOneHunkPass(reviewId, snapshot, found.file, found.hunk, small, targets.length, hunkPassAccess),
+        this.enqueueOneHunkPass(reviewId, snapshot, found.file, found.hunk, settings, targets.length, hunkPassAccess),
       );
     }
     return jobs;
@@ -2643,7 +2770,7 @@ export class Pipeline {
       reviewId,
       snapshot,
       targets,
-      settings.small,
+      settings,
       postureFor(settings, "hunk-pass"),
     );
   }
@@ -2685,7 +2812,7 @@ export class Pipeline {
       reviewId,
       snapshot,
       targets,
-      settings.small,
+      settings,
       postureFor(settings, "hunk-pass"),
     );
     raiseQueuedCited(new Set(targets));
@@ -2710,7 +2837,7 @@ export class Pipeline {
       reviewId,
       snapshot,
       targets,
-      settings.small,
+      settings,
       postureFor(settings, "hunk-pass"),
     );
   }
@@ -2720,22 +2847,32 @@ export class Pipeline {
     snapshot: ReviewSnapshot,
     file: ReviewSnapshot["files"][number],
     hunk: ReviewSnapshot["files"][number]["hunks"][number],
-    small: { provider: string; model: string; effort: string },
+    settings: Awaited<ReturnType<Pipeline["effectiveSettings"]>>,
     expectedJobs: number,
     access: AccessMode,
   ): Job {
+    // Issue #393: the hunk pass resolves template, model and lens
+    // through the review's Guide persona.
+    const guide = this.guideOf(settings, snapshot);
+    const forkGuide = guide.id !== GUIDE_PERSONA_ID;
+    const role = this.hunkRoleFor(settings, snapshot);
     const hunkText = this.formatHunkForPrompt(snapshot, file.fileKey, hunk.contentHash);
     const cited = this.isCitedByGuide(reviewId, hunk.contentHash);
     const body = cited ? `${hunkText}\n\nCITED-BY-GUIDE` : hunkText;
     const replayKey = this.replayKeyForHunk(snapshot, file.fileKey, hunk.contentHash);
-    const prompt = withReplayMark(
-      this.render("hunk_pass", { hunk: body, path: file.path, plotline: this.plotlineForHunk(snapshot, hunk.contentHash), glossary: this.glossaryForPrompt(snapshot) }),
-      isReplayRunner(this.opts.runner) && replayKey ? { kind: "hunk", key: replayKey } : undefined,
+    const prompt = withGuideStyleForReview(
+      "hunk_pass",
+      withReplayMark(
+        this.renderFor(reviewId, "hunk_pass", { hunk: body, path: file.path, plotline: this.plotlineForHunk(snapshot, hunk.contentHash), glossary: this.glossaryForPrompt(snapshot) }),
+        isReplayRunner(this.opts.runner) && replayKey ? { kind: "hunk", key: replayKey } : undefined,
+      ),
+      guide.lens,
+      forkGuide,
     );
     return this.opts.jobs.enqueue({
       reviewId,
       kind: "hunk-pass",
-      ...roleFields(small),
+      ...roleFields(role),
       priority: JOB_PRIORITY.background,
       dedupe: { anchor: `hunk:${hunk.contentHash}`, requestKind: "hunk-pass", baseVersion: `v${snapshot.version.n}` },
       accessMode: access,
@@ -2747,7 +2884,7 @@ export class Pipeline {
         // turn, which runs inside `runner.start`; its usage lands on this
         // turn (see startSessionForJob), not on the summary turn.
         const session = await this.startSessionForJob(ctx, reviewId, {
-          ...roleFields(small),
+          ...roleFields(role),
           cwd: this.worktreeOf(reviewId),
           systemPrompt: "",
           readOnly: access !== "full",
@@ -2833,7 +2970,7 @@ export class Pipeline {
     // The ladder is deterministic: rebuild it to learn exactly which hunk
     // IDs the reader saw (inlined + summarized). Anything assigned or
     // visible stays out of the follow-up.
-    const promptSnap = toPromptSnapshot(snapshot, { model: guidePick(settings).model });
+    const promptSnap = toPromptSnapshot(snapshot, { model: this.mainRoleFor(settings, snapshot).model });
     const ladder = buildLadder(promptSnap, { inlineBudgetTokens: settings.inlineBudgetTokens });
     const seen = new Set([...ladder.inlinedHunkIds, ...ladder.summarizedHunkIds]);
     const unassigned = snapshot.files.flatMap((f) =>
@@ -2870,7 +3007,7 @@ export class Pipeline {
             )
             .join("\n")
         : "(no commit list)";
-    const prompt = this.render("plotline_assign", { plotlines: plotlineList, hunks: hunkList, commits: commitList });
+    const prompt = this.renderFor(reviewId, "plotline_assign", { plotlines: plotlineList, hunks: hunkList, commits: commitList });
     const job = this.opts.jobs.enqueue({
       reviewId,
       kind: "plotline-assign",
@@ -2998,14 +3135,17 @@ export class Pipeline {
     // Issue #379: card fills are main writing turns — they carry the
     // Guide's lens up front (empty: unchanged). `fillGoDeeper` renders
     // outside `runInFork`, so it prefixes through the same helper.
+    // Issue #393: the review's Guide persona supplies template + lens.
     const settings = await this.effectiveSettings();
-    const prompt = withGuideStyleForTurn(
+    const guide = this.guideOf(settings, snapshot);
+    const prompt = withGuideStyleForReview(
       "go_deeper",
       withReplayMark(
-        this.render("go_deeper", { direction, glossary: this.glossaryForPrompt(snapshot) }),
+        this.renderFor(reviewId, "go_deeper", { direction, glossary: this.glossaryForPrompt(snapshot) }),
         isReplayRunner(this.opts.runner) ? { kind: "go-deeper", key: cardId.replace(/^g-/, "") } : undefined,
       ),
-      getGuidePersona(settings.personas)?.lens ?? "",
+      guide.lens,
+      guide.id !== GUIDE_PERSONA_ID,
     );
     ctx?.setPromptSnapshot(prompt);
     const base = await this.ensureBase(reviewId);

@@ -1121,13 +1121,28 @@ export async function registerReviews(
     let provider = "main";
     let model = "main-model";
     let effort = "";
+    // Issue #393: the update pass runs as the review's Guide persona.
+    let updateGuideId: string | undefined;
+    let updateLens = "";
     try {
       const s = (deps as RouteDeps).settings?.get();
       if (s) {
-        const guide = guidePick(s);
-        provider = guide.provider;
-        model = guide.model;
-        effort = guide.effort;
+        const guide = guidePersonaForReview(s.personas ?? [], snapshot.review.guidePersonaId);
+        updateGuideId = guide.id;
+        updateLens = guide.lens;
+        if (guide.id === GUIDE_PERSONA_ID) {
+          const pick = guidePick(s);
+          provider = pick.provider;
+          model = pick.model;
+          effort = pick.effort;
+        } else if (guide.followMain) {
+          const pick = guidePick(s);
+          provider = pick.provider;
+          model = pick.model;
+        } else {
+          provider = guide.provider;
+          model = guide.model;
+        }
       }
     } catch {
       // Keep defaults.
@@ -1144,6 +1159,7 @@ export async function registerReviews(
           provider,
           model,
           effort,
+          ...(updateGuideId !== undefined ? { guidePersonaId: updateGuideId, lens: updateLens } : {}),
         },
         { reviewId: id, toVersion: snapshot.review.currentVersion },
       );
