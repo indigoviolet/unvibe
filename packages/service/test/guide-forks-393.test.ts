@@ -180,6 +180,26 @@ describe("fork library (overlay, capability, manifest, drift)", () => {
     }
   });
 
+  it("re-running for one file leaves the other files' drift alone", () => {
+    const dir = makeBasePrompts();
+    try {
+      copyPersonaFork(dir, "teach", ["reader", "depth"]);
+      expect(forkDrift(dir, "teach")).toEqual([]);
+      // Both base files move: both drift.
+      for (const name of ["reader", "depth"]) {
+        const file = path.join(dir, `${name}.md`);
+        writeFileSync(file, `${readFileSync(file, "utf8")}\nNew base rule.\n`);
+      }
+      expect(forkDrift(dir, "teach")).toEqual(["depth.md", "reader.md"]);
+      // Re-run naming only reader (as a file name, like the hint prints):
+      // reader clears, depth still drifts.
+      copyPersonaFork(dir, "teach", ["reader.md"]);
+      expect(forkDrift(dir, "teach")).toEqual(["depth.md"]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("places the fork Guide lens on the listed tasks only", () => {
     const prompt = "# Depth rewrite\n\nRewrite the card.";
     const lens = "Teach it.";

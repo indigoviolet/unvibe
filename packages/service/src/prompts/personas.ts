@@ -325,14 +325,17 @@ export function copyPersonaFork(
   names: string[],
 ): { copied: string[]; skipped: string[] } {
   const lib = loadTemplatesDirSync(promptsDir);
-  for (const name of names) {
+  // The Settings warning prints file names (`reader.md`); accept those
+  // too, so the hinted command runs verbatim.
+  const wanted = [...new Set(names.map((n) => (n.endsWith(".md") ? n.slice(0, -".md".length) : n)))];
+  for (const name of wanted) {
     if (!lib.has(name)) throw new Error(`not a base template: ${name}`);
   }
   const dir = personaForkDir(promptsDir, personaId);
   fs.mkdirSync(dir, { recursive: true });
   const copied: string[] = [];
   const skipped: string[] = [];
-  for (const name of names) {
+  for (const name of wanted) {
     const dest = path.join(dir, `${name}.md`);
     if (fs.existsSync(dest)) {
       skipped.push(name);
@@ -341,9 +344,15 @@ export function copyPersonaFork(
     fs.copyFileSync(path.join(promptsDir, `${name}.md`), dest);
     copied.push(name);
   }
-  const files: Record<string, string> = {};
+  // The manifest records the CURRENT base hash of every named file the
+  // fork holds (a re-run after a manual merge clears the warning for
+  // exactly those files). Every other entry stands untouched, so
+  // re-running for one file never silently clears drift on the rest.
+  const files: Record<string, string> = { ...(readForkManifest(promptsDir, personaId)?.files ?? {}) };
   for (const name of forkedTemplateNames(lib, promptsDir, personaId)) {
-    files[name] = sha256Hex(fs.readFileSync(path.join(promptsDir, `${name}.md`), "utf8"));
+    if (wanted.includes(name) && fs.existsSync(path.join(dir, `${name}.md`))) {
+      files[name] = sha256Hex(fs.readFileSync(path.join(promptsDir, `${name}.md`), "utf8"));
+    }
   }
   const manifest: PersonaForkManifest = { personaId, files };
   fs.writeFileSync(manifestPath(promptsDir, personaId), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");

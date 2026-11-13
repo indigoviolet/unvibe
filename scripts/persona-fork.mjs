@@ -79,14 +79,16 @@ function main() {
       .filter((e) => e.endsWith(".md"))
       .map((e) => e.slice(0, -".md".length)),
   );
-  for (const name of names) {
+  // File names work too (`reader.md`), so the Settings hint runs verbatim.
+  const wanted = [...new Set(names.map((n) => (n.endsWith(".md") ? n.slice(0, -".md".length) : n)))];
+  for (const name of wanted) {
     if (!baseNames.has(name)) fail(`not a base template: ${name}`);
   }
   const forkDir = path.join(dir, "personas", personaId);
   fs.mkdirSync(forkDir, { recursive: true });
   const copied = [];
   const skipped = [];
-  for (const name of names) {
+  for (const name of wanted) {
     const dest = path.join(forkDir, `${name}.md`);
     if (fs.existsSync(dest)) {
       skipped.push(name);
@@ -95,14 +97,25 @@ function main() {
     fs.copyFileSync(path.join(dir, `${name}.md`), dest);
     copied.push(name);
   }
+  // Only the named files' entries move to the current base hashes;
+  // every other entry stands, so re-running for one file never clears
+  // drift on the rest.
+  let prev = {};
+  try {
+    prev = JSON.parse(fs.readFileSync(path.join(forkDir, MANIFEST), "utf8")).files ?? {};
+  } catch {
+    prev = {};
+  }
+  const files = { ...prev };
   const forked = fs
     .readdirSync(forkDir)
     .filter((e) => e.endsWith(".md") && baseNames.has(e.slice(0, -".md".length)))
     .map((e) => e.slice(0, -".md".length))
     .sort();
-  const files = {};
   for (const name of forked) {
-    files[name] = sha256Hex(fs.readFileSync(path.join(dir, `${name}.md`), "utf8"));
+    if (wanted.includes(name) && fs.existsSync(path.join(forkDir, `${name}.md`))) {
+      files[name] = sha256Hex(fs.readFileSync(path.join(dir, `${name}.md`), "utf8"));
+    }
   }
   fs.writeFileSync(path.join(forkDir, MANIFEST), `${JSON.stringify({ personaId, files }, null, 2)}\n`, "utf8");
   for (const name of copied) console.log(`copied ${name}.md`);
