@@ -93,10 +93,20 @@ async function findService(exclude) {
  * Once a rejection has been seen, later rounds never downgrade it to
  * "down" or "unauthenticated".
  *
- * fn(svc) performs the fetch and returns { status, json }; it lets
- * network errors throw (read as "down", with one rediscovery past it).
+ * fn(svc) performs the fetch and returns { status, json }.
+ *
+ * #394: a throw from fn (a fetch abort past the timeout, a dropped
+ * connection) may have reached the service — resending a mutating call
+ * would run the work twice under the other host name (the panel ask
+ * stores a question and an answer per POST, so one slow ask becomes two
+ * pairs). Mutating calls are therefore never resent after a throw: only
+ * idempotent calls (GETs, via { retryOnError: true }) retry across
+ * origins, the rest report { outcome: "failed" } honestly. A 401/403
+ * is still retried: the service's auth gate runs before any route work,
+ * so a rejection stored nothing. Attempts after a rejection are never
+ * downgraded to "down".
  */
-async function withService(fn) {
+async function withService(fn, { retryOnError = false } = {}) {
   const tried = new Set();
   let rejected = null;
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -117,6 +127,7 @@ async function withService(fn) {
     try {
       r = await fn(target);
     } catch {
+      if (!retryOnError) return { outcome: "failed", origin: target.origin };
       continue;
     }
     if (r.status === 401 || r.status === 403) {
@@ -137,7 +148,7 @@ async function prStatus(prUrl) {
       5000,
     );
     return { status: res.status, json: await res.json().catch(() => null) };
-  });
+  }, { retryOnError: true });
   if (out.outcome === "answer") {
     if (out.status < 200 || out.status >= 300 || !out.json) return { state: "error", origin: out.svc.origin };
     const body = out.json;
@@ -175,7 +186,7 @@ async function openReview(prUrl) {
       60000,
     );
     return { status: res.status, json: await res.json().catch(() => null) };
-  });
+  }, { retryOnError: false });
   if (out.outcome === "answer") {
     const body = out.json;
     const ok = out.status >= 200 && out.status < 300;
@@ -190,6 +201,9 @@ async function openReview(prUrl) {
     const body = out.json;
     return { ok: false, error: (body && body.error) || `http ${out.status}`, origin: out.origin };
   }
+  // #394: the open may have reached the service (clone, review created),
+  // so it is never resent — and never misreported as "down" either.
+  if (out.outcome === "failed") return { ok: false, error: "request failed", origin: out.origin };
   if (out.outcome === "unauthenticated") return { ok: false, error: "unauthenticated", origin: out.origin };
   return { ok: false, error: "down" };
 }
@@ -206,7 +220,7 @@ async function panelCall(method, path, body) {
       ...(body ? { body: JSON.stringify(body) } : {}),
     }, 30000);
     return { status: res.status, json: await res.json().catch(() => null) };
-  });
+  }, { retryOnError: method === "GET" });
   if (out.outcome === "answer") {
     const ok = out.status >= 200 && out.status < 300;
     if (!ok) return { error: (out.json && out.json.error) || `http ${out.status}`, origin: out.svc.origin };
@@ -216,6 +230,9 @@ async function panelCall(method, path, body) {
   if (out.outcome === "rejected") {
     return { error: (out.json && out.json.error) || `http ${out.status}`, origin: out.origin };
   }
+  // #394: a POST that threw may have been stored server-side, so it is
+  // never resent — and never misreported as "down" either.
+  if (out.outcome === "failed") return { error: "request failed", origin: out.origin };
   if (out.outcome === "unauthenticated") return { error: "unauthenticated", origin: out.origin };
   return { error: "down" };
 }
