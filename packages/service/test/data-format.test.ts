@@ -110,10 +110,18 @@ describe("checkDataFormat", () => {
     expect(checkDataFormat(dir).state).toBe("none");
   });
 
-  it("mismatch when data files exist without a DB", () => {
+  // #396: reviews live only in unvibe.db. A fresh install writes update/
+  // (switch logs) and channel-backups/ before its first DB exists; those
+  // must not read as unreadable old data.
+  it("none without a DB, even with update/, channel-backups/ and a token", () => {
     const dir = tmp("unvibe-df-");
-    fs.mkdirSync(path.join(dir, "reviews"), { recursive: true });
-    expect(checkDataFormat(dir).state).toBe("mismatch");
+    fs.writeFileSync(path.join(dir, "token"), "x\n");
+    fs.mkdirSync(path.join(dir, "update"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "update", "switch-1.log"), "log\n");
+    fs.mkdirSync(path.join(dir, "channel-backups", "release"), { recursive: true });
+    const status = checkDataFormat(dir);
+    expect(status.state).toBe("none");
+    expect(status.hasData).toBe(false);
   });
 });
 

@@ -24,17 +24,6 @@ import { dbFilePath, openDatabase, openDatabaseReadOnly } from "./store/index.js
 
 export type { DataFormatStatus };
 
-/** Files that are not user data on their own (token, lock, diagnostic probe scratch). */
-const NON_DATA_ENTRIES = new Set(["token", "unvibe.lock", "tmp"]);
-
-function dirHasData(dataDir: string): boolean {
-  try {
-    return fs.readdirSync(dataDir).some((e) => !NON_DATA_ENTRIES.has(e));
-  } catch {
-    return false;
-  }
-}
-
 /**
  * Read the stored format without writing anything. The DB is opened
  * read-only; an unreadable DB counts as data with no stamp (mismatch),
@@ -58,9 +47,12 @@ export function checkDataFormat(dataDir: string, expected: number = DATA_FORMAT)
     }
     hasData = read?.hasData ?? true;
     stored = read?.stored ?? null;
-  } else {
-    hasData = dirHasData(dataDir);
   }
+  // #396: reviews live only in `unvibe.db`. With no DB (or a DB with no
+  // tables) the data dir is fresh, whatever else it holds: the token,
+  // the lock, `update/` switch logs and `channel-backups/` are written
+  // before the first DB exists, so counting them as data showed a fresh
+  // install the "can't read your existing reviews" notice.
   if (!hasData) return { state: "none", expected, stored: null, hasData: false };
   return {
     state: stored === expected ? "match" : "mismatch",
