@@ -228,7 +228,7 @@ describe("answer body block IDs (#116, #136)", () => {
     }
   });
 
-  it("IDs stay unique and stable through slower and examples rewrites", { timeout: 180000 }, async () => {
+  it("IDs stay unique through slower and examples rewrites; undo restores", { timeout: 180000 }, async () => {
     process.env.UNVIBE_REPO_ROOTS = "";
     const { app, ctx } = await createApp("tok", { agents: fakeAgents() });
     try {
@@ -255,7 +255,16 @@ describe("answer body block IDs (#116, #136)", () => {
       if (slower.json.jobId) await waitForJob(ctx, slower.json.jobId as string);
       const atSlower = topIds(turnBlocks());
       assertUnique(atSlower);
-      for (const kept of atFirst) expect(atSlower).toContain(kept);
+      // Issue #398: the reply's blocks become the body wholesale (fresh
+      // parser IDs), so old IDs are gone and the reply text is stored.
+      expect(turnBlocks().map((b) => (b as { text?: string }).text)).toEqual([
+        "A slower first paragraph.",
+        "A slower second paragraph.",
+      ]);
+
+      const undo = await postAction(app, id, { kind: "undo", cardId: turnId });
+      expect(undo.status).toBe(200);
+      expect(topIds(turnBlocks())).toEqual(atFirst);
 
       const examples = await postAction(app, id, { kind: "examples", cardId: turnId });
       expect(examples.status).toBe(200);

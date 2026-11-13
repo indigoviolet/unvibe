@@ -17,7 +17,7 @@ import { NO_AGENT_MESSAGE } from "../src/agent/none.js";
 import { ReplayAgentRunner } from "../src/replay/runner.js";
 import { createApp } from "../src/server.js";
 import { precheckD2Source } from "../src/diagrams/precheck.js";
-import { applyUndo, insertExamples, mergeSlowerText, pushUndo, type CardTarget } from "../src/interaction/cards.js";
+import { applyUndo, insertExamples, pushUndo, replaceSlowerBody, type CardTarget } from "../src/interaction/cards.js";
 import {
   getInteractionHandler,
   setInteractionHandler,
@@ -847,14 +847,19 @@ describe("M4 failure paths (scripted fakes)", () => {
       expect(afterText).not.toBe(beforeText);
       expect(afterText).toContain("A slower problem paragraph");
 
-      // Concurrent actions on different cards stay independent.
-      const [a, b, c] = await Promise.all([
+      // Concurrent examples on different cards stay independent — and a
+      // later examples press still inserts onto a wholesale-rewritten
+      // body (issue #398: same-card writes are last-writer-wins, so the
+      // slower press settles before the concurrent examples pair).
+      const slowCentral = await postAction(app, id, { kind: "slower", cardId: "central" });
+      expect(slowCentral.status).toBe(200);
+      if (slowCentral.json.jobId) await waitForJob(ctx, slowCentral.json.jobId as string);
+      const [a, b] = await Promise.all([
         postAction(app, id, { kind: "examples", cardId: "problem" }),
         postAction(app, id, { kind: "examples", cardId: "central" }),
-        postAction(app, id, { kind: "slower", cardId: "central" }),
       ]);
-      expect([a.status, b.status, c.status]).toEqual([200, 200, 200]);
-      for (const r of [a, b, c]) {
+      expect([a.status, b.status]).toEqual([200, 200]);
+      for (const r of [a, b]) {
         if (r.json.jobId) await waitForJob(ctx, r.json.jobId as string);
       }
       const snap = ctx.reviews.getSnapshot(id)!;
@@ -1155,7 +1160,7 @@ describe("M4 interaction pure logic", () => {
     expect(card.blocks).toHaveLength(1);
   });
 
-  it("second opinions and accepted corrections survive slower rewrites and undo", () => {
+  it("slower replaces the body wholesale; undo restores the exact previous blocks", () => {
     const para = (id: string, text: string): ParagraphBlock => ({
       type: "paragraph",
       id,
@@ -1174,23 +1179,27 @@ describe("M4 interaction pure logic", () => {
     };
     const target: CardTarget = { kind: "page-card", pageId: "root", card };
 
-    // Agent slower rewrite with a correction paragraph present: the merge
-    // replaces paragraph text positionally and never drops blocks.
-    const reply = [para("b1", "Fresh slower one.")];
+    // Issue #398: the reply's parsed blocks become the body, wholesale —
+    // including blocks the card never had, and dropping blocks the reply
+    // does not echo (the correction survives only when the agent carries
+    // it, since it rides the prompt's card text).
+    const reply = [para("n1", "Fresh slower one."), para("b-corr-ct_1", "Accepted suggestion (from ct_1): use two spaces.")];
     pushUndo(target, [...card.blocks]);
-    const merged = mergeSlowerText(card.blocks, reply);
-    card.blocks = merged;
+    card.blocks = replaceSlowerBody(card.blocks, reply);
     card.revision += 1;
-    expect(card.blocks.map((b) => b.id)).toEqual(["b1", "b-corr-ct_1"]);
-    const firstBlock = card.blocks[0];
-    const secondBlock = card.blocks[1];
+    expect(card.blocks.map((b) => b.id)).toEqual(["n1", "b-corr-ct_1"]);
+    const blocks = card.blocks;
+    const firstBlock = blocks[0];
+    const secondBlock = blocks[1];
     if (firstBlock?.type !== "paragraph" || secondBlock?.type !== "paragraph") throw new Error("expected paragraphs");
     expect(firstBlock.text).toBe("Fresh slower one.");
     expect(secondBlock.text).toContain("Accepted suggestion");
 
-    // Undo restores the pre-rewrite blocks; corrections ride along
-    // (annotations live outside cards regardless).
+    // Undo restores the exact pre-rewrite blocks.
     expect(applyUndo(target)).toBe(true);
     expect(card.blocks.map((b) => b.id)).toEqual(["b1", "b-corr-ct_1"]);
+    const undone = card.blocks[1];
+    if (undone?.type !== "paragraph") throw new Error("expected paragraph");
+    expect(undone.text).toContain("use spaces.");
   });
 });
