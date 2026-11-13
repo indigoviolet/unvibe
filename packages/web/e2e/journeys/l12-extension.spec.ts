@@ -118,6 +118,25 @@ const CLASSIC_SWAP_BODY = `<div class="gh-header">
 </div>
 <main><p>Fixture PR body. Served locally; github.com is routed here.</p></main>`;
 
+// #392: the open review dialog shares the page with the PR header. Its
+// made-up markup carries everything the removed fallbacks keyed off — a
+// heading and a "Code"-like button — so only a header-only anchor keeps
+// the button out of it.
+const DIALOG_HTML = `<div role="dialog" aria-label="Finish your review">
+  <div class="dialog-header"><h1>Finish your review</h1><button type="button" aria-label="Close">\u00d7</button></div>
+  <div class="dialog-body"><button type="button">Code</button> <button type="button">Comment</button></div>
+</div>`;
+
+// #392: page with no PR-header hook at all — a heading, a "Code"
+// button and a container, but no PR title hook and no header hook.
+// The removed fallbacks would have anchored here; now there is no button.
+const NO_HOOK_BODY = `<main><div><h1>Some other tab</h1><div role="group"><button type="button">Code</button></div></div></main>`;
+
+// #392: SSO re-authentication screen served under a PR URL: a heading,
+// a form and buttons, but no PR title/state header. The URL matches a
+// PR page, so only the title-hook gate keeps the button away.
+const SSO_BODY = `<main><div class="sso-page"><h1>Single sign-on required</h1><p>Your session expired. Sign in again to continue.</p><form><label>Username <input type="text" name="user"></label> <button type="submit">Verify</button> <button type="button">Cancel</button></form></div></main>`;
+
 function writeFakeGh(binDir: string, logDir: string, repoDir: string): void {
   const script = `#!/bin/sh
 LOG="${logDir}"
@@ -382,8 +401,9 @@ test.describe("L12 extension PR button", () => {
       );
       expect(await button.evaluate((el) => getComputedStyle(el).color)).toBe("rgb(255, 255, 255)");
 
-      // Turbo-style morph drops the data attribute: the ARIA/structure
-      // hooks still land the same single button in the header actions.
+      // Turbo-style morph drops the data attribute: with no header hook
+      // the button is left where it is (#392) — still one, still in the
+      // header actions, never moved elsewhere.
       await page.evaluate(() => {
         document.querySelector("[data-testid]")?.removeAttribute("data-testid");
       });
@@ -415,6 +435,89 @@ test.describe("L12 extension PR button", () => {
       }, CONVERSATION_BODY);
       await expect(button).toBeVisible({ timeout: 30_000 });
       expect(await page.locator("#unvibe-review-button").count()).toBe(1);
+
+      expect(errors).toEqual([]);
+    } finally {
+      await ctx.close().catch(() => {});
+      rmSync(profileDir, { recursive: true, force: true });
+    }
+  });
+
+  test("dialogs and non-PR pages never host the button (#392)", async () => {
+    test.setTimeout(240_000);
+    const profileDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-l12-392-profile-"));
+    const ctx = await chromium.launchPersistentContext(profileDir, {
+      channel: "chromium",
+      headless: true,
+      ignoreDefaultArgs: ["--disable-extensions"],
+      args: [`--load-extension=${EXTENSION_DIR}`, `--disable-extensions-except=${EXTENSION_DIR}`],
+    });
+    try {
+      // PR page with an open review dialog alongside the header: the
+      // dialog carries a heading and a "Code"-like button, everything
+      // the removed fallbacks keyed off.
+      await ctx.route("https://github.com/**", async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "text/html",
+          body: `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Fix the thing \u00b7 Pull Request #${PR_NUMBER} \u00b7 ${OWNER}/${NAME}</title>
+<style>${CONVERSATION_STYLE}</style></head>
+<body>
+${CONVERSATION_BODY}
+${DIALOG_HTML}
+</body></html>`,
+        });
+      });
+      const page = await ctx.newPage();
+      await cpuThrottleFromEnv(page);
+      const errors: string[] = [];
+      page.on("pageerror", (e) => errors.push(String(e)));
+      await page.goto(PR_URL);
+
+      // The button lands in the page header, none appears in the dialog.
+      const button = page.locator("#unvibe-review-button");
+      await expect(button).toBeVisible({ timeout: 30_000 });
+      expect(await page.locator("#unvibe-review-button").count()).toBe(1);
+      await expect(
+        page.locator('[data-testid="pr-conversation-header-actions"] #unvibe-review-button'),
+      ).toBeVisible();
+      await expect(page.locator('[role="dialog"] #unvibe-review-button')).toHaveCount(0);
+
+      // The dialog opens later (a DOM mutation): the observer must not
+      // move the button or add a second one.
+      await page.evaluate((dialog) => {
+        document.querySelector('[role="dialog"]')?.remove();
+        document.body.insertAdjacentHTML("beforeend", dialog);
+      }, DIALOG_HTML);
+      // Poll for the observer settle: the header button stays put and
+      // stays the only one, never a fixed sleep (#363 B2).
+      await expect(
+        page.locator('[data-testid="pr-conversation-header-actions"] #unvibe-review-button'),
+      ).toBeVisible({ timeout: 30_000 });
+      expect(await page.locator("#unvibe-review-button").count()).toBe(1);
+      await expect(page.locator('[role="dialog"] #unvibe-review-button')).toHaveCount(0);
+
+      // A page with no PR-header hook: no button at all. Absence is
+      // only meaningful after the script had its chance: the content
+      // script debounces on a 250 ms timer, so yield past it (with
+      // throttle margin) and then assert the settled state — polling
+      // for 0 would pass instantly before the script ever ran.
+      await page.evaluate((body) => {
+        document.body.innerHTML = body;
+      }, NO_HOOK_BODY);
+      await page.evaluate(() => new Promise((r) => setTimeout(r, 3000)));
+      expect(await page.locator("#unvibe-review-button").count()).toBe(0);
+
+      // An SSO re-authentication screen served under the same PR URL:
+      // headings, a form and buttons, but no PR title/state header —
+      // the URL match alone must not bring the button back.
+      await page.evaluate((body) => {
+        document.body.innerHTML = body;
+      }, SSO_BODY);
+      await page.evaluate(() => new Promise((r) => setTimeout(r, 3000)));
+      expect(await page.locator("#unvibe-review-button").count()).toBe(0);
+      expect(page.url()).toBe(PR_URL);
 
       expect(errors).toEqual([]);
     } finally {
