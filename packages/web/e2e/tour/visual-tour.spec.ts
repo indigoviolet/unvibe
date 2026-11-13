@@ -259,7 +259,9 @@ async function checkCards(page: Page, step: string): Promise<void> {
           if (hit.closest(".dband")) continue;
           // Pinned headers/bars (and the app top bar, over a header
           // scrolled out of its pane) slide over inline cards by design.
-          if (hit.closest(".dfile-h, .dhunk-h, .dtool, .rstick, .rbar")) continue;
+          // Issue #395: the #376 summary header pins with the stack,
+          // so it covers scrolled-under cards like the bar above it.
+          if (hit.closest(".dfile-h, .dhunk-h, .dtool, .rstick, .dsumbar, .rbar")) continue;
           return `not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} card=${cardEl.id} rect=${Math.round(r.left)},${Math.round(r.top)}-${Math.round(r.right)},${Math.round(r.bottom)}`;
         }
       }
@@ -397,7 +399,9 @@ async function checkCardHeaders(page: Page, step: string): Promise<void> {
         }
         // The pinned top stack (and the app top bar) slides over
         // inline cards by design.
-        if (hit.closest(".rstick, .dtool, .dband, .dfile-h.stuck, .dhunk-h.stuck, .rbar")) continue;
+        // Issue #395: the #376 summary header pins with the stack and
+        // covers scrolled-under card headers like the bar above it.
+        if (hit.closest(".rstick, .dtool, .dsumbar, .dband, .dfile-h.stuck, .dhunk-h.stuck, .rbar")) continue;
         return `header not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} card=${cardEl.id} hitCard=${hit.closest("section.ithread[data-thread]")?.id ?? "none"} html=${hit.outerHTML.slice(0, 120)} headerRect=${Math.round(h.left)},${Math.round(h.top)}-${Math.round(h.right)},${Math.round(h.bottom)}`;
       }
       return null;
@@ -412,6 +416,9 @@ async function checkCardHeaders(page: Page, step: string): Promise<void> {
  * the file owning the first visible row, and that row's hunk header,
  * stuck at their sticky offsets and topmost there (a floating card
  * covering the stuck slot fails; pinned headers slide over cards).
+ * Issue #395: the #376 summary header pins with the stack (below the
+ * actions bar, above the file headers), so both slots move down by
+ * its height — 0 once every hunk has a summary.
  */
 async function checkPinnedSlots(page: Page, step: string): Promise<void> {
   const bad = await page.evaluate(() => {
@@ -421,7 +428,10 @@ async function checkPinnedSlots(page: Page, step: string): Promise<void> {
     const hh = (sel: string): number => pane.querySelector(sel)?.getBoundingClientRect().height ?? 0;
     const strip = hh(".rstick");
     const bar = hh(".dtool");
-    const fileSlot = pv.top + strip + bar;
+    // Issue #395: the #376 summary header pins with the stack (0 when
+    // absent), so the file slot sits below it — the product's
+    // `refreshDiffPinned` moves the slots the same way.
+    const fileSlot = pv.top + strip + bar + hh(".dsumbar");
     const hunkSlot = fileSlot + hh(".dfile-h");
     // First visible diff row below the actions bar: painted, not
     // merely laid out — a row hidden under a floating card does not
@@ -474,7 +484,9 @@ async function checkPinnedSlots(page: Page, step: string): Promise<void> {
  * must never show a floating card. During a file hand-off the
  * outgoing and incoming headers together cover the band; card text
  * flickering through the strips around them fails. Sampled on a
- * horizontal line every 4px.
+ * horizontal line every 4px. Issue #395: the band runs through the
+ * #376 summary header, which pins with the stack like the bar above
+ * it — the opaque cover and the seam sweep include it.
  */
 async function checkPinnedBand(page: Page, step: string): Promise<void> {
   const bad = await page.evaluate(() => {
@@ -484,10 +496,11 @@ async function checkPinnedBand(page: Page, step: string): Promise<void> {
     const hh = (sel: string): number => pane.querySelector(sel)?.getBoundingClientRect().height ?? 0;
     // The whole top stack, from the pane's top edge (just below the
     // app's top bar) to the band's bottom: the tab strip, the actions
-    // bar and the band must be one opaque, gapless stack — a sliver
+    // bar, the #395 summary header and the band must be one opaque,
+    // gapless stack — a sliver
     // of card text in a seam between sticky layers fails.
     const bandTop = pv.top;
-    const bandBottom = pv.top + hh(".rstick") + hh(".dtool") + hh(".dfile-h") + hh(".dhunk-h");
+    const bandBottom = pv.top + hh(".rstick") + hh(".dtool") + hh(".dsumbar") + hh(".dfile-h") + hh(".dhunk-h");
     for (let y = bandTop + 1; y < bandBottom - 1; y += 2) {
       for (let x = pv.left + 8; x < pv.right - 4; x += 40) {
         const hit = document.elementFromPoint(x, y);
@@ -497,11 +510,12 @@ async function checkPinnedBand(page: Page, step: string): Promise<void> {
       }
     }
     // Coverage test: the union of the opaque top-stack layers (tab
-    // strip, actions bar, band backing) must cover the whole stack
+    // strip, actions bar, the #395 summary header, band backing) must
+    // cover the whole stack
     // interval with no sub-interval left open. A card behind an open
     // sub-interval shows through it as a sliver of text, even when
     // the gap is sub-pixel and hit sampling lands on a layer edge.
-    const cover = [pane.querySelector(".rstick"), pane.querySelector(".dtool"), pane.querySelector(".dband")]
+    const cover = [pane.querySelector(".rstick"), pane.querySelector(".dtool"), pane.querySelector(".dsumbar"), pane.querySelector(".dband")]
       .filter((el): el is Element => !!el)
       .map((el) => el.getBoundingClientRect())
       .sort((a, b) => a.top - b.top);
@@ -520,10 +534,11 @@ async function checkPinnedBand(page: Page, step: string): Promise<void> {
       if (hit) return `uncovered top-stack bottom at y=${Math.round(coveredTo)}-${Math.round(bandBottom)} with a card behind it`;
     }
     // Seam test: any positive gap between consecutive top-stack
-    // layers (tab strip, actions bar, band backing) whose midpoint
+    // layers (tab strip, actions bar, the #395 summary header, band
+    // backing) whose midpoint
     // lands in a card fails — a text line aligned with a sub-pixel
     // seam shows exactly that sliver, and 2px sampling can miss it.
-    const layers = [pane.querySelector(".rstick"), pane.querySelector(".dtool"), pane.querySelector(".dband")]
+    const layers = [pane.querySelector(".rstick"), pane.querySelector(".dtool"), pane.querySelector(".dsumbar"), pane.querySelector(".dband")]
       .filter((el): el is Element => !!el)
       .map((el) => el.getBoundingClientRect())
       .sort((a, b) => a.top - b.top);
@@ -589,7 +604,9 @@ async function checkGutters(page: Page, step: string): Promise<void> {
       const hit = document.elementFromPoint(x, y);
       if (!hit || cell.contains(hit)) continue;
       if (hit.closest("section.ithread[data-thread]")) continue;
-      if (hit.closest(".dfile-h, .dhunk-h, .dtool, .rstick, .dband, .fmenu, .cmenu, #pop")) continue;
+      // Issue #395: the #376 summary header pins with the stack and
+      // legitimately covers gutter cells scrolling under it.
+      if (hit.closest(".dfile-h, .dhunk-h, .dtool, .rstick, .dsumbar, .dband, .fmenu, .cmenu, #pop")) continue;
       return `line-number cell not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} row=${row}`;
     }
     return null;
@@ -1429,7 +1446,10 @@ test.describe("visual tour passes", () => {
             };
           }),
         );
-        expect(rows.length, "limits: one checkbox row + six number rows").toBe(7);
+        // Issue #376 added the hunk-summary-limit row (now one checkbox
+        // row + seven number rows); the per-row layout asserts below
+        // cover the new row unchanged.
+        expect(rows.length, "limits: one checkbox row + seven number rows").toBe(8);
         for (const [i, row] of rows.entries()) {
           expect(row.label, `limits row ${i}: label`).not.toBeNull();
           expect(row.help, `limits row ${i}: help`).not.toBeNull();
@@ -1443,7 +1463,7 @@ test.describe("visual tour passes", () => {
           if (i > 0) expect(row.borderTop, `limits row ${i}: hairline separator`).toBe("1px");
         }
         const widths = rows.flatMap((r) => (r.input ? [r.input.w] : []));
-        expect(widths.length, "limits: six number inputs").toBe(6);
+        expect(widths.length, "limits: seven number inputs").toBe(7);
         expect(Math.max(...widths) - Math.min(...widths), "limits: consistent number-input widths").toBeLessThanOrEqual(1);
         const inputXs = rows.flatMap((r) => (r.input ? [r.input.x] : []));
         expect(Math.max(...inputXs) - Math.min(...inputXs), "limits: number inputs share the same left edge").toBeLessThanOrEqual(1);
