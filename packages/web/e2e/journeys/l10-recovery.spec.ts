@@ -460,6 +460,29 @@ test.describe("L10 data-format notice (j311)", () => {
       }
     });
   });
+
+  // #396: a fresh install writes update/ (switch logs) and channel-backups/
+  // before its first DB exists. Without unvibe.db the dir is fresh: no
+  // reset notice, the app starts and stamps the new DB.
+  test("a fresh dir with only update/, channel-backups/ and a token starts without the notice", async ({ page }) => {
+    test.setTimeout(120_000);
+    const dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-l10fresh-data-"));
+    seedPreviousOutcome(dataDir);
+    mkdirSync(path.join(dataDir, "channel-backups", "release"), { recursive: true });
+    const svc = await startService(dataDir, { label: "l10fresh" });
+    try {
+      const status = await apiJson(svc, "GET", "/api/data-format");
+      expect(status.status).toBe(200);
+      expect(status.json as unknown as Record<string, unknown>).toMatchObject({ state: "match", expected: DATA_FORMAT });
+      await page.goto(`${svc.origin}/?token=${svc.token}`);
+      await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByTestId("data-format-notice")).toHaveCount(0);
+      expect(existsSync(path.join(dataDir, "unvibe.db"))).toBe(true);
+    } finally {
+      await svc.stop().catch(() => {});
+      cleanupReset(dataDir);
+    }
+  });
 });
 
 test.describe("L10 remove while building (j354)", () => {
