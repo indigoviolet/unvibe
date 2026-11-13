@@ -328,11 +328,11 @@ const REPO_ROOT = path.resolve(JOURNEYS_DIR, "..", "..", "..", "..");
 const REPO_PROMPTS_DIR = path.join(REPO_ROOT, "prompts");
 const FORK_SCRIPT = path.join(REPO_ROOT, "scripts", "persona-fork.mjs");
 
-/** Forked templates a fixture Teach persona owns (issue #393). */
-export const TEACH_FORK_TEMPLATES = ["reader", "slower", "instructions", "hunk_pass", "update_pass"] as const;
+/** Forked templates a fixture Tutor persona owns (issue #393). */
+export const TUTOR_FORK_TEMPLATES = ["reader", "slower", "instructions", "hunk_pass", "update_pass"] as const;
 
 /** Sentinel appended to each fixture fork file (asserted in prompts, never a variable). */
-export const TEACH_SENTINEL: Record<(typeof TEACH_FORK_TEMPLATES)[number], string> = {
+export const TUTOR_SENTINEL: Record<(typeof TUTOR_FORK_TEMPLATES)[number], string> = {
   reader: "FORK-READER-SENTINEL",
   slower: "FORK-SLOWER-SENTINEL",
   instructions: "FORK-INSTRUCTIONS-SENTINEL",
@@ -340,25 +340,25 @@ export const TEACH_SENTINEL: Record<(typeof TEACH_FORK_TEMPLATES)[number], strin
   update_pass: "FORK-UPDATE-SENTINEL",
 };
 
-export const TEACH_LENS = "TEACH-LENS-SENTINEL: explain like a patient tutor, one mechanism at a time.";
+export const TUTOR_LENS = "TUTOR-LENS-SENTINEL: explain like a patient tutor, one mechanism at a time.";
 
 /**
  * Fixture prompt set for the #393 journey and tour (issue #393): a copy
- * of the repo prompts plus a `teach` fork (built by the real
+ * of the repo prompts plus a `tutor` fork (built by the real
  * persona:fork helper, with sentinel lines the tests assert on) and its
  * manifest. The caller removes the directory when done. Mutating a base
  * file afterwards makes the fork drift (the drift warning test does
  * exactly that).
  */
-export function makeTeachForkPrompts(tag: string): { dir: string } {
+export function makeTutorForkPrompts(tag: string): { dir: string } {
   const dir = mkdtempSync(path.join(os.tmpdir(), `unvibe-393-${tag}-`));
   cpSync(REPO_PROMPTS_DIR, dir, { recursive: true });
-  execFileSync(process.execPath, [FORK_SCRIPT, "teach", ...TEACH_FORK_TEMPLATES, "--prompts-dir", dir], {
+  execFileSync(process.execPath, [FORK_SCRIPT, "tutor", ...TUTOR_FORK_TEMPLATES, "--prompts-dir", dir], {
     timeout: 30000,
   });
-  for (const name of TEACH_FORK_TEMPLATES) {
-    const file = path.join(dir, "personas", "teach", `${name}.md`);
-    writeFileSync(file, `${readFileSync(file, "utf8")}\n\n${TEACH_SENTINEL[name]}: written by the Teach fork.\n`);
+  for (const name of TUTOR_FORK_TEMPLATES) {
+    const file = path.join(dir, "personas", "tutor", `${name}.md`);
+    writeFileSync(file, `${readFileSync(file, "utf8")}\n\n${TUTOR_SENTINEL[name]}: written by the Tutor fork.\n`);
   }
   return { dir };
 }

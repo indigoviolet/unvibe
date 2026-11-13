@@ -115,8 +115,8 @@ export function PersonasSection({
         The Guide is the main agent: it writes the guide, explanations and answers on its model,
         in its writing style (empty means no extra style). Reviewer voices can take on a card.
         Each runs on its model — or on the Guide&apos;s model — with its lens; the colour is
-        assigned automatically. Second opinion and Clarity are built in — edit or delete them
-        like any other persona.
+        assigned automatically. Second opinion, Clarity and Teach are built in — edit or delete
+        them like any other persona. Teach can also write a whole guide: use Re-do with Teach.
       </p>
       {error ? (
         <p className="err" role="alert">

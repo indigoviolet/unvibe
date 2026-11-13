@@ -18,12 +18,12 @@ import { expect, test } from "../network-guard.js";
 import { cpuThrottleFromEnv } from "../cpu-throttle.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import {
-  TEACH_LENS,
+  TUTOR_LENS,
   apiJson,
   createScratchReview,
   fakeServicePath,
   makeScratchRepo,
-  makeTeachForkPrompts,
+  makeTutorForkPrompts,
   realGitPath,
   writeFakeGitOffline,
   writeFakeShell,
@@ -37,13 +37,13 @@ test.beforeEach(async ({ page }) => {
 
 const SHOTS = fileURLToPath(new URL("../../visual-tour", import.meta.url));
 
-const TEACH = {
-  id: "teach",
-  name: "Teach",
+const TUTOR = {
+  id: "tutor",
+  name: "Tutor",
   followMain: false,
   provider: "codex",
   model: "gpt-6.1-sol",
-  lens: TEACH_LENS,
+  lens: TUTOR_LENS,
   cardInstruction: "",
   enabled: true,
   color: "#C2410C",
@@ -62,7 +62,7 @@ test.describe("J393 fork frames", () => {
       dirs.push(d);
       return d;
     };
-    const prompts = makeTeachForkPrompts("tour393");
+    const prompts = makeTutorForkPrompts("tour393");
     dirs.push(prompts.dir);
     // Drift from the start: the base moved after the manifest was written.
     const base = path.join(prompts.dir, "reader.md");
@@ -82,7 +82,7 @@ test.describe("J393 fork frames", () => {
       },
     });
     const seed = (await apiJson(svc, "GET", "/api/settings")).json as { personas: unknown[] };
-    const added = await apiJson(svc, "PUT", "/api/settings", { personas: [...seed.personas, TEACH] });
+    const added = await apiJson(svc, "PUT", "/api/settings", { personas: [...seed.personas, TUTOR] });
     if (added.status !== 200) throw new Error(`personas PUT failed: ${added.status}`);
     reviewId = await createScratchReview(svc, scratch.dir);
     await expect
@@ -111,12 +111,12 @@ test.describe("J393 fork frames", () => {
     await page.getByRole("button", { name: "Re-do guide" }).click();
     const menu = page.getByTestId("redo-menu");
     await expect(menu).toBeVisible();
-    await expect(menu.getByRole("menuitem", { name: "Re-do with Teach" })).toBeVisible();
+    await expect(menu.getByRole("menuitem", { name: "Re-do with Tutor" })).toBeVisible();
     await page.mouse.move(720, 20);
     await checkLayout(page, "redo-with-menu-1440-light");
     await page.screenshot({ path: path.join(SHOTS, "redo-with-menu-1440-light.png") });
-    await menu.getByRole("menuitem", { name: "Re-do with Teach" }).click();
-    await expect(page.getByText("Confirm re-do with Teach")).toBeVisible();
+    await menu.getByRole("menuitem", { name: "Re-do with Tutor" }).click();
+    await expect(page.getByText("Confirm re-do with Tutor")).toBeVisible();
     await checkLayout(page, "redo-with-confirm-1440-light");
     await page.screenshot({ path: path.join(SHOTS, "redo-with-confirm-1440-light.png") });
     await page.keyboard.press("Escape");
@@ -130,7 +130,7 @@ test.describe("J393 fork frames", () => {
     await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible({ timeout: 30_000 });
     await page.getByRole("tab", { name: "Personas" }).click();
     await expect(page.getByTestId("personas-section")).toBeVisible();
-    const drift = page.getByTestId("persona-teach-drift");
+    const drift = page.getByTestId("persona-tutor-drift");
     await expect(drift).toBeVisible();
     await expect(drift).toContainText("reader.md");
     await page.mouse.move(720, 20);
