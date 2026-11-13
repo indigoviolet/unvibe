@@ -43,7 +43,7 @@ function thread(partial: Partial<Thread> & { id: string }): Thread {
 
 function snapshot(annotations: Thread[]): ReviewSnapshot {
   return {
-    review: { id: "r1", repoId: "repo", branch: "feature", versions: [], currentVersion: 1, createdAt: 0 },
+    review: { id: "r1", repoId: "repo", branch: "feature", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: 0 },
     version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
     files: [
       { fileKey: "fk1", path: "src/app.py", category: "source", hunks: [] },
