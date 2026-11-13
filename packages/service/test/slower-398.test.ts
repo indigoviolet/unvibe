@@ -14,7 +14,7 @@
  * - the #388 bulk path uses the same replacement.
  */
 import { beforeEach, describe, expect, it } from "vitest";
-import type { AgentEvent, Block, DiagramBlock, ParagraphBlock, ReviewSnapshot } from "@unvibe/shared";
+import type { AgentEvent, Block, DiagramBlock, FollowUpBlock, ParagraphBlock, ReviewSnapshot } from "@unvibe/shared";
 import { questionRewriteTargetIds } from "@unvibe/shared";
 import { FakeAgentRunner } from "../src/agent/fake.js";
 import { replaceSlowerBody } from "../src/interaction/cards.js";
@@ -216,6 +216,12 @@ describe("replaceSlowerBody pure logic (#398)", () => {
   });
   const diagram = (id: string): DiagramBlock =>
     ({ type: "diagram", id, source: "a -> b", render: { hash: "h", status: "unavailable" } }) as DiagramBlock;
+  const followUpBlock = (id: string, label: string): FollowUpBlock => ({
+    type: "follow-up",
+    id,
+    items: [{ label }],
+    citations: [],
+  });
 
   it("replaces the body exactly: reply blocks, each with its own citations", () => {
     const current = [para("b1", "Old one."), para("b2", "Old two.")];
@@ -249,7 +255,7 @@ describe("replaceSlowerBody pure logic (#398)", () => {
   });
 
   it("keeps dropped follow-ups at their old index, but never other blocks the reply drops", () => {
-    const followUp = { type: "follow-up", id: "b3", items: [{ label: "Why?", question: "Why?" }], citations: [] } as Block;
+    const followUp = followUpBlock("b3", "Why?");
     const current = [
       para("b1", "One."),
       { type: "aside", id: "b2", kind: "Example", inner: [para("b2-b1", "ex")], citations: [] },
@@ -261,7 +267,7 @@ describe("replaceSlowerBody pure logic (#398)", () => {
   });
 
   it("a reply block colliding with a kept block id is restamped; kept ids win", () => {
-    const followUp = { type: "follow-up", id: "b2", items: [{ label: "Why?", question: "Why?" }], citations: [] } as Block;
+    const followUp = followUpBlock("b2", "Why?");
     const current = [para("b1", "One."), followUp];
     const out = replaceSlowerBody(current, [para("b1", "New one."), para("b2", "New two.")]);
     expect(out.map((b) => b.id)).toEqual(["b1", "b2", "b2-c2"]);
@@ -269,8 +275,8 @@ describe("replaceSlowerBody pure logic (#398)", () => {
   });
 
   it("a reply carrying its own follow-ups takes over; the old ones are not re-inserted", () => {
-    const old = { type: "follow-up", id: "b9", items: [{ label: "Old?", question: "Old?" }], citations: [] } as Block;
-    const fresh = { type: "follow-up", id: "n9", items: [{ label: "New?", question: "New?" }], citations: [] } as Block;
+    const old = followUpBlock("b9", "Old?");
+    const fresh = followUpBlock("n9", "New?");
     const out = replaceSlowerBody([para("b1", "One."), old], [para("n1", "New."), fresh]);
     expect(out.filter((b) => b.type === "follow-up")).toEqual([fresh]);
   });
