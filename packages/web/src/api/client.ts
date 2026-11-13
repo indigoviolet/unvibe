@@ -33,6 +33,7 @@ import type {
   JobsResponse,
   ModelsResponse,
   PickFolderResponse,
+  PromptForksResponse,
   PromptsResponse,
   ReadinessResponse,
   RefreshResponse,
@@ -348,8 +349,13 @@ const realApi = {
   deleteReview: (id: string): Promise<{ ok: boolean }> =>
     request(`/api/reviews/${encodeURIComponent(id)}`, { method: "DELETE" }),
   /** #115: re-do the guide (delete + create in one call); answers with the new loading review. */
-  redoReview: (id: string): Promise<ReviewSnapshot> =>
-    post(`/api/reviews/${encodeURIComponent(id)}/redo`),
+  redoReview: (id: string, personaId?: string): Promise<ReviewSnapshot> =>
+    post(
+      `/api/reviews/${encodeURIComponent(id)}/redo`,
+      ...(personaId !== undefined ? [{ personaId } satisfies { personaId: string }] : []),
+    ),
+  /** Issue #393: prompt-fork status per persona (Re-do menu + drift warning). */
+  promptForks: (): Promise<PromptForksResponse> => get("/api/prompt-forks"),
   resetData: (): Promise<ResetDataResponse> => post("/api/reset"),
   /** #311: stored data format vs this build's; `mismatch` gates the whole app on the reset notice. */
   dataFormat: (): Promise<DataFormatStatusResponse> => get("/api/data-format"),

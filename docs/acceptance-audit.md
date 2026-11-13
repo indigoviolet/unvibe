@@ -4415,3 +4415,48 @@ one-variant union today).
   `packages/web/visual-tour/help-me-understand-1440-light.png`
   (git-ignored, toolbar icon + tooltip, full page at 1440 light). Full
   gates not yet run.
+
+## Addendum: #393 — Guide personas own their prompts, Re-do with (branch `feat/393-guide-prompt-forks`)
+
+- **Whole-file forks:** a persona id owns `prompts/personas/<id>/`
+  (Clarity already had the folder); any same-named template there
+  replaces the shared file whole for every task that persona's guide
+  runs, with fallback to `prompts/` and no section merging. Files
+  matching no shared template are never templates. A forked template
+  must declare exactly its base's variables (slower.md's
+  `{{terms}}`/`{{guide}}` included) — anything else fails loudly at
+  load, naming the persona and file. `loadPersonaLibrarySync` in
+  `packages/service/src/prompts/personas.ts`.
+- **Guide-capable:** a folder with `reader.md` can write a whole guide
+  (own provider/model, or following main) with its lens as the writing
+  style. The review records `guidePersonaId` (required; `DATA_FORMAT`
+  8 → 9, no fallback). Every main-agent task (reader, go-deeper,
+  slower, examples, diagrams, concept pages, update pass, critic,
+  hunk pass) resolves templates, model and lens through it; card
+  personas keep their model but follow the review's main role when
+  they follow main (adapter-default effort always), and their base
+  instructions come from the fork. The built-in Guide resolves
+  exactly as before (byte-identical prompts, same models, same base
+  sharing); a fork Guide additionally styles its listed main turns.
+- **Re-do with:** `POST /api/reviews/:id/redo` takes an optional
+  `personaId` (same confirm/delete/create semantics and refusals;
+  unknown → 404, disabled or not guide-capable → 409); the new review
+  records it. The review bar offers one `Re-do with <name>` choice per
+  enabled guide-capable persona next to Re-do guide
+  (`RedoGuideButton.tsx` + `GET /api/prompt-forks`); no picker when
+  opening.
+- **Manifest + drift:** each fork carries `fork.json` (per-file base
+  hashes). `mise run persona:fork -- <id> [template ...]` copies
+  missing base files (never overwrites) and rewrites the manifest, so
+  re-running it after a manual merge clears the warning. Drifted
+  files surface in Settings on the persona row
+  (`PersonasSection.tsx`) and through `GET /api/prompt-forks`.
+- Evidence: `packages/service/test/guide-forks-393.test.ts` (overlay,
+  capability, manifest/drift, loud variable failures, reader/slower/
+  hunk on the fork with its model and lens, Clarity on fork
+  instructions under its lens, redo validation + stamping, endpoint,
+  helper round-trip), real-service journey
+  `e2e/journeys/j393-guide-forks.spec.ts` (redo with a Teach fork,
+  fork prompts on the re-done review, drift warning), tour frames
+  `redo-with-menu`, `redo-with-confirm`, `fork-drift` (inspected).
+  Full gates not yet run.
