@@ -9,7 +9,7 @@
  * re-done review (reader, slower, Clarity's base instructions), and
  * the drift warning naming the file.
  *
- * Boots: ONE replay service over a fixture prompt set (a Teach fork
+ * Boots: ONE replay service over a fixture prompt set (a Tutor fork
  * with sentinel lines) + a scratch branch review. The guide replays
  * fixture content there, so card ids match the recordings.
  */
@@ -21,13 +21,13 @@ import { expect, test } from "../network-guard.js";
 import { cpuThrottleFromEnv } from "../cpu-throttle.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import {
-  TEACH_LENS,
-  TEACH_SENTINEL,
+  TUTOR_LENS,
+  TUTOR_SENTINEL,
   apiJson,
   createScratchReview,
   fakeServicePath,
   makeScratchRepo,
-  makeTeachForkPrompts,
+  makeTutorForkPrompts,
   realGitPath,
   writeFakeGitOffline,
   writeFakeShell,
@@ -39,13 +39,13 @@ test.beforeEach(async ({ page }) => {
 });
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 
-const TEACH = {
-  id: "teach",
-  name: "Teach",
+const TUTOR = {
+  id: "tutor",
+  name: "Tutor",
   followMain: false,
   provider: "codex",
   model: "gpt-6.1-sol",
-  lens: TEACH_LENS,
+  lens: TUTOR_LENS,
   cardInstruction: "",
   enabled: true,
   color: "#C2410C",
@@ -134,7 +134,7 @@ test.describe("J393 guide forks", () => {
       dirs.push(d);
       return d;
     };
-    promptsDir = makeTeachForkPrompts("j393").dir;
+    promptsDir = makeTutorForkPrompts("j393").dir;
     dirs.push(promptsDir);
     const scratch = await makeScratchRepo(tmp("repo"));
     const dataDir = tmp("data");
@@ -151,7 +151,7 @@ test.describe("J393 guide forks", () => {
       },
     });
     const seed = await personas(svc);
-    const added = await apiJson(svc, "PUT", "/api/settings", { personas: [...seed, TEACH] });
+    const added = await apiJson(svc, "PUT", "/api/settings", { personas: [...seed, TUTOR] });
     expect(added.status).toBe(200);
     reviewId = await createScratchReview(svc, scratch.dir);
     const created = await apiJson(svc, "GET", `/api/reviews/${reviewId}`);
@@ -171,14 +171,14 @@ test.describe("J393 guide forks", () => {
     return svc;
   }
 
-  test("re-do with Teach re-runs the guide under the fork", async () => {
+  test("re-do with Tutor re-runs the guide under the fork", async () => {
     test.setTimeout(300_000);
     const s = service();
-    const redo = await apiJson(s, "POST", `/api/reviews/${reviewId}/redo`, { personaId: "teach" });
+    const redo = await apiJson(s, "POST", `/api/reviews/${reviewId}/redo`, { personaId: "tutor" });
     expect(redo.status).toBe(202);
     const forkedId = (redo.json as { review: { id: string; guidePersonaId: string } }).review.id;
     expect(forkedId).not.toBe(reviewId);
-    expect((redo.json as { review: { guidePersonaId: string } }).review.guidePersonaId).toBe("teach");
+    expect((redo.json as { review: { guidePersonaId: string } }).review.guidePersonaId).toBe("tutor");
     reviewId = forkedId;
     await waitGuide(s, reviewId);
 
@@ -189,8 +189,8 @@ test.describe("J393 guide forks", () => {
       expect(reader!.provider).toBe("codex");
       expect(reader!.model).toBe("gpt-6.1-sol");
       const prompt = await jobPrompt(s, reader!.id);
-      expect(prompt).toContain(TEACH_SENTINEL.reader);
-      expect(prompt.startsWith(`# Writing style\n\n${TEACH_LENS}\n\n`)).toBe(true);
+      expect(prompt).toContain(TUTOR_SENTINEL.reader);
+      expect(prompt.startsWith(`# Writing style\n\n${TUTOR_LENS}\n\n`)).toBe(true);
     });
   });
 
@@ -205,8 +205,8 @@ test.describe("J393 guide forks", () => {
       const jobId = (res.json as { jobId: string }).jobId;
       await waitJobDone(s, jobId);
       const prompt = await jobPrompt(s, jobId);
-      expect(prompt).toContain(TEACH_SENTINEL.slower);
-      expect(prompt.startsWith(`# Writing style\n\n${TEACH_LENS}\n\n`)).toBe(true);
+      expect(prompt).toContain(TUTOR_SENTINEL.slower);
+      expect(prompt.startsWith(`# Writing style\n\n${TUTOR_LENS}\n\n`)).toBe(true);
     });
 
     await test.step("Clarity layers its lens on the fork instructions", async () => {
@@ -220,7 +220,7 @@ test.describe("J393 guide forks", () => {
       await waitJobDone(s, jobId);
       const prompt = await jobPrompt(s, jobId);
       expect(prompt).toContain("You are Clarity");
-      expect(prompt).not.toContain(TEACH_LENS);
+      expect(prompt).not.toContain(TUTOR_LENS);
       const snap = await apiJson(s, "GET", `/api/reviews/${reviewId}`);
       const card = ((snap.json as { pages: { cards: { id: string; variants?: Record<string, { blocks: unknown[] }> }[] }[] }).pages ?? [])
         .flatMap((p) => p.cards)
@@ -240,10 +240,10 @@ test.describe("J393 guide forks", () => {
     const res = await apiJson(s, "GET", "/api/prompt-forks");
     expect(res.status).toBe(200);
     const forks = (res.json as { forks: { personaId: string; guideCapable: boolean; drifted: string[] }[] }).forks;
-    expect(forks.find((f) => f.personaId === "teach")).toMatchObject({ guideCapable: true, drifted: ["reader.md"] });
+    expect(forks.find((f) => f.personaId === "tutor")).toMatchObject({ guideCapable: true, drifted: ["reader.md"] });
   });
 
-  test("Re-do with Teach from the review bar", async ({ page }) => {
+  test("Re-do with Tutor from the review bar", async ({ page }) => {
     test.setTimeout(300_000);
     const s = service();
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -252,9 +252,9 @@ test.describe("J393 guide forks", () => {
     await page.getByRole("button", { name: "Re-do guide" }).click();
     const menu = page.getByTestId("redo-menu");
     await expect(menu).toBeVisible();
-    await menu.getByRole("menuitem", { name: "Re-do with Teach" }).click();
-    await expect(page.getByText("Confirm re-do with Teach")).toBeVisible();
-    await page.getByRole("button", { name: "Confirm re-do with Teach" }).click();
+    await menu.getByRole("menuitem", { name: "Re-do with Tutor" }).click();
+    await expect(page.getByText("Confirm re-do with Tutor")).toBeVisible();
+    await page.getByRole("button", { name: "Confirm re-do with Tutor" }).click();
     await waitFor(async () => {
       const url = page.url();
       const id = url.split("/review/")[1]?.split("?")[0] ?? "";
@@ -262,17 +262,17 @@ test.describe("J393 guide forks", () => {
     }, 60_000, "redo navigation");
     const id = page.url().split("/review/")[1]!.split("?")[0]!;
     const snap = await apiJson(s, "GET", `/api/reviews/${id}`);
-    expect((snap.json as { review: { guidePersonaId: string } }).review.guidePersonaId).toBe("teach");
+    expect((snap.json as { review: { guidePersonaId: string } }).review.guidePersonaId).toBe("tutor");
     reviewId = id;
   });
 
-  test("Settings shows the Teach drift warning", async ({ page }) => {
+  test("Settings shows the Tutor drift warning", async ({ page }) => {
     test.setTimeout(120_000);
     const s = service();
     await page.setViewportSize({ width: 1440, height: 900 });
     await gotoPersonas(page, s);
-    const row = page.getByTestId("persona-teach");
+    const row = page.getByTestId("persona-tutor");
     await expect(row).toBeVisible();
-    await expect(row.getByTestId("persona-teach-drift")).toContainText("reader.md");
+    await expect(row.getByTestId("persona-tutor-drift")).toContainText("reader.md");
   });
 });
