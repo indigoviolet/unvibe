@@ -169,14 +169,6 @@ export function PersonasSection({
                       ? `Guide's model (${getGuidePersona(personas)?.provider ?? ""}/${getGuidePersona(personas)?.model ?? ""})`
                       : `${p.provider}/${p.model}`}
                 </div>
-                {(driftById.get(p.id) ?? []).length > 0 ? (
-                  <div className="hint" data-testid={`persona-${p.id}-drift`}>
-                    <span className="warnline" role="status">
-                      Prompt fork behind base: {(driftById.get(p.id) ?? []).join(", ")}. Re-run persona:fork after
-                      merging the base changes.
-                    </span>
-                  </div>
-                ) : null}
               </div>
               <div className="frow" style={{ gap: 4, alignItems: "center" }}>
                 {confirmRemove === p.id ? null : (
@@ -215,6 +207,17 @@ export function PersonasSection({
                 )}
               </div>
             </div>
+            {(driftById.get(p.id) ?? []).length > 0 ? (
+              <div
+                className="hint"
+                data-testid={`persona-${p.id}-drift`}
+                style={{ marginTop: 4, paddingLeft: 22 }}
+              >
+                <span className="warnline" role="status">
+                  {`Prompt fork behind base: ${(driftById.get(p.id) ?? []).join(", ")}. Re-run: mise run persona:fork -- ${p.id} ${(driftById.get(p.id) ?? []).join(" ")}`}
+                </span>
+              </div>
+            ) : null}
             {editingId === p.id ? (
               <PersonaForm
                 key={p.id}
