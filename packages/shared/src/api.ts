@@ -732,8 +732,9 @@ export interface RedoReviewRequest {
 /**
  * Issue #393: one persona's prompt-fork status. `guideCapable` is true
  * when `prompts/personas/<id>/` holds `reader.md` (the persona can write
- * a whole guide); `drifted` names fork files whose base template changed
- * since the fork manifest recorded it (empty = in sync or no manifest).
+ * a whole guide); `drifted` names forked files (`reader.md`) whose base
+ * template changed since the fork manifest recorded it (empty = in sync
+ * or no manifest).
  * `name`/`enabled` come from settings (a fork folder with no settings
  * entry reports its id, disabled) so the Re-do menu and the Settings
  * drift warning share one call.

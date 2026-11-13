@@ -150,13 +150,13 @@ describe("fork library (overlay, capability, manifest, drift)", () => {
       copyPersonaFork(dir, "teach", ["reader", "depth"]);
       expect(forkDrift(dir, "teach")).toEqual([]);
       writeFileSync(path.join(dir, "reader.md"), `${readFileSync(path.join(dir, "reader.md"), "utf8")}\nNew base rule.\n`);
-      expect(forkDrift(dir, "teach")).toEqual(["reader"]);
+      expect(forkDrift(dir, "teach")).toEqual(["reader.md"]);
       // Re-running after the manual merge clears the warning.
       copyPersonaFork(dir, "teach", ["reader"]);
       expect(forkDrift(dir, "teach")).toEqual([]);
       // A fork file the helper never recorded counts as drifted too.
       writeFileSync(path.join(dir, "personas", "teach", "update_pass.md"), tpl("forked\n"));
-      expect(forkDrift(dir, "teach")).toEqual(["update_pass"]);
+      expect(forkDrift(dir, "teach")).toEqual(["update_pass.md"]);
       // No fork at all means no warning.
       expect(forkDrift(dir, "nobody")).toEqual([]);
     } finally {
@@ -531,7 +531,7 @@ describe("re-do with persona + prompt-forks endpoint (fake runner)", () => {
       writeFileSync(path.join(dir, "reader.md"), `${readFileSync(path.join(dir, "reader.md"), "utf8")}\nNew base rule.\n`);
       const drifted = await app.inject({ method: "GET", url: "/api/prompt-forks", headers: authed } as never);
       const after = (drifted.json() as { forks: { personaId: string; drifted: string[] }[] }).forks;
-      expect(after.find((f) => f.personaId === "teach")?.drifted).toEqual(["reader"]);
+      expect(after.find((f) => f.personaId === "teach")?.drifted).toEqual(["reader.md"]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -552,7 +552,7 @@ describe("re-do with persona + prompt-forks endpoint (fake runner)", () => {
       expect(forkDrift(dir, "teach")).toEqual([]);
       // A base change drifts; a fork edit + re-run (post-merge) clears it.
       writeFileSync(path.join(dir, "reader.md"), `${readFileSync(path.join(dir, "reader.md"), "utf8")}\nNew base rule.\n`);
-      expect(forkDrift(dir, "teach")).toEqual(["reader"]);
+      expect(forkDrift(dir, "teach")).toEqual(["reader.md"]);
       const forkReader = path.join(dir, "personas", "teach", "reader.md");
       writeFileSync(forkReader, `${readFileSync(forkReader, "utf8")}\nMerged teaching note.\n`);
       execFileSync(process.execPath, [FORK_SCRIPT, "teach", "reader", "--prompts-dir", dir], {

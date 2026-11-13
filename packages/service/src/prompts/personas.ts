@@ -291,10 +291,10 @@ export function readForkManifest(promptsDir: string, personaId: string): Persona
 
 /**
  * Forked files whose base template changed since the manifest recorded
- * it (issue #393 drift warning). A forked file with no manifest entry
- * (the helper never ran for it) counts as drifted too. Sorted; empty
- * means in sync (or no fork at all). Files with no base counterpart are
- * not forked files and never drift.
+ * it (issue #393 drift warning): file names (`reader.md`), sorted. A
+ * forked file with no manifest entry (the helper never ran for it)
+ * counts as drifted too. Empty means in sync (or no fork at all).
+ * Files with no base counterpart are not forked files and never drift.
  */
 export function forkDrift(promptsDir: string, personaId: string, shared?: TemplateLibrary): string[] {
   const lib = shared ?? loadTemplatesDirSync(promptsDir);
@@ -305,7 +305,7 @@ export function forkDrift(promptsDir: string, personaId: string, shared?: Templa
   for (const name of forked) {
     const baseRaw = fs.readFileSync(path.join(promptsDir, `${name}.md`), "utf8");
     const recorded = manifest?.files[name];
-    if (typeof recorded !== "string" || recorded !== sha256Hex(baseRaw)) out.push(name);
+    if (typeof recorded !== "string" || recorded !== sha256Hex(baseRaw)) out.push(`${name}.md`);
   }
   return out;
 }
