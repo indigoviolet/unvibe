@@ -1,9 +1,10 @@
 /**
  * `slower` action (PRD §4.4, issue #387): one "Help me understand" press
- * rewrites the card's paragraphs in place, more slowly than the current
- * text. Repeatable and relative — every press is a fresh agent turn
- * against the current text; there are no levels and no stored variants
- * to switch back to. Undo steps back through the presses.
+ * replaces the card body with the reply's parsed blocks (issue #398),
+ * more slowly than the current text. Repeatable and relative — every
+ * press is a fresh agent turn against the current text; there are no
+ * levels and no stored variants to switch back to. Undo steps back
+ * through the presses.
  *
  * Works on page cards and expansion cards (answers) alike, and on a
  * persona's variant (rewritten as that persona, in its session).
@@ -16,7 +17,7 @@ import {
   findCardTargetInDraft,
   guidePromptText,
   markStaleAnchors,
-  mergeSlowerText,
+  replaceSlowerBody,
   mirrorPromotedAnswer,
   pushUndo,
   recordInteraction,
@@ -170,7 +171,7 @@ async function slowerViaAgent(
           const v = targetCard?.variants?.[personaId];
           if (!targetCard || !v || !isCardVariant(v)) return;
           v.undoStack.push({ blocks: [...v.blocks] });
-          v.blocks = mergeSlowerText(v.blocks, replyBlocks);
+          v.blocks = replaceSlowerBody(v.blocks, replyBlocks);
           v.revision += 1;
           if (sessionId) v.sessionId = sessionId;
           markStaleAnchors(draft, cardId);
@@ -182,7 +183,7 @@ async function slowerViaAgent(
           if (!t) return;
           const current = targetBlocks(t) as Block[];
           pushUndo(t, [...current]);
-          setTargetContent(t, mergeSlowerText(current, replyBlocks));
+          setTargetContent(t, replaceSlowerBody(current, replyBlocks));
           markStaleAnchors(draft, cardId);
           mirrorPromotedAnswer(draft, cardId);
         });

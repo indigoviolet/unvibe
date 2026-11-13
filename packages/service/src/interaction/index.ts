@@ -31,7 +31,7 @@ export {
   insertExamples,
   hasDiagram,
   insertDiagrams,
-  mergeSlowerText,
+  replaceSlowerBody,
   markStaleAnchors,
   withFreshAsideId,
   type CardTarget,

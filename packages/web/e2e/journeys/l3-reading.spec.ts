@@ -1936,7 +1936,7 @@ test.describe("L3 demo guide reading", () => {
       await expect.soft(help).toBeVisible({ timeout: 15_000 });
       expect.soft(await help.getAttribute("data-tip")).toBe("Help me understand");
 
-      // First press rewrites the card more slowly (replay central:2).
+      // First press rewrites the card more slowly (replay central:1).
       await help.click();
       await expect
         .poll(async () => paraText(), { timeout: 60_000 })
@@ -1945,7 +1945,7 @@ test.describe("L3 demo guide reading", () => {
       expect.soft(afterFirst).not.toBe(before);
       await expect.soft(page.locator("#C-central")).toContainText("obsolete folded header line", { timeout: 15_000 });
 
-      // Second press slows the rewrite further (replay central:3).
+      // Second press slows the rewrite further (replay central:2).
       await page.locator("#C-central").hover();
       await page.locator("#C-central > .chead .ctl").getByRole("button", { name: "Help me understand" }).click();
       await expect
@@ -1961,6 +1961,103 @@ test.describe("L3 demo guide reading", () => {
       await expect.poll(async () => paraText(), { timeout: 60_000 }).toBe(afterFirst);
       await expect.soft(page.locator("#C-central")).toContainText("obsolete folded header line", { timeout: 15_000 });
       await expect.soft(page.locator("#C-central")).not.toContainText("Start with what the server sends", { timeout: 15_000 });
+    });
+
+    await test.step("Help me understand replaces the body wholesale: lists, example, own chips (#398)", async () => {
+      await openReview(page, slowerReview);
+      await expect.soft(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
+      type BlockShape = {
+        type: string;
+        text?: string;
+        html?: string;
+        kind?: string;
+        citations?: { target: string }[];
+        items?: { html: string; citations: { target: string }[] }[];
+      };
+      const centralBlocks = async (): Promise<BlockShape[]> => {
+        const cur = await apiJson(s, "GET", `/api/reviews/${slowerReview}`);
+        const cards = ((cur.json as { pages: { id: string; cards: { id: string; blocks: BlockShape[] }[] }[] }).pages ?? [])
+          .find((p) => p.id === "root")?.cards ?? [];
+        return cards.find((c) => c.id === "central")?.blocks ?? [];
+      };
+      // Two presses in: replay central:1 then central:2 (the step above
+      // undid once, so the card holds the first rewrite and the press
+      // ordinal is 1 — the next press replays central:2 again, then the
+      // third press replays central:3).
+      // Re-apply the second press to reach the two-press state.
+      await page.locator("#C-central").hover();
+      await page.locator("#C-central > .chead .ctl").getByRole("button", { name: "Help me understand" }).click();
+      await expect
+        .poll(async () => centralBlocks().then((b) => b.filter((x) => x.type === "paragraph").map((x) => x.text ?? "").join("\n\n")), { timeout: 60_000 })
+        .toContain("Start with what the server sends");
+
+      // Third press (replay central:3): three paragraphs, a numbered
+      // list of steps and an example walk-through, each citing its own
+      // paragraph — the whole reply becomes the body.
+      await page.locator("#C-central").hover();
+      await page.locator("#C-central > .chead .ctl").getByRole("button", { name: "Help me understand" }).click();
+      await expect
+        .poll(async () => page.locator("#C-central").getByText("A slower look at the same change").count(), { timeout: 90_000 })
+        .toBeGreaterThan(0);
+      const blocks = await centralBlocks();
+      expect.soft(blocks.map((b) => b.type)).toEqual(["paragraph", "paragraph", "paragraph", "paragraph", "list", "aside"]);
+      expect.soft(blocks[0].citations?.map((c) => c.target)).toEqual(["diff:src-urllib3-connection.py:80-88"]);
+      expect.soft(blocks[1].citations?.map((c) => c.target)).toEqual([
+        "diff:src-urllib3-connection.py:91-110",
+        "diff:src-urllib3-connection.py:647-651",
+      ]);
+      expect.soft(blocks[2].citations?.map((c) => c.target)).toEqual(["diff:src-urllib3-connection.py:91-110"]);
+      // The list's lead-in line is its own uncited paragraph.
+      expect.soft(blocks[3].citations ?? []).toEqual([]);
+      const list = blocks[4];
+      expect.soft(list.items?.length).toBe(3);
+      expect.soft(list.items?.[0].citations.map((c) => c.target)).toEqual(["diff:src-urllib3-connection.py:80-88"]);
+      expect.soft(list.items?.[2].citations.map((c) => c.target)).toEqual([
+        "diff:src-urllib3-connection.py:91-110",
+        "diff:test-test_connection.py:218",
+      ]);
+      const aside = blocks[5];
+      expect.soft(aside.kind).toBe("Example");
+
+      // Every reply block renders: the three list items, the example
+      // aside with its walk-through.
+      await expect.soft(page.locator("#C-central ol.lst")).toHaveCount(1);
+      await expect.soft(page.locator("#C-central ol.lst > li")).toHaveCount(3);
+      await expect.soft(page.locator("#C-central ol.lst > li").nth(0)).toContainText("Set-Cookie");
+      await expect.soft(page.locator("#C-central ol.lst > li button.lk").first()).toBeVisible({ timeout: 15_000 });
+      const example = page.locator("#C-central .blk.gen-aside");
+      await expect.soft(example).toHaveCount(1);
+      await expect.soft(example.locator(".tag")).toContainText("Example");
+      await expect.soft(example).toContainText("replaces all three parts with a single space");
+
+      // Each citation chip sits on its own paragraph (API targets above;
+      // here the rendered rows: paragraph chips render inside the
+      // prose itself — the first paragraph's chip names 80-88 and not
+      // 91-110, the second's names 91-110).
+      const paraChips = async (n: number): Promise<string[]> => {
+        const refs = page.locator("#C-central .blk").nth(n).locator("p.prose button.lk");
+        return refs.evaluateAll((els) => els.map((el) => el.getAttribute("data-refs") ?? ""));
+      };
+      const firstRefs = (await paraChips(0)).join(" ");
+      expect.soft(firstRefs).toContain("80-88");
+      expect.soft(firstRefs).not.toContain("91-110");
+      expect.soft((await paraChips(1)).join(" ")).toContain("91-110");
+
+      // Undo twice steps back through the presses to the first rewrite:
+      // the original text and chips are back, the list and example gone.
+      await page.locator("#C-central").hover();
+      await page.locator("#C-central > .chead .ctl").getByRole("button", { name: "Undo" }).click();
+      await expect
+        .poll(async () => page.locator("#C-central").getByText("Start with what the server sends").count(), { timeout: 60_000 })
+        .toBeGreaterThan(0);
+      await page.locator("#C-central").hover();
+      await page.locator("#C-central > .chead .ctl").getByRole("button", { name: "Undo" }).click();
+      await expect
+        .poll(async () => page.locator("#C-central").getByText("obsolete folded header line").count(), { timeout: 60_000 })
+        .toBeGreaterThan(0);
+      await expect.soft(page.locator("#C-central ol.lst")).toHaveCount(0);
+      await expect.soft(page.locator("#C-central .blk.gen-aside")).toHaveCount(0);
+      await expect.soft((await paraChips(0)).join(" ")).toContain("80-88");
     });
   });
 
