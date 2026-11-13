@@ -71,6 +71,9 @@ export async function registerRoutes(
       },
     },
     ...(full.settings ? { settings: full.settings } : {}),
+    // Issue #393: the forks endpoint reads the same prompts dir the
+    // pipeline renders from (a test fixture dir under tests).
+    ...(full.promptsDir ? { promptsDir: full.promptsDir } : {}),
   });
   await registerJobs(app, deps);
   await registerEvents(app, ctx.bus);

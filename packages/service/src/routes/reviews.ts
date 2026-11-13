@@ -913,6 +913,9 @@ export async function registerReviews(
   // refresh/update/resume), while a submit is in flight for the review
   // (delete does not check — redo must never lose a submission), and when
   // the repo is gone (nothing is deleted then).
+  // Issue #393: `Re-do with <persona>` — same semantics, same refusals;
+  // the body names the guide-capable persona and the new review records
+  // it. Absent (or the built-in Guide id) re-does exactly as before.
   app.post("/api/reviews/:id/redo", async (req, reply) => {
     const { id } = req.params as { id: string };
     const snap = ctx.reviews.getSnapshot(id);
@@ -927,6 +930,18 @@ export async function registerReviews(
     if (refusedRedo) return reply.code(409).send({ error: refusedRedo });
     if (readSubmitLease(ctx.db, id)) {
       return reply.code(409).send({ error: "A review is being submitted. Try again when it has finished." });
+    }
+    const body = (req.body ?? {}) as { personaId?: unknown };
+    const requested = typeof body.personaId === "string" && body.personaId.trim() !== "" ? body.personaId : GUIDE_PERSONA_ID;
+    if (requested !== GUIDE_PERSONA_ID) {
+      const settings = (deps as RouteDeps).settings?.get();
+      const persona = settings?.personas?.find((p) => p.id === requested);
+      if (!persona) return reply.code(404).send({ error: `unknown persona ${requested}` });
+      if (!persona.enabled) return reply.code(409).send({ error: `persona "${persona.name}" is disabled` });
+      const dir = deps.promptsDir ?? resolvePromptsDir();
+      if (!dir || !isGuideCapable(dir, requested)) {
+        return reply.code(409).send({ error: `persona "${persona.name}" can't write a guide (its prompt folder holds no reader.md)` });
+      }
     }
     const row = readReviewRow(ctx.db, id);
     if (!row) return reply.code(404).send({ error: "unknown review" });
@@ -951,6 +966,7 @@ export async function registerReviews(
         repoId: row.repoId,
         ...(row.prNumber !== null ? { pr: row.prNumber } : { branch: row.branch }),
         ...(title !== undefined ? { title } : {}),
+        guidePersonaId: requested,
       },
     );
     if (!created.ok) return reply.code(created.status).send({ error: created.error });
