@@ -606,8 +606,12 @@ textarea { min-width: 120px; max-width: 100%; min-height: 40px; max-height: 320p
    (below the toolbar, above the file headers), so the first file
    header still sits at its slot at scroll 0 and reveal landings clear
    the whole stack. `top` tracks the live strip + bar heights
-   (`refreshDiffPinned`); the file/hunk slots move down by its height. */
-.dsumbar { position: sticky; top: var(--dsumbar-top, 81px); left: 0; z-index: 9; background: var(--surface); }
+   (`refreshDiffPinned`); the file/hunk slots move down by its height.
+   Issue #395: like every other sticky layer, its `top` sits 2px above
+   its slot so its box overlaps the actions bar above it — without the
+   overlap a 2px seam between the stuck bar and the header shows
+   scrolling content (card text) through it. */
+.dsumbar { position: sticky; top: calc(var(--dsumbar-top, 81px) - 2px); left: 0; z-index: 9; background: var(--surface); }
 /* Issue #351: the banner stacks as coherent groups — the summary text
    with range-diff always on its own full-width line, then the picker
    with Update left-aligned below — so a narrow pane never strands one
