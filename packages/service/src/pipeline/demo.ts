@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Review, ReviewCommit, ReviewDescription, ReviewFile, Version } from "@unvibe/shared";
-import { buildReviewFiles, parseUnifiedDiff } from "@unvibe/shared";
+import { GUIDE_PERSONA_ID, buildReviewFiles, parseUnifiedDiff } from "@unvibe/shared";
 import { renderMarkdownBlocks } from "../ingest/index.js";
 import { newReviewId } from "../ingest/index.js";
 
@@ -107,6 +107,8 @@ export function ingestDemo(fixturesDir: string, reviewId: string = newReviewId()
     repoId: "demo",
     branch: meta.baseRef,
     prNumber: meta.pr,
+    // Issue #393: the demo always runs the built-in Guide (redo is refused).
+    guidePersonaId: GUIDE_PERSONA_ID,
     versions: [],
     currentVersion: 1,
     createdAt: now,

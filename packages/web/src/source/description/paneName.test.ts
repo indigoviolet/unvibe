@@ -15,6 +15,7 @@ function snapshot(prNumber?: number): ReviewSnapshot {
       ...(prNumber !== undefined ? { prNumber } : {}),
       versions: [],
       currentVersion: 1,
+      guidePersonaId: "guide",
       createdAt: 0,
     },
   } as unknown as ReviewSnapshot;

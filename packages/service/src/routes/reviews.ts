@@ -34,7 +34,9 @@ import type {
   UpdateReviewResponse,
   Version,
 } from "@unvibe/shared";
-import { DEFAULT_REVIEW_VIEW_PREFS, ingestStatusOf, isCommitSha, isDocumentReview, isReadySnapshot, parseDocumentMarkdown, summarizeComparison } from "@unvibe/shared";
+import { DEFAULT_REVIEW_VIEW_PREFS, GUIDE_PERSONA_ID, ingestStatusOf, isCommitSha, isDocumentReview, isReadySnapshot, parseDocumentMarkdown, summarizeComparison } from "@unvibe/shared";
+import { guidePersonaForReview, isGuideCapable } from "../prompts/personas.js";
+import { resolvePromptsDir } from "../prompts/index.js";
 import { ingestRefusal } from "../reviews/index.js";
 import {
   EmptyDiffError,
@@ -299,8 +301,11 @@ async function runIngestBackground(
       saveVersionFiles(ctx.db, reviewId, snapshot.version!.n, snapshot.files!);
     });
     // One mutate so the UI gets one patch (ready through the usual events).
+    // Issue #393: the finished review keeps the Guide persona the
+    // loading placeholder recorded (redo-with included).
+    const prevGuide = ctx.reviews.getSnapshot(reviewId)?.review.guidePersonaId ?? GUIDE_PERSONA_ID;
     await ctx.reviews.mutate(reviewId, (draft) => {
-      draft.review = { ...snapshot.review };
+      draft.review = { ...snapshot.review, guidePersonaId: prevGuide };
       draft.version = { ...snapshot.version! };
       draft.files = snapshot.files as ReviewSnapshot["files"];
       draft.description = snapshot.description ? { ...snapshot.description } : undefined;
@@ -375,6 +380,8 @@ interface BeginCreateArgs {
   branch?: string;
   title?: string;
   author?: string;
+  /** Issue #393: which Guide persona the new review records. */
+  guidePersonaId: string;
 }
 
 type BeginCreateResult =
@@ -510,6 +517,7 @@ async function beginReviewFromSourceInner(
       repoId: repo.id,
       branch: branchPlaceholder,
       ...(args.pr !== undefined ? { prNumber: args.pr } : {}),
+      guidePersonaId: args.guidePersonaId,
       versions: [],
       currentVersion: 0,
       createdAt: now,
@@ -613,7 +621,7 @@ export async function registerReviews(
         { ...(pipeline ? { pipeline } : {}), autoPipeline },
         pendingIngests,
         inFlightCreates,
-        { repoId, pr },
+        { repoId, pr, guidePersonaId: GUIDE_PERSONA_ID },
       );
       return r.ok ? { ok: true, snapshot: r.snapshot } : { ok: false, status: r.status, error: r.error };
     },
@@ -761,6 +769,8 @@ export async function registerReviews(
           id: reviewId,
           repoId: contextRepos[0].repoId,
           branch: "document",
+          // Issue #393: document reviews never re-do; the built-in Guide stands.
+          guidePersonaId: GUIDE_PERSONA_ID,
           versions: [version],
           currentVersion: 1,
           createdAt: now,
@@ -865,6 +875,7 @@ export async function registerReviews(
         ...(body.pr !== undefined ? { pr: body.pr } : { branch: body.branch }),
         ...(body.title !== undefined ? { title: body.title } : {}),
         ...(body.author !== undefined ? { author: body.author } : {}),
+        guidePersonaId: GUIDE_PERSONA_ID,
       },
     );
     if (!created.ok) return reply.code(created.status).send({ error: created.error });

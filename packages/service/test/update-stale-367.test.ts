@@ -36,7 +36,7 @@ function staleCard(id: string): Card {
 
 function snapshotWithCards(ids: string[]): ReviewSnapshot {
   return {
-    review: { id: "r367", repoId: "rp", branch: "feature", versions: [], currentVersion: 2, createdAt: 0 },
+    review: { id: "r367", repoId: "rp", branch: "feature", versions: [], currentVersion: 2, guidePersonaId: "guide", createdAt: 0 },
     version: { n: 2, headSha: "h2", mergeBaseSha: "mb", baseRef: "main", fetchedAt: 0, idMapping: {} },
     files: [],
     pages: [{ id: "root", kind: "root", title: "Root", cards: ids.map(staleCard) }],

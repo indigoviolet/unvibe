@@ -89,7 +89,7 @@ async function setupWith(pages: ReviewSnapshot["pages"], annotations: ReviewSnap
   ctx.repos.upsert(repo);
   const reviewId = `rv_m4_${Math.random().toString(36).slice(2, 8)}`;
   const version = versionRow();
-  const review = { id: reviewId, repoId: repo.id, branch: "feature", prNumber: 7, versions: [version], currentVersion: 1, createdAt: 1 };
+  const review = { id: reviewId, repoId: repo.id, branch: "feature", prNumber: 7, versions: [version], currentVersion: 1, guidePersonaId: "guide", createdAt: 1 };
   const files = [sourceFile()];
   const description = descriptionFor("First para.\n\nSecond para.\n");
   writeReviewRows(ctx.db, repo.id, { review, version, files, description, commits: [], title: review.branch, worktreePath: "/tmp" });

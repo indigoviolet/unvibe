@@ -10,7 +10,7 @@ import { markStaleAnchors } from "../src/interaction/cards.js";
 
 function snapshot(text: string): ReviewSnapshot {
   return {
-    review: { id: "r", repoId: "demo", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
+    review: { id: "r", repoId: "demo", branch: "b", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: 0 },
     version: { n: 1, headSha: "a", mergeBaseSha: "b", baseRef: "main", fetchedAt: 0, idMapping: {} },
     files: [],
     pages: [

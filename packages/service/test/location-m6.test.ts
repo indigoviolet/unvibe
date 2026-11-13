@@ -15,7 +15,7 @@ import { BASE_SHA, deletedFile, HEAD_SHA, renamedFile, sourceFile } from "./m6-h
 
 function snapshotWith(annotations: Thread[], files = [sourceFile()], pages: ReviewSnapshot["pages"] = []): ReviewSnapshot {
   return {
-    review: { id: "rv", repoId: "rp", branch: "b", prNumber: 7, versions: [], currentVersion: 1, createdAt: 1 },
+    review: { id: "rv", repoId: "rp", branch: "b", prNumber: 7, versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: 1 },
     version: { n: 1, headSha: HEAD_SHA, mergeBaseSha: BASE_SHA, baseRef: "main", fetchedAt: 1, idMapping: {} },
     files,
     pages,

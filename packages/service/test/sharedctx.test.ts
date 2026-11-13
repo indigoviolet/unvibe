@@ -150,6 +150,7 @@ async function setupSharedCtx(
     prNumber: 7,
     versions: [version],
     currentVersion: 1,
+    guidePersonaId: "guide",
     createdAt: 1,
   };
   const files = opts.files ?? [sourceFile()];
@@ -858,7 +859,7 @@ describe("isolation (PRD §12)", () => {
   it("expanded persona-card prompts carry no L2/L3/contribution text", () => {
     const lib = loadTemplatesDirSync(REPO_PROMPTS);
     const snap = toPromptSnapshot({
-      review: { id: "r", repoId: "rp", branch: "b", versions: [], currentVersion: 1, createdAt: 1 },
+      review: { id: "r", repoId: "rp", branch: "b", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: 1 },
       version: { n: 1, headSha: "a".repeat(40), mergeBaseSha: "b".repeat(40), baseRef: "main", fetchedAt: 1, idMapping: {} },
       files: [],
       pages: [

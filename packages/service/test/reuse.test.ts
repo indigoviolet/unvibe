@@ -122,6 +122,7 @@ async function setupWithAgents(agents: FakeAgentRunner) {
     prNumber: 7,
     versions: [version],
     currentVersion: 1,
+    guidePersonaId: "guide",
     createdAt: 1,
   };
   const files = [sourceFile()];

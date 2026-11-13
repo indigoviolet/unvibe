@@ -296,7 +296,7 @@ describe("traces (#356)", () => {
       const snapshot = {
         review: {
           id: "rv-CANARYREVIEWID", repoId: "repo-CANARYREPOX", branch: "CANARYBRANCHX",
-          prNumber: 987654, currentVersion: 1, createdAt: 1_700_000_000_000,
+          prNumber: 987654, currentVersion: 1, guidePersonaId: "guide", createdAt: 1_700_000_000_000,
           versions: [{ n: 1, headSha: SHA, mergeBaseSha: SHA, baseRef: "CANARYBRANCHX", fetchedAt: 1_700_000_000_000, idMapping: {} }],
         },
         version: { n: 1, headSha: SHA, mergeBaseSha: SHA, baseRef: "CANARYBRANCHX", fetchedAt: 1_700_000_000_000, idMapping: {} },

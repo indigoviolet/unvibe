@@ -29,8 +29,11 @@
  * - 8: one repeatable "Help me understand" rewrite replaces the depth
  *   levels (#387): `level` fields and per-level paragraph text go away;
  *   stored rows without the new shape need a reset.
+ * - 9: reviews record which Guide persona wrote them (#393):
+ *   `Review` gains required `guidePersonaId` (no fallback); stored
+ *   reviews without it need a reset.
  */
-export const DATA_FORMAT = 8;
+export const DATA_FORMAT = 9;
 
 /** Stored format of a data dir: `null` when no stamp is present. */
 export type DataFormatState = "none" | "match" | "mismatch";

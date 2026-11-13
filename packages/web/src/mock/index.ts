@@ -168,6 +168,7 @@ const MOCK_REVIEW: Review = {
   prNumber: 5020,
   versions: [MOCK_VERSION],
   currentVersion: 1,
+  guidePersonaId: "guide",
   createdAt: NOW - 3600000,
 };
 
@@ -2092,6 +2093,7 @@ function mockLoadingSnapshot(entry: ReviewSummary): ReviewSnapshot {
       ...(entry.prNumber !== undefined ? { prNumber: entry.prNumber } : {}),
       versions: [],
       currentVersion: 0,
+      guidePersonaId: "guide",
       createdAt: entry.createdAt,
     },
     version: { n: 0, headSha: "", mergeBaseSha: "", baseRef: "", fetchedAt: now, idMapping: {} },
@@ -2120,6 +2122,7 @@ function mockFailedSnapshot(entry: ReviewSummary, error: string): ReviewSnapshot
       ...(entry.prNumber !== undefined ? { prNumber: entry.prNumber } : {}),
       versions: [],
       currentVersion: 0,
+      guidePersonaId: "guide",
       createdAt: entry.createdAt,
     },
     version: { n: 0, headSha: "", mergeBaseSha: "", baseRef: "", fetchedAt: now, idMapping: {} },
@@ -2452,7 +2455,7 @@ export const mockApi = {
     const id = `mock-doc-${now.toString(36)}`;
     const version: Version = { n: 1, headSha: "mockdoc", mergeBaseSha: "mockdoc", baseRef: "document", fetchedAt: now, idMapping: {} };
     return {
-      review: { id, repoId: first?.repoId ?? "demo", branch: "document", versions: [version], currentVersion: 1, createdAt: now },
+      review: { id, repoId: first?.repoId ?? "demo", branch: "document", versions: [version], currentVersion: 1, guidePersonaId: "guide", createdAt: now },
       document,
       contextRepos: body.contextRepos.map((pick) => {
         const r = getRepos().find((x) => x.id === pick.repoId);
@@ -2544,6 +2547,7 @@ export const mockApi = {
           ...(body.pr !== undefined ? { prNumber: body.pr } : {}),
           versions: [],
           currentVersion: 0,
+          guidePersonaId: "guide",
           createdAt: now,
         },
         version: { n: 0, headSha: "", mergeBaseSha: "", baseRef: "", fetchedAt: now, idMapping: {} },
@@ -2599,6 +2603,7 @@ export const mockApi = {
           ...(body.pr !== undefined ? { prNumber: body.pr } : {}),
           versions: [],
           currentVersion: 0,
+          guidePersonaId: "guide",
           createdAt: now,
         },
         version: { n: 0, headSha: "", mergeBaseSha: "", baseRef: "", fetchedAt: now, idMapping: {} },
@@ -2758,7 +2763,7 @@ export const mockApi = {
           if (entry) return mockLoadingSnapshot(entry);
           const now = Date.now();
           return {
-            review: { id, repoId: "urllib3", branch: "feature", versions: [], currentVersion: 0, createdAt: now },
+            review: { id, repoId: "urllib3", branch: "feature", versions: [], currentVersion: 0, guidePersonaId: "guide", createdAt: now },
             version: { n: 0, headSha: "", mergeBaseSha: "", baseRef: "", fetchedAt: now, idMapping: {} },
             files: [],
             pages: [],
@@ -2789,7 +2794,7 @@ export const mockApi = {
           if (entry) return mockFailedSnapshot(entry, fail);
           const now = Date.now();
           return {
-            review: { id, repoId: "urllib3", branch: "feature", versions: [], currentVersion: 0, createdAt: now },
+            review: { id, repoId: "urllib3", branch: "feature", versions: [], currentVersion: 0, guidePersonaId: "guide", createdAt: now },
             version: { n: 0, headSha: "", mergeBaseSha: "", baseRef: "", fetchedAt: now, idMapping: {} },
             files: [],
             pages: [],

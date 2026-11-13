@@ -255,7 +255,7 @@ describe("pipeline failure paths (scripted fakes)", () => {
       "INSERT INTO versions (review_id, n, head_sha, merge_base_sha, base_ref, fetched_at, id_mapping) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(review_id, n) DO NOTHING",
     ).run(id, 1, "abc1234def5678abc1234def5678abc1234def5", "0000000", "main", Date.now(), JSON.stringify({}));
     const snap: ReviewSnapshot = {
-      review: { id, repoId: "demo", branch: "main", versions: [], currentVersion: 1, createdAt: Date.now() },
+      review: { id, repoId: "demo", branch: "main", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: Date.now() },
       version: { n: 1, headSha: "abc1234def5678abc1234def5678abc1234def5", mergeBaseSha: "0000000", baseRef: "main", fetchedAt: Date.now(), idMapping: {} },
       files: [
         {
@@ -709,6 +709,7 @@ describe("reader pinned code (#37)", () => {
           prNumber: 7,
           versions: [version],
           currentVersion: 1,
+          guidePersonaId: "guide",
           createdAt: 1,
         };
         const files = [sourceFile()];
@@ -845,6 +846,7 @@ describe("reader pinned code (#37)", () => {
           prNumber: 7,
           versions: [version],
           currentVersion: 1,
+          guidePersonaId: "guide",
           createdAt: 1,
         };
         const files = [sourceFile()];

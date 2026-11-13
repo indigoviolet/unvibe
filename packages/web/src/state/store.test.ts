@@ -34,7 +34,7 @@ function thread(id: string, text: string): Thread {
 
 function snap(rev: number, annotations: Thread[] = []): ReviewSnapshot {
   return {
-    review: { id: "rv_race", repoId: "r", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
+    review: { id: "rv_race", repoId: "r", branch: "b", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: 0 },
     version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
     files: [],
     pages: [],

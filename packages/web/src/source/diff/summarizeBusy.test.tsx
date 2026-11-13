@@ -18,7 +18,7 @@ const HASH = "h63";
 function seed(): void {
   useReview.getState().clear();
   useReview.getState().setSnapshot({
-    review: { id: "r63", repoId: "r", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
+    review: { id: "r63", repoId: "r", branch: "b", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: 0 },
     version: { n: 1, headSha: "a", mergeBaseSha: "d", baseRef: "main", fetchedAt: 0, idMapping: {} },
     files: [
       {

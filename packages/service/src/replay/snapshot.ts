@@ -24,7 +24,7 @@ import type {
   ReviewFile,
   ReviewSnapshot,
 } from "@unvibe/shared";
-import { canonicalizeTarget, normalizeGlossary, parseId, parseReply, collectTargets, diagramHash, D2_MIN_VERSION, DEFAULT_REVIEW_VIEW_PREFS } from "@unvibe/shared";
+import { GUIDE_PERSONA_ID, canonicalizeTarget, normalizeGlossary, parseId, parseReply, collectTargets, diagramHash, D2_MIN_VERSION, DEFAULT_REVIEW_VIEW_PREFS } from "@unvibe/shared";
 import { classifyFile, fileKeyForPath } from "../ingest/classify.js";
 import { renderMarkdownBlocks } from "../ingest/description.js";
 import { parseUnifiedDiff } from "../ingest/diff.js";
@@ -480,6 +480,8 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
       repoId: meta.repo,
       branch: meta.baseRef,
       prNumber: meta.pr,
+      // Issue #393: the replayed demo runs the built-in Guide.
+      guidePersonaId: GUIDE_PERSONA_ID,
       versions: [version],
       currentVersion: 1,
       createdAt: 1760000000000,

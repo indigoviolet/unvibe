@@ -91,6 +91,17 @@ export interface Review {
   branch: string;
   /** PR number, absent for branch-only reviews. */
   prNumber?: number;
+  /**
+   * Issue #393: which Guide persona wrote this review. Every main-agent
+   * task on the review (reader, go-deeper, depth, examples, diagrams,
+   * concept pages, update pass, critic, hunk pass) resolves templates,
+   * model and lens through this persona; card personas (Clarity, Second
+   * opinion) layer their lens on top of its instructions. Required: no
+   * fallback (a review without one needs a data reset). Normal opens
+   * stamp the built-in Guide (`guide`); Re-do with stamps the chosen
+   * guide-capable persona.
+   */
+  guidePersonaId: string;
   versions: Version[];
   currentVersion: number;
   createdAt: number;

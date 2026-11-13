@@ -167,7 +167,7 @@ describe("resolveSelectionHost inside AI-suggested comments (issue #163)", () =>
   function seedSuggested(): void {
     useReview.getState().clear();
     useReview.getState().setSnapshot({
-      review: { id: "r", repoId: "r", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
+      review: { id: "r", repoId: "r", branch: "b", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: 0 },
       version: { n: 1, headSha: "a", mergeBaseSha: "b", baseRef: "main", fetchedAt: 0, idMapping: {} },
       files: [],
       pages: [],
@@ -247,7 +247,7 @@ function seedConversationCard(): void {
   };
   useReview.getState().clear();
   useReview.getState().setSnapshot({
-    review: { id: "r", repoId: "x", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
+    review: { id: "r", repoId: "x", branch: "b", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: 0 },
     version: { n: 1, headSha: "a", mergeBaseSha: "b", baseRef: "main", fetchedAt: 0, idMapping: {} },
     files: [],
     pages: [],

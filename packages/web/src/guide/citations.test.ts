@@ -19,6 +19,7 @@ function snapshot(): ReviewSnapshot {
       prNumber: 5020,
       versions: [],
       currentVersion: 1,
+      guidePersonaId: "guide",
       createdAt: 0,
     },
     version: { n: 1, headSha: "h", mergeBaseSha: "m", baseRef: "main", fetchedAt: 0, idMapping: {} },

@@ -720,6 +720,38 @@ export type ReviewResponse = ReviewSnapshot;
 export type CreateReviewResponse = ReviewSnapshot & { reused?: boolean };
 
 /**
+ * Issue #393: `POST /api/reviews/:id/redo` body. Absent (or the built-in
+ * Guide id) re-does the guide exactly as before; a guide-capable
+ * persona id re-does it with that persona (same confirm/delete/create
+ * semantics, same refusals), and the new review records it.
+ */
+export interface RedoReviewRequest {
+  personaId?: string;
+}
+
+/**
+ * Issue #393: one persona's prompt-fork status. `guideCapable` is true
+ * when `prompts/personas/<id>/` holds `reader.md` (the persona can write
+ * a whole guide); `drifted` names fork files whose base template changed
+ * since the fork manifest recorded it (empty = in sync or no manifest).
+ * `name`/`enabled` come from settings (a fork folder with no settings
+ * entry reports its id, disabled) so the Re-do menu and the Settings
+ * drift warning share one call.
+ */
+export interface PromptForkStatus {
+  personaId: string;
+  name: string;
+  enabled: boolean;
+  guideCapable: boolean;
+  drifted: string[];
+}
+
+/** Issue #393: `GET /api/prompt-forks` response. */
+export interface PromptForksResponse {
+  forks: PromptForkStatus[];
+}
+
+/**
  * Front screen (PRD §4.2): every review opened before, across ALL repos,
  * most recent first. Served by `GET /api/reviews`.
  */
