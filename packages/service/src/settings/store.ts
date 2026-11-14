@@ -26,6 +26,8 @@ export const DEFAULT_SETTINGS: Settings = {
   // non-Guide entry is ordinary data (add, edit, delete through
   // Settings → Personas); the Guide entry stays fixed.
   personas: defaultPersonas(),
+  /** Issue #401: which guide-capable persona writes new reviews. */
+  defaultGuidePersonaId: "guide",
   sessionsPerProvider: 16,
   inlineBudgetTokens: 40_000,
   rebuildSupersededRatio: 0.2,
@@ -121,6 +123,13 @@ export function validateSettings(patch: Record<string, unknown>): string[] {
         if (g["cardInstruction"] !== "") errors.push("the Guide persona takes no card instruction");
       }
     }
+  }
+  // Issue #401: the default guide is a persona id (non-empty string).
+  // Enabled + guide-capable (`reader.md`) is enforced where the prompts
+  // dir is known (the settings route) — the store stays fs-free.
+  const defaultGuide = patch["defaultGuidePersonaId"];
+  if (defaultGuide !== undefined && (typeof defaultGuide !== "string" || defaultGuide.trim() === "")) {
+    errors.push("defaultGuidePersonaId must be a non-empty persona id string");
   }
   const int = (name: string, min: number, max: number): void => {
     const v = patch[name];

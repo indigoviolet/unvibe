@@ -35,7 +35,7 @@ import type {
   Version,
 } from "@unvibe/shared";
 import { DEFAULT_REVIEW_VIEW_PREFS, GUIDE_PERSONA_ID, ingestStatusOf, isCommitSha, isDocumentReview, isReadySnapshot, parseDocumentMarkdown, summarizeComparison } from "@unvibe/shared";
-import { guidePersonaForReview, isGuideCapable } from "../prompts/personas.js";
+import { effectiveDefaultGuideId, guidePersonaForReview, isGuideCapable } from "../prompts/personas.js";
 import { resolvePromptsDir } from "../prompts/index.js";
 import { ingestRefusal } from "../reviews/index.js";
 import {
@@ -580,6 +580,28 @@ async function beginReviewFromSourceInner(
   }
 }
 
+/**
+ * Issue #401: which Guide persona a fresh review or a plain re-do
+ * records — the effective default (the stored id when it names an
+ * enabled guide-capable persona, else the built-in Guide). Never throws:
+ * a guide never fails to start because of the default.
+ */
+/** Issue #401: exported for unit tests (the create/redo call sites are one-liners). */
+export function defaultGuideForNewReview(deps: RegisterReviewsDeps): string {
+  try {
+    const settings = (deps as RouteDeps).settings?.get();
+    if (!settings) return GUIDE_PERSONA_ID;
+    const dir = (deps as RouteDeps).promptsDir ?? resolvePromptsDir();
+    return effectiveDefaultGuideId(
+      settings.personas ?? [],
+      dir,
+      settings.defaultGuidePersonaId ?? GUIDE_PERSONA_ID,
+    );
+  } catch {
+    return GUIDE_PERSONA_ID;
+  }
+}
+
 /** #115: the stored title hint for a review's loading page (best effort). */
 function storedTitle(db: ServiceContext["db"], reviewId: string): string | undefined {
   try {
@@ -621,7 +643,7 @@ export async function registerReviews(
         { ...(pipeline ? { pipeline } : {}), autoPipeline },
         pendingIngests,
         inFlightCreates,
-        { repoId, pr, guidePersonaId: GUIDE_PERSONA_ID },
+        { repoId, pr, guidePersonaId: defaultGuideForNewReview(deps) },
       );
       return r.ok ? { ok: true, snapshot: r.snapshot } : { ok: false, status: r.status, error: r.error };
     },
@@ -875,7 +897,7 @@ export async function registerReviews(
         ...(body.pr !== undefined ? { pr: body.pr } : { branch: body.branch }),
         ...(body.title !== undefined ? { title: body.title } : {}),
         ...(body.author !== undefined ? { author: body.author } : {}),
-        guidePersonaId: GUIDE_PERSONA_ID,
+        guidePersonaId: defaultGuideForNewReview(deps),
       },
     );
     if (!created.ok) return reply.code(created.status).send({ error: created.error });
@@ -915,7 +937,8 @@ export async function registerReviews(
   // the repo is gone (nothing is deleted then).
   // Issue #393: `Re-do with <persona>` — same semantics, same refusals;
   // the body names the guide-capable persona and the new review records
-  // it. Absent (or the built-in Guide id) re-does exactly as before.
+  // it. Issue #401: an absent body re-does with the effective default
+  // guide persona; the built-in Guide id still re-does exactly as before.
   app.post("/api/reviews/:id/redo", async (req, reply) => {
     const { id } = req.params as { id: string };
     const snap = ctx.reviews.getSnapshot(id);
@@ -932,7 +955,10 @@ export async function registerReviews(
       return reply.code(409).send({ error: "A review is being submitted. Try again when it has finished." });
     }
     const body = (req.body ?? {}) as { personaId?: unknown };
-    const requested = typeof body.personaId === "string" && body.personaId.trim() !== "" ? body.personaId : GUIDE_PERSONA_ID;
+    const requested =
+      typeof body.personaId === "string" && body.personaId.trim() !== ""
+        ? body.personaId
+        : defaultGuideForNewReview(deps);
     if (requested !== GUIDE_PERSONA_ID) {
       const settings = (deps as RouteDeps).settings?.get();
       const persona = settings?.personas?.find((p) => p.id === requested);

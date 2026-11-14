@@ -1535,6 +1535,15 @@ export interface Settings {
    * auto-assigned at creation.
    */
   personas: Persona[];
+  /**
+   * Default Guide persona (issue #401): which guide-capable persona
+   * writes new reviews and plain Re-do guide runs. A persona id;
+   * `"guide"` (the built-in Guide) when unset. Managed through
+   * Settings → Personas; must name an enabled guide-capable persona
+   * (its fork holds `reader.md`) at save time, and resolves back to
+   * `"guide"` at read time when it no longer does.
+   */
+  defaultGuidePersonaId: string;
   /** Max concurrent sessions per provider (default 16, PRD §12). */
   sessionsPerProvider: number;
   /** Inline size budget in tokens (L1 budget guess ~40k, PRD §9.1). */
