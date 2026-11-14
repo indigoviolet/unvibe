@@ -4083,6 +4083,13 @@ export const mockApi = {
 
   providers: async (): Promise<{ providers: string[] }> => ({ providers: ["claude", "codex"] }),
 
+  // Issue #404: mock provenance mirrors the service rule — only patched
+  // keys count as saved (the static demo stays fully unsaved).
+  savedSettingsKeys: async (): Promise<import("@unvibe/shared").SavedKeysResponse> => {
+    if (STATIC_DEMO) return { savedKeys: [] };
+    return { savedKeys: Object.keys(readJson<Partial<Settings>>(SETTINGS_KEY, {})) };
+  },
+
   prompts: async (reviewId?: string): Promise<PromptsResponse> => {
     const templates: PromptTemplate[] = MOCK_TEMPLATES;
     if (!reviewId) return { templates };

@@ -118,6 +118,24 @@ function ModelPicker({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [effortReset, setEffortReset] = useState<string | null>(null);
+  // Issue #404: the "no longer offered" error shows only for a pick the
+  // user explicitly saved — never for the static fallback default on a
+  // fresh install. Null until the saved-keys fetch answers (fail-quiet).
+  const [savedRoles, setSavedRoles] = useState<string[] | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .savedSettingsKeys()
+      .then((r) => {
+        if (!cancelled) setSavedRoles(r.savedKeys);
+      })
+      .catch(() => {
+        // Unknown provenance: stay quiet rather than accuse the user.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Keep the provider select in sync when settings arrive late / change,
   // but never snap it back while the user is browsing another provider's
@@ -170,10 +188,17 @@ function ModelPicker({
   // retired or renamed): flag it plainly instead of silently keeping it.
   // While another provider's list is being browsed nothing is saved yet:
   // the pick only changes when a model is chosen from that list (#87).
+  // Issue #404: only a pick the user explicitly saved can go missing —
+  // the static fallback default on a fresh install is not "saved".
   const browsing = provider !== pick.provider;
   const modelIds = models?.map((m) => m.id) ?? null;
   const offeredMissing =
-    !browsing && modelIds !== null && error === null && pick.model !== "" && !modelIds.includes(pick.model);
+    !browsing &&
+    modelIds !== null &&
+    error === null &&
+    pick.model !== "" &&
+    (savedRoles?.includes(role) ?? false) &&
+    !modelIds.includes(pick.model);
 
   // The saved effort may no longer be offered (values renamed): flag it
   // plainly; picking a value below fixes it.
@@ -193,6 +218,8 @@ function ModelPicker({
     setEffortReset(null);
     try {
       onSaved(await api.saveSettings({ [role]: next }));
+      // The role is now explicitly saved, so a later disappearance warns.
+      setSavedRoles((prev) => (prev === null ? [role] : prev.includes(role) ? prev : [...prev, role]));
       if (resetNotice !== null) setEffortReset(resetNotice);
     } catch (err) {
       setSaveError(friendlyError(err));
