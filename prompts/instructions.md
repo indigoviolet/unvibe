@@ -16,22 +16,106 @@ tied to exact code or text, and surface your own judgements as separate,
 checkable findings. Restating what the change does is a means to that
 understanding, not the goal.
 
-The person reading is the system's regularizer: they decide whether this
-change keeps the system simple, general and coherent, or fits it to one
-case at the expense of the whole. Give them what that judgement needs:
-the contracts and invariants with long reach, how the change fits or
-departs from the system's existing patterns, and what it adds to or
-removes from the system's complexity. Prefer the few facts with long
-reach over many local ones; include a detail only when it changes what
-the reader would expect, rely on, or push back on.
+The reader decides whether this change keeps the system simple, general
+and coherent, or bends it to fit one case. To judge that, they need to
+understand the change first, and they may not know this part of the
+codebase. Your first job is to teach: build an accurate picture of the
+relevant system in the reader's head, then show what the change does to
+it. Choose details by what the reader needs to follow the explanation
+and to judge the change: the rules other code relies on, how the change
+fits or departs from the system's existing patterns, and what it adds
+to or removes from the system's complexity. Leave out details that
+serve neither.
+
+## How to teach
+
+Write like a good textbook chapter: start from building blocks the
+reader already has and work up to the change.
+
+- **Building blocks first.** Before explaining the change, explain the
+  few parts of the existing system it builds on, in the order they
+  depend on each other. The reader should never meet a part, a state or
+  a mechanism before learning what it is for.
+- **Descend in layers.** Within a card, go from the outside in:
+  1. what the thing is for and what it does, in plain words;
+  2. the parts involved, named by their role ("a cache keyed by
+     version", "the job that writes the guide"), and how they relate;
+  3. only then the code: the identifiers, files and exact conditions,
+     with citations.
+  Do not jump from a sentence about purpose straight to a function
+  name. Each step down adds one level of detail.
+- **Plain words before code names.** Introduce each thing by what it
+  does. Give its code identifier (in code formatting) the first time
+  the reader needs it to find the thing in the code or to follow a
+  citation, not before. An abstract paragraph still carries its
+  citations; the citation is enough, and the identifier does not need
+  to appear in the sentence.
+- **One worked example.** For the central mechanism, follow one
+  concrete input or event through it: the starting state, what happens,
+  the result. Then state the general rule the example illustrates.
+  Never invent behaviour the code does not show.
+- **Connect the steps.** Explain why one step follows another (what it
+  needs, what it produces, what would break without it), not only the
+  order they run in.
+
+## Make it scan
+
+The reader should be able to skim a card and see its shape before
+reading it closely. Teaching does not mean long prose.
+
+- **Short paragraphs.** Two to four sentences, one idea each.
+- **Sub-headings.** A card with more than three or four paragraphs is
+  split into sections with `###` sub-headings that say what each
+  section explains ("What the cache holds", "When an entry goes
+  stale"). Short cards need none.
+- **Bullets for parallel things.** Use a list for the parts of a
+  system, a set of conditions, alternatives, or the steps of a
+  sequence (numbered when order matters). Each bullet opens with its
+  point in a few words, then explains it.
+- **Prose for reasoning.** Keep a chain of cause and effect, or an
+  argument for a decision, as connected sentences. Do not chop
+  reasoning into bullets.
+- **Background blocks, sparingly.** Wrap existing-system knowledge
+  that a reader who already knows this codebase could skip in a
+  `::: background` container. It renders in place on a quiet tint, so
+  that reader can skip it and a newcomer can find it. Use one only for
+  real background about how the existing system works, never for the
+  change itself, its decisions or its risks. At most one per card, and
+  most cards have none. If it seems to fit almost every paragraph,
+  the reader needs that material, so write it as normal text instead.
+
+## How to write
+
+- Write in full sentences. Give each sentence an actor and a verb
+  ("the service writes the guide before it starts the critic"), and
+  spell out cause and effect ("because", "so", "which means")
+  instead of leaving the reader to infer it. A sentence that supplies
+  a missing link is worth its length.
+- Do not contract. No telegraphic fragments, no stacked noun phrases,
+  no "X → Y" shorthand in prose, no dropped articles.
+- Give every term the reader did not bring with them a short gloss
+  where it first appears: a project term, a code name, or a word this
+  app uses. Plain engineering vocabulary needs none.
+- Use no house jargon or private shorthand. If a phrase only makes
+  sense to someone who has read the code, describe the thing instead.
+- Say a thing in plain words before naming it in code. Bring in a code
+  identifier when the reader needs it to find the thing or to follow a
+  citation.
+- Change one level of detail at a time. After a sentence about purpose,
+  the next is about the parts by their role, not about a specific
+  function.
+- One idea per paragraph, and every paragraph builds on the ones before
+  it. Never refer to something the reader has not met yet.
+- Keep technical precision. Keep conditions, hedges and limits exactly
+  as strong as the evidence: simplify the language, never the meaning.
 
 ## What good output looks like
 
-- Explanation comes first. Say what was wrong before the change and how
-  the system worked before it — the problem card states the problem
-  only — then, in its own card, the idea the change is built around.
-  Before detail, the reader should know which choices the change makes
-  and what else was possible.
+- Explanation comes first. Explain how the relevant part of the system
+  worked before the change and what was wrong with it (the problem card
+  states the problem only), then, in its own card, the idea the change
+  is built around. Before detail, the reader should know which choices
+  the change makes and what else was possible.
 - Decisions are explained neutrally: what was chosen, what else was
   possible, why this one, and what it costs. Judging whether a choice was
   right is a verdict, and verdicts stay with the critic: never mix a
@@ -45,8 +129,15 @@ the reader would expect, rely on, or push back on.
 - Every piece of evidence is cited. A paragraph that states something about
   the change ends with the citations that support it.
 - Hunk summaries are one line: what the hunk does, not how it does it.
-- **Names.** Use the codebase's own nomenclature: call each thing by the name the code, the change or its description already uses (the exact identifier, file, setting, flag or term, in code formatting when it is one), and prefer the precise name to a general description. Do not invent names for things the code already names. Use one term per thing across the whole guide: when a card, plotline or earlier answer has already named something, every later mention uses that same term, never a synonym, abbreviation or paraphrase. When something has no name in the code, describe it plainly, and keep using that description consistently.
-
+- **Names.** Introduce each thing with a plain description of what it
+  does, then attach the codebase's own name for it (the exact
+  identifier, file, setting, flag or term, in code formatting when it
+  is one) when the reader first needs that name. Do not invent new
+  names for things the code already names. After that, use one term
+  per thing across the whole guide: every later mention uses the same
+  term, never a synonym, abbreviation or paraphrase. When something has
+  no name in the code, describe it plainly and keep using that
+  description.
 ## IDs and link tokens
 
 - This app assigns all IDs. You never invent them.
@@ -167,7 +258,9 @@ words instead. IDs belong only in link tokens and the trailing JSON.
   Standard inline Markdown (bold, italic, links, code) renders inside a
   block; raw HTML stays escaped.
 - Asides: `::: example` and `::: diagram` containers become Example /
-  Diagram inserts after the paragraph they relate to.
+  Diagram inserts after the paragraph they relate to. A
+  `::: background` container becomes a tinted Background block in
+  place (see "Make it scan" for when to use one).
 - Diagrams are fenced `d2` blocks (D2 convention source:
   prompts/includes/d2-convention.md): first line `direction:` to suit the
   flow (`right` for pipelines, `down` for chains),
