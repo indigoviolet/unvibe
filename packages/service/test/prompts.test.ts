@@ -143,6 +143,18 @@ describe("repo prompts/ directory", () => {
     }
   });
 
+  it("background blocks: encouraged where they fit, at most one per card (#408)", () => {
+    const lib = loadTemplatesDirSync(REPO_PROMPTS);
+    const instructions = lib.get("instructions")?.body ?? "";
+    const reader = lib.get("reader")?.body ?? "";
+    expect(instructions).toContain("Background blocks where they fit");
+    expect(instructions).toContain("At most one per card");
+    expect(instructions).not.toContain("most cards have none");
+    expect(instructions).toContain("write it as normal text instead");
+    expect(reader).toContain("a newcomer reads it");
+    expect(reader).toContain("that part in one `::: background` block too");
+  });
+
   it("teach-guide prompts: renamed card, Names, critic lens, tool preference (#212/#211/#405)", () => {
     const lib = loadTemplatesDirSync(REPO_PROMPTS);
     const instructions = lib.get("instructions")?.body ?? "";

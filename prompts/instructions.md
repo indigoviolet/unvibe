@@ -75,14 +75,17 @@ reading it closely. Teaching does not mean long prose.
 - **Prose for reasoning.** Keep a chain of cause and effect, or an
   argument for a decision, as connected sentences. Do not chop
   reasoning into bullets.
-- **Background blocks, sparingly.** Wrap existing-system knowledge
+- **Background blocks where they fit.** Wrap existing-system knowledge
   that a reader who already knows this codebase could skip in a
   `::: background` container. It renders in place on a quiet tint, so
   that reader can skip it and a newcomer can find it. Use one only for
   real background about how the existing system works, never for the
-  change itself, its decisions or its risks. At most one per card, and
-  most cards have none. If it seems to fit almost every paragraph,
-  the reader needs that material, so write it as normal text instead.
+  change itself, its decisions or its risks. Write one where it fits:
+  the problem card usually needs one, and so does any card whose
+  explanation leans on how the existing system works in a way a reader
+  new to this codebase would not know. At most one per card. If it
+  seems to fit almost every paragraph, the reader needs that material,
+  so write it as normal text instead.
 
 ## How to write
 

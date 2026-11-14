@@ -114,9 +114,10 @@ parts and steps, prose for reasoning.
 1. **The problem.** Open with the building blocks: in plain words, how
    the relevant part of the system works, one part at a time, so the
    reader has the picture they need. A short list, one bullet per
-   building block, often reads best. Where some of it is background a
-   reader who knows the codebase could skip, put that part in one
-   `::: background` block. Then, under its own `###` sub-heading when
+   building block, often reads best. When the building blocks include
+   how the existing system works, put that part in one
+   `::: background` block: a reader who knows the codebase skips it,
+   a newcomer reads it. Then, under its own `###` sub-heading when
    the card is long, say what was wrong before the change and why it
    mattered. Keep the background to what the problem
    needs; it is not a tour of the codebase. This card states the
@@ -274,6 +275,9 @@ the page is written when the reader opens the link.
 - The problem card comes first: building blocks, then the problem
   only. The central idea has its own card right after it. Keep the
   background to what the reader needs, so the point is not buried.
+- Any later card whose explanation leans on how the existing system
+  works, in a way a reader new to this codebase would not know, puts
+  that part in one `::: background` block too.
 - Never refer to a part, state or term before the reader has met it.
   A card may rely on what earlier cards taught; it does not re-explain
   it.
