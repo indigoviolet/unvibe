@@ -107,12 +107,18 @@ later cards rely on them and do not re-explain them.
 
 Every card descends in layers (see "How to teach" in the instructions):
 purpose in plain words, then the parts by their role, then the cited
-code.
+code. Every card is also built to scan (see "Make it scan"): short
+paragraphs, `###` sub-headings in longer cards, bullets for parallel
+parts and steps, prose for reasoning.
 
 1. **The problem.** Open with the building blocks: in plain words, how
    the relevant part of the system works, one part at a time, so the
-   reader has the picture they need. Then say what was wrong before the
-   change and why it mattered. Keep the background to what the problem
+   reader has the picture they need. A short list, one bullet per
+   building block, often reads best. Where some of it is background a
+   reader who knows the codebase could skip, put that part in one
+   `::: background` block. Then, under its own `###` sub-heading when
+   the card is long, say what was wrong before the change and why it
+   mattered. Keep the background to what the problem
    needs; it is not a tour of the codebase. This card states the
    problem only: do not state the change's central idea here, because
    it has the next card. Use what the code shows, not only what the

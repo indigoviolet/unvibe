@@ -1273,6 +1273,9 @@ mark.anc.on { outline: 2px solid var(--note); }
 .linkstub button { border: 0; background: none; padding: 0; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
 .gen-aside { margin: 6px 0 14px; padding: 2px 0 2px 14px; border-left: 2px dashed var(--accent); }
 .gen-aside .tag { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--accent); font-weight: var(--weight-label); margin-top: 4px; }
+/* Issue #402: background context sits in place on a quiet tint, not the accent dashes. */
+.gen-aside.bg-aside { padding: 6px 14px 8px; border-left: 0; border-radius: 6px; background: var(--sunk); }
+.gen-aside.bg-aside .tag { color: var(--muted); }
 .clink { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; border: 0; border-left: 3px solid var(--note); background: var(--note-soft); border-radius: var(--radius-8); padding: 8px 12px; margin: 10px 0; font-size: 14px; color: var(--ink); }
 .clink .ic { color: var(--note); }
 .clink:hover { color: var(--note); }

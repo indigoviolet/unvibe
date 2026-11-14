@@ -527,4 +527,35 @@ test.describe("J349b persona versions", () => {
     await checkLayout(page, "persona-clarity-1440-light");
     await page.screenshot({ path: path.join(SHOTS, "persona-clarity-1440-light.png") });
   });
+
+  test("Teach run on a card: tinted Background block, sub-heading, bullets (#402)", async ({ page }) => {
+    test.setTimeout(300_000);
+    if (!svc) throw new Error("no service");
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
+    const menuButton = page.locator('#C-central [data-persona-menu="central"]');
+    await expect(menuButton).toBeVisible({ timeout: 15_000 });
+    await menuButton.click();
+    const menu = page.locator('[data-persona-menu-list="central"]');
+    await menu.locator('[data-persona-option="teach"]').click();
+    {
+      const deadline = Date.now() + 90_000;
+      for (;;) {
+        const variants = await centralVariants(svc, reviewId);
+        if (variants["teach"]?.blocks.length) break;
+        if (Date.now() > deadline) throw new Error("teach variant never stored");
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+    const tabs = page.locator('[data-testid="versions-central"]');
+    await tabs.locator('[data-version-tab="teach"]').click();
+    const card = page.locator("#C-central");
+    const bg = card.locator(".blk.gen-aside.bg-aside");
+    await expect(bg).toBeVisible({ timeout: 15_000 });
+    await bg.scrollIntoViewIfNeeded();
+    await page.mouse.move(720, 20);
+    await checkLayout(page, "persona-teach-background-1440-light");
+    await page.screenshot({ path: path.join(SHOTS, "persona-teach-background-1440-light.png") });
+  });
 });

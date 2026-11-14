@@ -506,11 +506,15 @@ export interface FollowUpBlock {
   citations: Citation[];
 }
 
-/** Example / Diagram insert (prototype `gen-aside`). */
+/**
+ * Example / Diagram insert (prototype `gen-aside`), or a Background
+ * block (issue #402): existing-system context a reader who knows the
+ * codebase can skip, rendered in place with a tint.
+ */
 export interface AsideBlock {
   type: "aside";
   id: string;
-  kind: "Example" | "Diagram";
+  kind: "Example" | "Diagram" | "Background";
   /** Inner blocks rendered inside the aside. */
   inner: Block[];
   citations: Citation[];

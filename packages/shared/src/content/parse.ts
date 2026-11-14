@@ -27,8 +27,9 @@
  *   rendered the same) → `HeadingBlock` with inline Markdown rendered.
  * - Finding references: a paragraph holding exactly
  *   `Finding: [[page:<id>]]` → `FindingLinkBlock`.
- * - Asides: `::: example` and `::: diagram` containers → `AsideBlock`
- *   kinds `Example`, `Diagram`; inner Markdown is parsed recursively.
+ * - Asides: `::: example`, `::: diagram` and `::: background` (issue
+ *   #402) containers → `AsideBlock` kinds `Example`, `Diagram`,
+ *   `Background`; inner Markdown is parsed recursively.
  * - Tables use GitHub Markdown syntax → `TableBlock.html`. Lists may be
  *   ordered or unordered (ordered lists keep their start number in `start`,
  *   absent means 1); each item keeps its own `citations` and the block
@@ -231,6 +232,8 @@ function asideKindFor(name: string): AsideKind | null {
       return "Example";
     case "diagram":
       return "Diagram";
+    case "background":
+      return "Background";
     default:
       return null;
   }
@@ -1068,7 +1071,7 @@ export function renderMarkdown(blocks: Block[]): string {
         }
         break;
       case "aside": {
-        const name = b.kind === "Example" ? "example" : "diagram";
+        const name = b.kind === "Example" ? "example" : b.kind === "Background" ? "background" : "diagram";
         parts.push(`::: ${name}`);
         parts.push(renderMarkdown(b.inner).trim());
         parts.push(":::");

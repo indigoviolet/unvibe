@@ -297,14 +297,21 @@ export function BlockView({ block, threads, footnotes, lookupPage, cardId, onOpe
       );
     case "aside":
       return (
-        <div className="blk gen-aside fresh" id={id}>
+        <div className={block.kind === "Background" ? "blk gen-aside bg-aside fresh" : "blk gen-aside fresh"} id={id}>
           <div className="tag">{block.kind}</div>
           {block.inner.map((inner) => (
             <AsideInner key={inner.id} inner={inner} top={block.id} reviewId={reviewId} onOpenPage={onOpenPage} />
           ))}
-          {threads.length > 0 && (
+          {(threads.length > 0 || (block.kind === "Background" && block.citations.length > 0)) && (
             <div className="lo-row">
-              <BlockMarkers citations={[]} threads={threads} blockId={block.id} />
+              {/* Issue #402: a Background block states facts about the system, so
+                  its citations show like a paragraph's; Example and Diagram
+                  asides keep their existing marker-free look. */}
+              <BlockMarkers
+                citations={block.kind === "Background" ? resolved : []}
+                threads={threads}
+                blockId={block.id}
+              />
             </div>
           )}
         </div>
