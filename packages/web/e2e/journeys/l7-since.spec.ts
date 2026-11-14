@@ -1044,6 +1044,100 @@ test.describe("L7 version settings and update system", () => {
     await expect(page.locator('[data-testid="update-channel"][data-ref="preview/feat-x"]')).toContainText("abc1234");
   });
 
+  test("toggle on lists previews with the Installed badge; reload keeps it on (#403)", async ({ page }) => {
+    test.setTimeout(120_000);
+    const s = service();
+    await stageChannels(
+      s,
+      [
+        { ref: "release", version: "0.0.2", commit: "newcommit0000001", builtAt: iso(NOW) },
+        {
+          ref: "preview/feat-x",
+          version: "0.0.2-preview.feat-x.abc1234",
+          commit: "abc1234def5678",
+          sourceBranch: "feat/x",
+          builtAt: iso(NOW - 7200_000),
+        },
+      ],
+      "preview/feat-x",
+    );
+    // Installed build matches the published preview commit: no update available.
+    await stageInstalled({ version: "0.0.2-preview.feat-x.abc1234", commit: "abc1234def5678", builtAt: iso(NOW - 7200_000) });
+
+    await page.goto(`${s.origin}/settings?tab=version&token=${s.token}`);
+    await expect(page.getByRole("tabpanel", { name: "Version" })).toBeVisible({ timeout: 15_000 });
+    const toggle = page.getByTestId("version-picker-toggle");
+    if (!(await toggle.isChecked())) {
+      await toggle.click();
+      await expect(toggle).toBeChecked({ timeout: 15_000 });
+    }
+    const feat = page.locator('[data-testid="update-channel"][data-ref="preview/feat-x"]');
+    await expect(feat).toBeVisible({ timeout: 15_000 });
+    // The installed preview carries its Installed badge (#246).
+    await expect(feat.getByTestId("update-current")).toBeVisible({ timeout: 15_000 });
+    await expect(feat).toContainText("abc1234");
+
+    await page.reload();
+    await expect(page.getByRole("tabpanel", { name: "Version" })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("version-picker-toggle")).toBeChecked({ timeout: 15_000 });
+    const featAfter = page.locator('[data-testid="update-channel"][data-ref="preview/feat-x"]');
+    await expect(featAfter).toBeVisible({ timeout: 15_000 });
+    await expect(featAfter.getByTestId("update-current")).toBeVisible({ timeout: 15_000 });
+  });
+
+  test("a settings change under the page snaps the toggle to the saved value (#403)", async ({ page }) => {
+    test.setTimeout(120_000);
+    const s = service();
+    await stageChannels(
+      s,
+      [
+        { ref: "release", version: "0.0.2", commit: "newcommit0000001", builtAt: iso(NOW) },
+        {
+          ref: "preview/feat-x",
+          version: "0.0.2-preview.feat-x.abc1234",
+          commit: "abc1234def5678",
+          sourceBranch: "feat/x",
+          builtAt: iso(NOW - 7200_000),
+        },
+      ],
+      "release",
+    );
+    await stageInstalled({ version: "0.0.1", commit: "oldcommit0000001", builtAt: iso(NOW - 7 * 86400_000) });
+
+    await page.goto(`${s.origin}/settings?tab=version&token=${s.token}`);
+    await expect(page.getByRole("tabpanel", { name: "Version" })).toBeVisible({ timeout: 15_000 });
+    const toggle = page.getByTestId("version-picker-toggle");
+    if (!(await toggle.isChecked())) {
+      await toggle.click();
+      await expect(toggle).toBeChecked({ timeout: 15_000 });
+    }
+    await expect(page.locator('[data-testid="update-channel"]')).toHaveCount(2);
+
+    // Another client (a switch or reset from elsewhere) flips the saved
+    // setting off under the open page.
+    const flip = await apiJson(s, "PUT", "/api/settings", { versionPickerEnabled: false });
+    expect(flip.status).toBe(200);
+
+    // Refresh re-reads status first: the box follows the saved value and
+    // the list drops the previews.
+    await page.getByTestId("update-refresh").click();
+    await expect(toggle).not.toBeChecked({ timeout: 15_000 });
+    await expect(page.locator('[data-testid="update-channel"]')).toHaveCount(1);
+    await expect(page.locator('[data-testid="update-channel"][data-ref="preview/feat-x"]')).toHaveCount(0);
+
+    // And back on: Refresh restores the ticked box with the previews.
+    const flipBack = await apiJson(s, "PUT", "/api/settings", { versionPickerEnabled: true });
+    expect(flipBack.status).toBe(200);
+    await page.getByTestId("update-refresh").click();
+    await expect(toggle).toBeChecked({ timeout: 15_000 });
+    await expect(page.locator('[data-testid="update-channel"][data-ref="preview/feat-x"]')).toBeVisible({ timeout: 15_000 });
+
+    // Reload: still on, since the saved value persisted.
+    await page.reload();
+    await expect(page.getByTestId("version-picker-toggle")).toBeChecked({ timeout: 15_000 });
+    await expect(page.locator('[data-testid="update-channel"]')).toHaveCount(2);
+  });
+
   test("failed check: no icon, no error UI, Version panel names the failure", async ({ page }) => {
     test.setTimeout(120_000);
     // A service whose fake updater fails the list: the panel names the
