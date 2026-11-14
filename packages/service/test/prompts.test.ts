@@ -166,8 +166,8 @@ describe("repo prompts/ directory", () => {
     expect(reader).toContain("Known uncertainties");
     expect(reader).toContain("also stay in `open_questions`");
     expect(reader).toContain("**Names.**");
-    expect(reader).toContain("Leave out");
-    expect(reader).toContain("private helpers and plumbing");
+    expect(reader).toContain("Leave out private");
+    expect(reader).toContain("unless the idea depends on them");
     expect(reader).toContain("follows its effects");
     expect(reader).toContain("what it costs the system");
     expect(reader).toContain("never to re-derive the diff");
@@ -189,7 +189,7 @@ describe("repo prompts/ directory", () => {
     // the reader prompt or in L0.
     expect(reader).not.toContain("problem and the central idea");
     expect(reader).not.toContain("carries the central idea");
-    expect(reader).toContain("states the problem only");
+    expect(reader).toContain("problem only: do not state the change's");
     expect(instructions).not.toContain("what idea the change is built around, which choices");
     // Always one central-idea (TL;DR) card right after the problem,
     // even with several plotlines; per-plotline cards follow it.
