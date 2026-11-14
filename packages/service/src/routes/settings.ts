@@ -50,6 +50,21 @@ export async function registerSettings(app: FastifyInstance, deps: RouteDeps = {
     return effectiveSettings(deps);
   });
 
+  // Issue #404: which keys the user explicitly saved (a role never saved
+  // takes the live default). The Models section shows the "no longer
+  // offered" error only for a saved pick — never for the static
+  // fallback default on a fresh install.
+  app.get("/api/settings/saved-keys", async (_req, reply) => {
+    if (!deps.settings) return reply.code(501).send(TODO);
+    try {
+      const saved =
+        typeof deps.settings.savedKeys === "function" ? deps.settings.savedKeys() : [];
+      return { savedKeys: saved };
+    } catch {
+      return { savedKeys: [] as string[] };
+    }
+  });
+
   app.put("/api/settings", async (req, reply) => {
     if (!deps.settings) return reply.code(501).send(TODO);
     const patch = ((req.body ?? {}) as Partial<Settings>) ?? {};
