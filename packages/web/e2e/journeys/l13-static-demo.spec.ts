@@ -475,7 +475,8 @@ test.describe("static-demo sync", () => {
           const snap = await apiJson(syncSvc!, "GET", `/api/reviews/${syncReviewId}`);
           const pages = (snap.json as { pages: { id: string; cards: { id: string; blocks: unknown[]; pending?: unknown }[] }[] }).pages;
           const root = pages.find((p) => p.id === "root");
-          return !!root && root.cards.length >= 8 && root.cards.every((c) => !c.pending && c.blocks.length > 0);
+          // Issue #405 drops the buildup card: 3 guide cards + 4 filled go-deeper cards.
+          return !!root && root.cards.length >= 7 && root.cards.every((c) => !c.pending && c.blocks.length > 0);
         },
         { timeout: 300_000 },
       )
