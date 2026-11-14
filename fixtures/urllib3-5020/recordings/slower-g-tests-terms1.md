@@ -1,0 +1,13 @@
+The tests exercise the whitespace combinations around the CRLF thoroughly, and they check that the message object survives the rewrite. They are thin on inputs that are not a well-formed `obs-fold` — that is, on values a real server might send that look almost, but not quite, like a fold.
+
+Covered: `_normalize_header_value` is parametrized over four cases. The first is an ordinary value with an inner tab that passes through unchanged — "parametrized" means one test function run once per row of inputs. The second is mixed space/tab runs around the CRLF. The third is multiple folds in one value. The fourth is adjacent folds, which collapse to two spaces (`"one  three"`) and not zero. The message-level test checks that a mixed list keeps its order and duplicate `Set-Cookie` entries, and that the payload, `defects` and policy survive. [[diff:test-test_connection.py:214-224]] [[diff:test-test_connection.py:226-249]] [[diff:test-with_dummyserver-test_socketlevel.py:92-146]]
+
+Missed: a bare CRLF. `_OBSOLETE_FOLD_RE` requires at least one space or tab after the CRLF, so a value containing `\r\n` with no following whitespace goes through the slow path and comes out unchanged. No test pins that behaviour, so the fast-path guard and the "leave it alone" outcome are both untested. A lone `\n` or `\r` is likewise never exercised. In practice `http.client` splits on line ends, so this input may not be reachable from the socket — but the unit helpers accept any string, so a direct test would be cheap. [[diff:src-urllib3-connection.py:80-82]]
+
+Missed: the "unchanged message" path and the linear-time claim. Every test that touches the message has at least one folded value, so nothing asserts that `_normalize_header_values` leaves the message alone when no value changes. The `headers_changed` guard exists precisely so the delete-and-re-add loop is skipped in the common case, yet no test covers the skip. The lookbehind's linearity claim is untested for the same reason: no test feeds a long whitespace run. [[diff:src-urllib3-connection.py:102-108]] [[diff:src-urllib3-connection.py:80-82]]
+
+Missed: header-name edge cases. The helpers rewrite the message with `del message[name]` and `message[name] = value`, with names taken from `message.items()`. All test names are plain tokens differing only in case. Nothing covers names that differ only by case but appear as separate fields, or names with unusual characters. Case-insensitive deletion means deleting one name removes every casing of it — whether the re-added headers keep each original casing is not tested. [[diff:src-urllib3-connection.py:105-108]] [[desc:d-p4]]
+
+```json
+{"slower": {"cardId": "g-tests"}}
+```

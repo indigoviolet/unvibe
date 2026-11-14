@@ -1,0 +1,176 @@
+{
+  "channel": "preview/main-rc",
+  "version": "0.0.20-preview.main-rc.4b68d16",
+  "previousVersion": "0.0.20",
+  "commit": "4b68d16c99f4b0d4a26b65e29a68ce025bada887",
+  "previousCommit": "v0.0.20",
+  "dataFormat": 9,
+  "previousDataFormat": 7,
+  "dataResetNeeded": true,
+  "generatedAt": "2026-11-14T11:38:01.562Z",
+  "items": [
+    {
+      "number": 407,
+      "title": "Top bar visual pass: Tabler icons, borderless icon buttons, quieter pane toggles",
+      "summary": "A visual pass on the top bar and icons. Every icon now comes from Tabler Icons (outline), drawn a little larger (16px) with a slightly heavier line. The top-bar icon buttons (Home, Refresh, Debug, Copy guide, ?, Re-do, Collapse threads, Documents, Settings, the update icon) lose their boxes and match the card action buttons; the PR link chip keeps its box. A pressed segment in a toggle (Guide/Source, unified/split) now shows a light tint with bold text instead of solid black, so Submit review is the only solid dark button in the bar.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/407",
+      "whatChanged": "A visual pass on the top bar and icons. Every icon now comes from Tabler Icons (outline), drawn a little larger (16px) with a slightly heavier line. The top-bar icon buttons (Home, Refresh, Debug, Copy guide, ?, Re-do, Collapse threads, Documents, Settings, the update icon) lose their boxes and match the card action buttons; the PR link chip keeps its box. A pressed segment in a toggle (Guide/Source, unified/split) now shows a light tint with bold text instead of solid black, so Submit review is the only solid dark button in the bar.",
+      "whatToTry": "Open a review: the top bar is lighter, with borderless icon buttons, and the Guide/Source toggle no longer looks like a primary button. Card toolbars and the diff toolbar use the new icons."
+    },
+    {
+      "number": 408,
+      "title": "Guide prompts: encourage ::: background blocks where they fit",
+      "summary": "The guide now writes a Background block where it fits, instead of almost never. A Background block is how the existing system works, on a quiet tint that a reader who knows the codebase can skip. The problem card usually carries one, and any later card that leans on existing-system knowledge a newcomer lacks may carry one. Still at most one per card, and never about the change itself.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/408",
+      "whatChanged": "The guide now writes a Background block where it fits, instead of almost never. A Background block is how the existing system works, on a quiet tint that a reader who knows the codebase can skip. The problem card usually carries one, and any later card that leans on existing-system knowledge a newcomer lacks may carry one. Still at most one per card, and never about the change itself.",
+      "whatToTry": "Start a new review (or Re-do the guide on one) and read the problem card: when it explains how the existing code works, that part sits in a tinted Background block.",
+      "caveats": "Only guides written after installing this build show it; existing guides keep their text until you Re-do them."
+    },
+    {
+      "number": 405,
+      "title": "Teach replaces Guide as the guide's prompts; drop the 'How it's built up' card",
+      "summary": "The guide now writes in the Teach style, and Teach is no longer a separate persona. Its instructions replace the old guide's outright: it teaches the change step by step, in full sentences, spelling out cause and effect and explaining terms where they first appear. The \"How it's built up\" card is gone. Settings → Personas now lists Guide, Second opinion and Clarity, and Re-do is a plain button again unless you add a persona that can write a whole guide.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/405",
+      "whatChanged": "The guide now writes in the Teach style, and Teach is no longer a separate persona. Its instructions replace the old guide's outright: it teaches the change step by step, in full sentences, spelling out cause and effect and explaining terms where they first appear. The \"How it's built up\" card is gone. Settings → Personas now lists Guide, Second opinion and Clarity, and Re-do is a plain button again unless you add a persona that can write a whole guide.",
+      "whatToTry": "Open the demo: the guide goes from the problem to the central idea, then decisions, with no \"How it's built up\" card. Start a review of your own and read the guide's style. Settings → Personas lists three built-in personas.",
+      "caveats": "Existing installs keep a stale \"Teach\" persona in their saved settings. Delete it in Settings → Personas, or reset the data. Reviews written before this build keep their old guide, including any \"How it's built up\" card."
+    },
+    {
+      "number": 406,
+      "title": "Plotlines card: drop the row tooltip; highlight the selected plotline",
+      "summary": "Guide → Plotlines card: picking a plotline now marks its row with an accent rail on the left, and clearing the filter removes it. The plotline summary no longer has a tooltip that repeated its own text.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/406",
+      "whatChanged": "Guide → Plotlines card: picking a plotline now marks its row with an accent rail on the left, and clearing the filter removes it. The plotline summary no longer has a tooltip that repeated its own text.",
+      "whatToTry": "Click a plotline in the Plotlines card: the diff filters to it and its row gets the accent rail. Click it again (or clear the filter chip): the rail goes. Hover the summary: no tooltip repeating it."
+    },
+    {
+      "number": 404,
+      "title": "Fresh install: Small model shows 'saved model claude-haiku-5-5 is no longer offered' (static default saved / live default not applied)",
+      "summary": "Settings → Models: the Small model no longer shows \"Saved model … is no longer offered\" for a model you never picked. On a fresh install or after a data reset, Small uses the built-in default, and that default was being treated as a saved choice. The error now appears only when a model you actually saved is no longer listed.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/404",
+      "whatChanged": "Settings → Models: the Small model no longer shows \"Saved model … is no longer offered\" for a model you never picked. On a fresh install or after a data reset, Small uses the built-in default, and that default was being treated as a saved choice. The error now appears only when a model you actually saved is no longer listed.",
+      "whatToTry": "Reset the data (or start fresh), change the Guide model in Settings → Personas, then open Models: Small shows no error. Pick a Small model and save it: if that model later disappears from the list, the error does appear."
+    },
+    {
+      "number": 403,
+      "title": "Settings → Version: 'Show previews' shows ticked while the saved setting is off (no previews listed)",
+      "summary": "Settings → Version: the Show previews box always shows the saved setting. Before, if the service changed under an open Settings page (a channel switch that reset the data, a restart, or a change from the CLI or another tab), the box could stay ticked while previews were hidden. Now every status read and Refresh puts the box back in line with the saved value, and Refresh reloads the status before the channels.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/403",
+      "whatChanged": "Settings → Version: the Show previews box always shows the saved setting. Before, if the service changed under an open Settings page (a channel switch that reset the data, a restart, or a change from the CLI or another tab), the box could stay ticked while previews were hidden. Now every status read and Refresh puts the box back in line with the saved value, and Refresh reloads the status before the channels.",
+      "whatToTry": "Tick Show previews: preview channels appear, the installed one marked Installed. Reload: still ticked. Then turn it off from another tab and press Refresh in the first: the box unticks and only releases are listed."
+    },
+    {
+      "number": 402,
+      "title": "Teach: scannable structure (sub-headings, bullets) + tinted background blocks",
+      "summary": "Teach cards are easier to scan: short paragraphs, sub-headings and bullets. Now and then a card opens with a Background block, which sits in place on a quiet grey tint with a muted BACKGROUND tag and its own citation chips. The change is only in Teach's prompts; the Guide and other personas are unchanged.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/402",
+      "whatChanged": "Teach cards are easier to scan: short paragraphs, sub-headings and bullets. Now and then a card opens with a Background block, which sits in place on a quiet grey tint with a muted BACKGROUND tag and its own citation chips. The change is only in Teach's prompts; the Guide and other personas are unchanged.",
+      "whatToTry": "Open a review, switch a card to the Teach tab (or press Re-do with Teach) and check the card has sub-headings and bullets. Where a Background block appears, check that its line-range chip opens the code.",
+      "caveats": "Background blocks appear only in cards that Teach writes after you install this preview. Teach cards you already have don't change until you run Teach again."
+    },
+    {
+      "number": 401,
+      "title": "Settings: choose the default Guide persona (used for new reviews and Re-do guide)",
+      "summary": "Settings → Personas has a Default guide picker. The persona you pick there (any enabled persona that can write a guide) writes the guide for new reviews and for a plain Re-do; Re-do with still lets you choose a persona for one run. Each review records which persona wrote it. If the default persona is deleted, disabled or can no longer write a guide, the Guide stands in and Settings says so in one line.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/401",
+      "whatChanged": "Settings → Personas has a Default guide picker. The persona you pick there (any enabled persona that can write a guide) writes the guide for new reviews and for a plain Re-do; Re-do with still lets you choose a persona for one run. Each review records which persona wrote it. If the default persona is deleted, disabled or can no longer write a guide, the Guide stands in and Settings says so in one line.",
+      "whatToTry": "Open Settings → Personas, pick Teach as the Default guide, open a new review and check the guide is written by Teach. Then disable Teach: Settings shows the notice and new reviews fall back to the Guide.",
+      "caveats": "The setting is per key and defaults to the Guide, so existing installs pick it up without a reset. Teach only appears in the picker on installs where it was seeded (see the Teach note)."
+    },
+    {
+      "number": 398,
+      "title": "'Help me understand' drops most of the rewrite and leaves citations on the wrong paragraphs (paragraph-slot merge)",
+      "summary": "Help me understand now shows the whole rewrite. Before, a press could keep only the card's original paragraph slots, dropping the new lists, steps and example and leaving citation chips on the wrong paragraphs. Now the rewrite replaces the card body in full, each paragraph with its own citations, while diagrams and follow-up suggestions are kept and Undo restores the previous text. The same applies to persona tabs, thread replies and the ? mode's Rewrite cards.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/398",
+      "whatChanged": "Help me understand now shows the whole rewrite. Before, a press could keep only the card's original paragraph slots, dropping the new lists, steps and example and leaving citation chips on the wrong paragraphs. Now the rewrite replaces the card body in full, each paragraph with its own citations, while diagrams and follow-up suggestions are kept and Undo restores the previous text. The same applies to persona tabs, thread replies and the ? mode's Rewrite cards.",
+      "whatToTry": "On a dense card, press Help me understand: the rewrite may add steps, lists or an example, and each citation chip sits on the paragraph it supports. Press Undo to go back."
+    },
+    {
+      "number": 397,
+      "title": "Teach: a teaching-oriented Guide persona (prompt fork on #393)",
+      "summary": "A built-in Teach persona joins the Guide: a guide written to teach rather than summarise, using its own versions of the guide's prompts (prompts/personas/teach/). It follows the main model. Re-do now opens a small menu, Re-do guide or Re-do with Teach, so you can rewrite a review's guide in the teaching style (it replaces the review, like Re-do).",
+      "url": "https://github.com/indigoviolet/unvibe/issues/397",
+      "whatChanged": "A built-in Teach persona joins the Guide: a guide written to teach rather than summarise, using its own versions of the guide's prompts (prompts/personas/teach/). It follows the main model. Re-do now opens a small menu, Re-do guide or Re-do with Teach, so you can rewrite a review's guide in the teaching style (it replaces the review, like Re-do).",
+      "whatToTry": "Open a review, press Re-do in the top bar, choose Re-do with Teach, and compare the new guide with the default one (or run a second instance with its own UNVIBE_PORT and UNVIBE_DATA_DIR to keep both).",
+      "caveats": "Teach is seeded into Settings only when settings are created. An install that already has data format 9 (an earlier preview with #393) won't get it until the data is reset, or until you add a persona with id teach in Settings → Personas."
+    },
+    {
+      "number": 396,
+      "title": "Fresh install shows 'can't read your existing reviews' (unstamped) because update/ files count as data",
+      "summary": "A fresh install no longer shows the \"This version can't read your existing reviews\" notice on its first start. A data folder without a reviews database is now treated as new, even when it already holds a sign-in token, update logs or channel backups.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/396",
+      "whatChanged": "A fresh install no longer shows the \"This version can't read your existing reviews\" notice on its first start. A data folder without a reviews database is now treated as new, even when it already holds a sign-in token, update logs or channel backups."
+    },
+    {
+      "number": 395,
+      "title": "Visual tour: gutter-E2 scenes and the diff pinned-band check fail on the release-candidate branch",
+      "summary": "The diff pane's pinned header stack no longer has a thin gap under the toolbar where scrolling text showed through, since the \"Summaries for X of Y hunks\" row was added.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/395",
+      "whatChanged": "The diff pane's pinned header stack no longer has a thin gap under the toolbar where scrolling text showed through, since the \"Summaries for X of Y hunks\" row was added."
+    },
+    {
+      "number": 394,
+      "title": "Extension panel: a slow or interrupted ask is resent to the same service under its other host name and stored twice",
+      "summary": "The browser extension no longer resends a side-panel question or an \"open review\" request after it fails or times out. It used to retry under the service's other local address, which could store the same question twice. A failed ask now shows \"request failed\" instead.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/394",
+      "whatChanged": "The browser extension no longer resends a side-panel question or an \"open review\" request after it fails or times out. It used to retry under the service's other local address, which could store the same question twice. A failed ask now shows \"request failed\" instead."
+    },
+    {
+      "number": 393,
+      "title": "Guide personas that own their prompts (whole-file forks) + Re-do with…",
+      "summary": "Guide personas can now own their own prompts. A persona whose folder `prompts/personas/<id>/` contains `reader.md` can write a whole guide; any template in that folder replaces the shared one of the same name (whole file), and the rest fall back to the shared prompts. Each review records which Guide persona wrote it, and every main-agent task on it uses that persona's templates, model and style; card personas run on top of it. The Re-do menu gains \"Re-do with <persona>\" for each such persona (it replaces the review, like Re-do). `mise run persona:fork -- <id> <file.md…>` copies base prompts into a fork, and Settings warns when a forked file's base has changed since. An installed build can be pointed at an edited prompts folder with UNVIBE_PROMPTS_DIR.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/393",
+      "whatChanged": "Guide personas can now own their own prompts. A persona whose folder `prompts/personas/<id>/` contains `reader.md` can write a whole guide; any template in that folder replaces the shared one of the same name (whole file), and the rest fall back to the shared prompts. Each review records which Guide persona wrote it, and every main-agent task on it uses that persona's templates, model and style; card personas run on top of it. The Re-do menu gains \"Re-do with <persona>\" for each such persona (it replaces the review, like Re-do). `mise run persona:fork -- <id> <file.md…>` copies base prompts into a fork, and Settings warns when a forked file's base has changed since. An installed build can be pointed at an edited prompts folder with UNVIBE_PROMPTS_DIR.",
+      "whatToTry": "In a checkout, run mise run persona:fork -- teach reader.md, edit prompts/personas/teach/reader.md, start Unvibe with UNVIBE_PROMPTS_DIR pointing at that prompts folder, add a persona with id teach in Settings → Personas, then use Re-do → Re-do with Teach on a review.",
+      "caveats": "Data reset needed: the stored review shape changed (data format 9). On first start Unvibe shows a reset notice; resetting moves your old data aside (nothing is deleted). Export unposted Outbox drafts first, then set your models, Guide and personas again afterwards."
+    },
+    {
+      "number": 392,
+      "title": "Extension: 'Review in Unvibe' button lands in GitHub dialogs (e.g. Finish your review); anchor only in the PR header",
+      "summary": "The browser extension's \"Review in Unvibe\" button now appears only in a pull request page's header. It no longer lands inside GitHub dialogs such as \"Finish your review\", popovers or overlays, and it no longer shows on pages GitHub serves under a PR address that aren't the PR itself, such as the single sign-on screen. There is exactly one button per page.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/392",
+      "whatChanged": "The browser extension's \"Review in Unvibe\" button now appears only in a pull request page's header. It no longer lands inside GitHub dialogs such as \"Finish your review\", popovers or overlays, and it no longer shows on pages GitHub serves under a PR address that aren't the PR itself, such as the single sign-on screen. There is exactly one button per page.",
+      "whatToTry": "Open a PR on GitHub, start a review and open \"Finish your review\": the button stays in the PR header and none appears in the dialog."
+    },
+    {
+      "number": 388,
+      "title": "Experimental: '?' mode, pick terms across the guide, then bulk-rewrite cards to explain them",
+      "summary": "Experimental \"?\" mode: a new ? button in the review's top bar (next to Refresh, Debug and Copy guide) turns on term picking. Select any words you don't understand in the guide cards; each is highlighted and added to a tray at the bottom of the guide, where you can remove terms or press Rewrite cards. Every guide card is then rewritten in place, more slowly, for a reader who doesn't know those terms: each card's rewrite sees the whole guide, so terms are introduced once and used consistently. It is one Help me understand press per card, so each card's Undo steps back on its own. Titles, order, anchors and threads stay as they are. Hidden in the static demo.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/388",
+      "whatChanged": "Experimental \"?\" mode: a new ? button in the review's top bar (next to Refresh, Debug and Copy guide) turns on term picking. Select any words you don't understand in the guide cards; each is highlighted and added to a tray at the bottom of the guide, where you can remove terms or press Rewrite cards. Every guide card is then rewritten in place, more slowly, for a reader who doesn't know those terms: each card's rewrite sees the whole guide, so terms are introduced once and used consistently. It is one Help me understand press per card, so each card's Undo steps back on its own. Titles, order, anchors and threads stay as they are. Hidden in the static demo.",
+      "whatToTry": "Open a review, press ?, select two or three terms in different cards, press Rewrite cards, then compare and Undo one card."
+    },
+    {
+      "number": 387,
+      "title": "Replace simpler/deeper with one repeatable 'Help me understand' (explain more slowly)",
+      "summary": "The − ●● + depth stepper on cards is replaced by one icon button, \"Help me understand\". Each press rewrites the card more slowly than its current text: the skipped steps filled in, terms defined where they first appear, a concrete walk-through with real values, smaller leaps, and the why where only the what was given. It never gets shorter by dropping content, keeps every citation on its paragraph, and keeps the structure, examples and diagrams. Press again to slow it down further; Undo steps back one press at a time. It works the same on thread replies and persona tabs, and Copy as Markdown copies what is shown. The simple / standard / deep levels and the \"deeper\" direction are gone; use Ask to say what is confusing.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/387",
+      "whatChanged": "The − ●● + depth stepper on cards is replaced by one icon button, \"Help me understand\". Each press rewrites the card more slowly than its current text: the skipped steps filled in, terms defined where they first appear, a concrete walk-through with real values, smaller leaps, and the why where only the what was given. It never gets shorter by dropping content, keeps every citation on its paragraph, and keeps the structure, examples and diagrams. Press again to slow it down further; Undo steps back one press at a time. It works the same on thread replies and persona tabs, and Copy as Markdown copies what is shown. The simple / standard / deep levels and the \"deeper\" direction are gone; use Ask to say what is confusing.",
+      "whatToTry": "Open a card that feels too dense, press Help me understand twice, compare, then Undo once."
+    },
+    {
+      "number": 385,
+      "title": "Start page author search misses the author's open PRs that don't request your review",
+      "summary": "\"Waiting on your review\" now also lists open PRs you have already reviewed (GitHub drops the request once you review), in \"Requested of you\" unless a request still puts them in your team group. Typing or picking an author searches GitHub for all their open PRs: requested of you, of your team, and a \"Not requested of you\" group for the rest. Drafts and approved PRs are never filtered out, and \"No open PRs by …\" appears only when the author has none.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/385",
+      "whatChanged": "\"Waiting on your review\" now also lists open PRs you have already reviewed (GitHub drops the request once you review), in \"Requested of you\" unless a request still puts them in your team group. Typing or picking an author searches GitHub for all their open PRs: requested of you, of your team, and a \"Not requested of you\" group for the rest. Drafts and approved PRs are never filtered out, and \"No open PRs by …\" appears only when the author has none.",
+      "whatToTry": "Open the start page and check that PRs you reviewed still show; then pick an author and look for their PRs that don't request you."
+    },
+    {
+      "number": 389,
+      "title": "Go-deeper card content: generate on demand only by default (autoGoDeeper off)",
+      "summary": "Go-deeper cards are no longer written automatically after the guide lands: each one waits as a placeholder until you click its Generate button. To get the old behaviour, turn on automatic go-deeper cards in Settings → Limits.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/389",
+      "whatChanged": "Go-deeper cards are no longer written automatically after the guide lands: each one waits as a placeholder until you click its Generate button. To get the old behaviour, turn on automatic go-deeper cards in Settings → Limits.",
+      "whatToTry": "Open a new review: the go-deeper cards show Generate; click one to write it."
+    },
+    {
+      "number": 384,
+      "title": "Copy the whole guide as Markdown (prose cards only, no code or comments)",
+      "summary": "A new copy icon in the review's top bar, next to Refresh and Debug (\"Copy guide as Markdown\"), copies the whole guide: the review title, then each card's heading and text at the depth it's shown, always the Guide version. Citations follow each paragraph as GitHub links (plain path:lines for local reviews), inline code is kept, and each diagram becomes a short placeholder. Code blocks, threads, findings, plotlines and \"Updated since…\" sections are left out.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/384",
+      "whatChanged": "A new copy icon in the review's top bar, next to Refresh and Debug (\"Copy guide as Markdown\"), copies the whole guide: the review title, then each card's heading and text at the depth it's shown, always the Guide version. Citations follow each paragraph as GitHub links (plain path:lines for local reviews), inline code is kept, and each diagram becomes a short placeholder. Code blocks, threads, findings, plotlines and \"Updated since…\" sections are left out.",
+      "whatToTry": "Open a review, click the copy icon in the top bar, and paste into a GitHub comment or a Markdown editor."
+    }
+  ]
+}

@@ -1,0 +1,2316 @@
+{
+  "review": {
+    "id": "urllib3-5020",
+    "repoId": "urllib3/urllib3",
+    "branch": "main",
+    "prNumber": 5020,
+    "guidePersonaId": "guide",
+    "versions": [
+      {
+        "n": 1,
+        "headSha": "00162b2030837429af8f2de8ef07b602d910cbbd",
+        "mergeBaseSha": "6e42ff11a1ba5c1542f38c67ec17238d0b779552",
+        "baseRef": "main",
+        "fetchedAt": 1760000000000,
+        "idMapping": {}
+      }
+    ],
+    "currentVersion": 1,
+    "createdAt": 1760000000000
+  },
+  "version": {
+    "n": 1,
+    "headSha": "00162b2030837429af8f2de8ef07b602d910cbbd",
+    "mergeBaseSha": "6e42ff11a1ba5c1542f38c67ec17238d0b779552",
+    "baseRef": "main",
+    "fetchedAt": 1760000000000,
+    "idMapping": {}
+  },
+  "glossary": [
+    {
+      "name": "obs-fold",
+      "definition": "Obsolete HTTP header line folding: CRLF followed by SP/HTAB inside a field value.",
+      "citation": "diff:src-urllib3-connection.py:80-82"
+    },
+    {
+      "name": "_normalize_header_value",
+      "definition": "Replaces each obs-fold in one value with a single space; skips values without CRLF.",
+      "citation": "diff:src-urllib3-connection.py:85-88"
+    },
+    {
+      "name": "_normalize_header_values",
+      "definition": "Unfolds all values of an HTTPMessage, syncs the message, returns the items.",
+      "citation": "diff:src-urllib3-connection.py:91-110"
+    },
+    {
+      "name": "HTTPHeaderDict",
+      "definition": "urllib3's response header mapping, built in getresponse.",
+      "citation": "diff:src-urllib3-connection.py:650-651"
+    }
+  ],
+  "files": [
+    {
+      "fileKey": "src-urllib3-connection.py",
+      "path": "src/urllib3/connection.py",
+      "category": "source",
+      "hunks": [
+        {
+          "contentHash": "fa60105d7fcbe8fe",
+          "header": "@@ -77,6 +77,37 @@ class BaseSSLError(BaseException):  # type: ignore[no-redef]",
+          "context": "class BaseSSLError(BaseException):  # type: ignore[no-redef]",
+          "newStart": 77,
+          "newEnd": 113,
+          "oldStart": 77,
+          "oldEnd": 82,
+          "added": 31,
+          "removed": 0,
+          "lines": [
+            {
+              "kind": "ctx",
+              "oldLine": 77,
+              "newLine": 77,
+              "text": "RECENT_DATE = datetime.date(2025, 1, 1)"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 78,
+              "newLine": 78,
+              "text": ""
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 79,
+              "newLine": 79,
+              "text": "_CONTAINS_CONTROL_CHAR_RE = re.compile(r\"[^-!#$%&'*+.^_`|~0-9a-zA-Z]\")"
+            },
+            {
+              "kind": "add",
+              "newLine": 80,
+              "text": "# Starting the optional OWS match at the beginning of a whitespace run avoids"
+            },
+            {
+              "kind": "add",
+              "newLine": 81,
+              "text": "# quadratic backtracking for long header values."
+            },
+            {
+              "kind": "add",
+              "newLine": 82,
+              "text": "_OBSOLETE_FOLD_RE = re.compile(r\"(?:(?<![ \\t])[ \\t]+)?\\r\\n[ \\t]+\")"
+            },
+            {
+              "kind": "add",
+              "newLine": 83,
+              "text": ""
+            },
+            {
+              "kind": "add",
+              "newLine": 84,
+              "text": ""
+            },
+            {
+              "kind": "add",
+              "newLine": 85,
+              "text": "def _normalize_header_value(value: str) -> str:"
+            },
+            {
+              "kind": "add",
+              "newLine": 86,
+              "text": "    if \"\\r\\n\" not in value:"
+            },
+            {
+              "kind": "add",
+              "newLine": 87,
+              "text": "        return value"
+            },
+            {
+              "kind": "add",
+              "newLine": 88,
+              "text": "    return _OBSOLETE_FOLD_RE.sub(\" \", value)"
+            },
+            {
+              "kind": "add",
+              "newLine": 89,
+              "text": ""
+            },
+            {
+              "kind": "add",
+              "newLine": 90,
+              "text": ""
+            },
+            {
+              "kind": "add",
+              "newLine": 91,
+              "text": "def _normalize_header_values("
+            },
+            {
+              "kind": "add",
+              "newLine": 92,
+              "text": "    message: http.client.HTTPMessage,"
+            },
+            {
+              "kind": "add",
+              "newLine": 93,
+              "text": ") -> list[tuple[str, str]]:"
+            },
+            {
+              "kind": "add",
+              "newLine": 94,
+              "text": "    header_items = message.items()"
+            },
+            {
+              "kind": "add",
+              "newLine": 95,
+              "text": "    headers_changed = False"
+            },
+            {
+              "kind": "add",
+              "newLine": 96,
+              "text": "    for index, (name, value) in enumerate(header_items):"
+            },
+            {
+              "kind": "add",
+              "newLine": 97,
+              "text": "        normalized_value = _normalize_header_value(value)"
+            },
+            {
+              "kind": "add",
+              "newLine": 98,
+              "text": "        if normalized_value != value:"
+            },
+            {
+              "kind": "add",
+              "newLine": 99,
+              "text": "            header_items[index] = (name, normalized_value)"
+            },
+            {
+              "kind": "add",
+              "newLine": 100,
+              "text": "            headers_changed = True"
+            },
+            {
+              "kind": "add",
+              "newLine": 101,
+              "text": ""
+            },
+            {
+              "kind": "add",
+              "newLine": 102,
+              "text": "    if headers_changed:"
+            },
+            {
+              "kind": "add",
+              "newLine": 103,
+              "text": "        # Keep the original message in sync for downstream consumers such as"
+            },
+            {
+              "kind": "add",
+              "newLine": 104,
+              "text": "        # cookie jars while preserving its identity and header ordering."
+            },
+            {
+              "kind": "add",
+              "newLine": 105,
+              "text": "        for name, _ in header_items:"
+            },
+            {
+              "kind": "add",
+              "newLine": 106,
+              "text": "            del message[name]"
+            },
+            {
+              "kind": "add",
+              "newLine": 107,
+              "text": "        for name, value in header_items:"
+            },
+            {
+              "kind": "add",
+              "newLine": 108,
+              "text": "            message[name] = value"
+            },
+            {
+              "kind": "add",
+              "newLine": 109,
+              "text": ""
+            },
+            {
+              "kind": "add",
+              "newLine": 110,
+              "text": "    return header_items"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 80,
+              "newLine": 111,
+              "text": ""
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 81,
+              "newLine": 112,
+              "text": ""
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 82,
+              "newLine": 113,
+              "text": "class HTTPConnection(_HTTPConnection):"
+            }
+          ]
+        },
+        {
+          "contentHash": "b355d2096d4d7f39",
+          "header": "@@ -616,7 +647,8 @@ def getresponse(  # type: ignore[override]",
+          "context": "def getresponse(  # type: ignore[override]",
+          "newStart": 647,
+          "newEnd": 654,
+          "oldStart": 616,
+          "oldEnd": 622,
+          "added": 2,
+          "removed": 1,
+          "lines": [
+            {
+              "kind": "ctx",
+              "oldLine": 616,
+              "newLine": 647,
+              "text": "                exc_info=True,"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 617,
+              "newLine": 648,
+              "text": "            )"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 618,
+              "newLine": 649,
+              "text": ""
+            },
+            {
+              "kind": "del",
+              "oldLine": 619,
+              "text": "        headers = HTTPHeaderDict(httplib_response.msg.items())"
+            },
+            {
+              "kind": "add",
+              "newLine": 650,
+              "text": "        header_items = _normalize_header_values(httplib_response.msg)"
+            },
+            {
+              "kind": "add",
+              "newLine": 651,
+              "text": "        headers = HTTPHeaderDict(header_items)"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 620,
+              "newLine": 652,
+              "text": ""
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 621,
+              "newLine": 653,
+              "text": "        response = HTTPResponse("
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 622,
+              "newLine": 654,
+              "text": "            body=httplib_response,"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "fileKey": "test-test_connection.py",
+      "path": "test/test_connection.py",
+      "category": "tests",
+      "hunks": [
+        {
+          "contentHash": "6cfb09ec98cba6ba",
+          "header": "@@ -3,7 +3,7 @@",
+          "newStart": 3,
+          "newEnd": 9,
+          "oldStart": 3,
+          "oldEnd": 9,
+          "added": 1,
+          "removed": 1,
+          "lines": [
+            {
+              "kind": "ctx",
+              "oldLine": 3,
+              "newLine": 3,
+              "text": "import datetime"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 4,
+              "newLine": 4,
+              "text": "import socket"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 5,
+              "newLine": 5,
+              "text": "import typing"
+            },
+            {
+              "kind": "del",
+              "oldLine": 6,
+              "text": "from http.client import ResponseNotReady"
+            },
+            {
+              "kind": "add",
+              "newLine": 6,
+              "text": "from http.client import HTTPMessage, ResponseNotReady"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 7,
+              "newLine": 7,
+              "text": "from unittest import mock"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 8,
+              "newLine": 8,
+              "text": ""
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 9,
+              "newLine": 9,
+              "text": "import pytest"
+            }
+          ],
+          "hiddenReason": "imports"
+        },
+        {
+          "contentHash": "92cf4ca541bdb0f2",
+          "header": "@@ -14,6 +14,8 @@",
+          "newStart": 14,
+          "newEnd": 21,
+          "oldStart": 14,
+          "oldEnd": 19,
+          "added": 2,
+          "removed": 0,
+          "lines": [
+            {
+              "kind": "ctx",
+              "oldLine": 14,
+              "newLine": 14,
+              "text": "    HTTPConnection,"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 15,
+              "newLine": 15,
+              "text": "    HTTPSConnection,"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 16,
+              "newLine": 16,
+              "text": "    _match_hostname,"
+            },
+            {
+              "kind": "add",
+              "newLine": 17,
+              "text": "    _normalize_header_value,"
+            },
+            {
+              "kind": "add",
+              "newLine": 18,
+              "text": "    _normalize_header_values,"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 17,
+              "newLine": 19,
+              "text": "    _url_from_connection,"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 18,
+              "newLine": 20,
+              "text": "    _wrap_proxy_error,"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 19,
+              "newLine": 21,
+              "text": ")"
+            }
+          ],
+          "hiddenReason": "imports"
+        },
+        {
+          "contentHash": "b33779988cee5f8a",
+          "header": "@@ -209,6 +211,43 @@ def test_recent_date(self) -> None:",
+          "context": "def test_recent_date(self) -> None:",
+          "newStart": 211,
+          "newEnd": 253,
+          "oldStart": 209,
+          "oldEnd": 214,
+          "added": 37,
+          "removed": 0,
+          "lines": [
+            {
+              "kind": "ctx",
+              "oldLine": 209,
+              "newLine": 211,
+              "text": "        two_years = datetime.timedelta(days=365 * 2)"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 210,
+              "newLine": 212,
+              "text": "        assert RECENT_DATE > (datetime.datetime.today() - two_years).date()"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 211,
+              "newLine": 213,
+              "text": ""
+            },
+            {
+              "kind": "add",
+              "newLine": 214,
+              "text": "    @pytest.mark.parametrize("
+            },
+            {
+              "kind": "add",
+              "newLine": 215,
+              "text": "        (\"value\", \"expected\"),"
+            },
+            {
+              "kind": "add",
+              "newLine": 216,
+              "text": "        ["
+            },
+            {
+              "kind": "add",
+              "newLine": 217,
+              "text": "            (\"ordinary\\tvalue\", \"ordinary\\tvalue\"),"
+            },
+            {
+              "kind": "add",
+              "newLine": 218,
+              "text": "            (\"before \\t\\r\\n\\t  after\", \"before after\"),"
+            },
+            {
+              "kind": "add",
+              "newLine": 219,
+              "text": "            (\"one\\r\\n two\\t\\r\\n\\tthree\", \"one two three\"),"
+            },
+            {
+              "kind": "add",
+              "newLine": 220,
+              "text": "            (\"one\\r\\n \\r\\n\\tthree\", \"one  three\"),"
+            },
+            {
+              "kind": "add",
+              "newLine": 221,
+              "text": "        ],"
+            },
+            {
+              "kind": "add",
+              "newLine": 222,
+              "text": "    )"
+            },
+            {
+              "kind": "add",
+              "newLine": 223,
+              "text": "    def test_normalize_header_value(self, value: str, expected: str) -> None:"
+            },
+            {
+              "kind": "add",
+              "newLine": 224,
+              "text": "        assert _normalize_header_value(value) == expected"
+            },
+            {
+              "kind": "add",
+              "newLine": 225,
+              "text": ""
+            },
+            {
+              "kind": "add",
+              "newLine": 226,
+              "text": "    def test_normalize_header_values_preserves_message(self) -> None:"
+            },
+            {
+              "kind": "add",
+              "newLine": 227,
+              "text": "        message = HTTPMessage()"
+            },
+            {
+              "kind": "add",
+              "newLine": 228,
+              "text": "        message[\"X-First\"] = \"one\""
+            },
+            {
+              "kind": "add",
+              "newLine": 229,
+              "text": "        message[\"Set-Cookie\"] = \"a=1 \\r\\n two\""
+            },
+            {
+              "kind": "add",
+              "newLine": 230,
+              "text": "        message[\"X-Second\"] = \"three\""
+            },
+            {
+              "kind": "add",
+              "newLine": 231,
+              "text": "        message[\"Set-Cookie\"] = \"b=2\""
+            },
+            {
+              "kind": "add",
+              "newLine": 232,
+              "text": "        message.set_payload(\"payload\")"
+            },
+            {
+              "kind": "add",
+              "newLine": 233,
+              "text": "        defects = message.defects"
+            },
+            {
+              "kind": "add",
+              "newLine": 234,
+              "text": "        policy = message.policy"
+            },
+            {
+              "kind": "add",
+              "newLine": 235,
+              "text": ""
+            },
+            {
+              "kind": "add",
+              "newLine": 236,
+              "text": "        header_items = _normalize_header_values(message)"
+            },
+            {
+              "kind": "add",
+              "newLine": 237,
+              "text": ""
+            },
+            {
+              "kind": "add",
+              "newLine": 238,
+              "text": "        expected = ["
+            },
+            {
+              "kind": "add",
+              "newLine": 239,
+              "text": "            (\"X-First\", \"one\"),"
+            },
+            {
+              "kind": "add",
+              "newLine": 240,
+              "text": "            (\"Set-Cookie\", \"a=1 two\"),"
+            },
+            {
+              "kind": "add",
+              "newLine": 241,
+              "text": "            (\"X-Second\", \"three\"),"
+            },
+            {
+              "kind": "add",
+              "newLine": 242,
+              "text": "            (\"Set-Cookie\", \"b=2\"),"
+            },
+            {
+              "kind": "add",
+              "newLine": 243,
+              "text": "        ]"
+            },
+            {
+              "kind": "add",
+              "newLine": 244,
+              "text": "        assert header_items == expected"
+            },
+            {
+              "kind": "add",
+              "newLine": 245,
+              "text": "        assert message.items() == expected"
+            },
+            {
+              "kind": "add",
+              "newLine": 246,
+              "text": "        assert message.get_all(\"Set-Cookie\") == [\"a=1 two\", \"b=2\"]"
+            },
+            {
+              "kind": "add",
+              "newLine": 247,
+              "text": "        assert message.get_payload() == \"payload\""
+            },
+            {
+              "kind": "add",
+              "newLine": 248,
+              "text": "        assert message.defects is defects"
+            },
+            {
+              "kind": "add",
+              "newLine": 249,
+              "text": "        assert message.policy is policy"
+            },
+            {
+              "kind": "add",
+              "newLine": 250,
+              "text": ""
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 212,
+              "newLine": 251,
+              "text": "    def test_HTTPSConnection_default_socket_options(self) -> None:"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 213,
+              "newLine": 252,
+              "text": "        conn = HTTPSConnection(\"not.a.real.host\", port=443)"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 214,
+              "newLine": 253,
+              "text": "        assert conn.socket_options == [(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)]"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "fileKey": "test-with_dummyserver-test_socketlevel.py",
+      "path": "test/with_dummyserver/test_socketlevel.py",
+      "category": "tests",
+      "hunks": [
+        {
+          "contentHash": "29382503b8689e5f",
+          "header": "@@ -37,6 +37,7 @@",
+          "newStart": 37,
+          "newEnd": 43,
+          "oldStart": 37,
+          "oldEnd": 42,
+          "added": 1,
+          "removed": 0,
+          "lines": [
+            {
+              "kind": "ctx",
+              "oldLine": 37,
+              "newLine": 37,
+              "text": "from urllib3 import ("
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 38,
+              "newLine": 38,
+              "text": "    BaseHTTPResponse,"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 39,
+              "newLine": 39,
+              "text": "    HTTPConnectionPool,"
+            },
+            {
+              "kind": "add",
+              "newLine": 40,
+              "text": "    HTTPResponse,"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 40,
+              "newLine": 41,
+              "text": "    HTTPSConnectionPool,"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 41,
+              "newLine": 42,
+              "text": "    ProxyManager,"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 42,
+              "newLine": 43,
+              "text": "    util,"
+            }
+          ]
+        },
+        {
+          "contentHash": "949dda852e448b55",
+          "header": "@@ -88,6 +89,62 @@ def multicookie_response_handler(listener: socket.socket) -> None:",
+          "context": "def multicookie_response_handler(listener: socket.socket) -> None:",
+          "newStart": 89,
+          "newEnd": 150,
+          "oldStart": 88,
+          "oldEnd": 93,
+          "added": 56,
+          "removed": 0,
+          "lines": [
+            {
+              "kind": "ctx",
+              "oldLine": 88,
+              "newLine": 89,
+              "text": "            assert r.headers == {\"set-cookie\": \"foo=1, bar=1\"}"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 89,
+              "newLine": 90,
+              "text": "            assert r.headers.getlist(\"set-cookie\") == [\"foo=1\", \"bar=1\"]"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 90,
+              "newLine": 91,
+              "text": ""
+            },
+            {
+              "kind": "add",
+              "newLine": 92,
+              "text": "    def test_obsolete_line_folding_is_unfolded(self) -> None:"
+            },
+            {
+              "kind": "add",
+              "newLine": 93,
+              "text": "        def folded_cookie_response_handler(listener: socket.socket) -> None:"
+            },
+            {
+              "kind": "add",
+              "newLine": 94,
+              "text": "            with listener.accept()[0] as sock:"
+            },
+            {
+              "kind": "add",
+              "newLine": 95,
+              "text": "                buf = b\"\""
+            },
+            {
+              "kind": "add",
+              "newLine": 96,
+              "text": "                while not buf.endswith(b\"\\r\\n\\r\\n\"):"
+            },
+            {
+              "kind": "add",
+              "newLine": 97,
+              "text": "                    buf += sock.recv(65536)"
+            },
+            {
+              "kind": "add",
+              "newLine": 98,
+              "text": ""
+            },
+            {
+              "kind": "add",
+              "newLine": 99,
+              "text": "                sock.sendall("
+            },
+            {
+              "kind": "add",
+              "newLine": 100,
+              "text": "                    b\"HTTP/1.1 200 OK\\r\\n\""
+            },
+            {
+              "kind": "add",
+              "newLine": 101,
+              "text": "                    b\"Set-Cookie: ___utmvbtouVBFmB=gZg\\r\\n\""
+            },
+            {
+              "kind": "add",
+              "newLine": 102,
+              "text": "                    b\"    XbNOjalT: Lte; path=/; Max-Age=900\\r\\n\""
+            },
+            {
+              "kind": "add",
+              "newLine": 103,
+              "text": "                    b\"Set-Cookie: ordinary=1; Path=/\\r\\n\""
+            },
+            {
+              "kind": "add",
+              "newLine": 104,
+              "text": "                    b\"Fold-Space-Space: before \\r\\n\""
+            },
+            {
+              "kind": "add",
+              "newLine": 105,
+              "text": "                    b\" after\\r\\n\""
+            },
+            {
+              "kind": "add",
+              "newLine": 106,
+              "text": "                    b\"Fold-Space-Tab: before \\r\\n\""
+            },
+            {
+              "kind": "add",
+              "newLine": 107,
+              "text": "                    b\"\\tafter\\r\\n\""
+            },
+            {
+              "kind": "add",
+              "newLine": 108,
+              "text": "                    b\"Fold-Tab-Space: before\\t\\r\\n\""
+            },
+            {
+              "kind": "add",
+              "newLine": 109,
+              "text": "                    b\" after\\r\\n\""
+            },
+            {
+              "kind": "add",
+              "newLine": 110,
+              "text": "                    b\"Fold-Tab-Tab: before\\t\\r\\n\""
+            },
+            {
+              "kind": "add",
+              "newLine": 111,
+              "text": "                    b\"\\tafter\\r\\n\""
+            },
+            {
+              "kind": "add",
+              "newLine": 112,
+              "text": "                    b\"Fold-Mixed-Repeated: one \\t\\r\\n\""
+            },
+            {
+              "kind": "add",
+              "newLine": 113,
+              "text": "                    b\"\\t  two\\t \\r\\n\""
+            },
+            {
+              "kind": "add",
+              "newLine": 114,
+              "text": "                    b\" \\tthree\\r\\n\""
+            },
+            {
+              "kind": "add",
+              "newLine": 115,
+              "text": "                    b\"Ordinary: one\\t two\\r\\n\""
+            },
+            {
+              "kind": "add",
+              "newLine": 116,
+              "text": "                    b\"Content-Length: 0\\r\\n\""
+            },
+            {
+              "kind": "add",
+              "newLine": 117,
+              "text": "                    b\"\\r\\n\""
+            },
+            {
+              "kind": "add",
+              "newLine": 118,
+              "text": "                )"
+            },
+            {
+              "kind": "add",
+              "newLine": 119,
+              "text": ""
+            },
+            {
+              "kind": "add",
+              "newLine": 120,
+              "text": "        self._start_server(folded_cookie_response_handler)"
+            },
+            {
+              "kind": "add",
+              "newLine": 121,
+              "text": "        with HTTPConnectionPool(self.host, self.port) as pool:"
+            },
+            {
+              "kind": "add",
+              "newLine": 122,
+              "text": "            r = pool.request(\"GET\", \"/\", retries=0)"
+            },
+            {
+              "kind": "add",
+              "newLine": 123,
+              "text": ""
+            },
+            {
+              "kind": "add",
+              "newLine": 124,
+              "text": "            assert r.headers.getlist(\"set-cookie\") == ["
+            },
+            {
+              "kind": "add",
+              "newLine": 125,
+              "text": "                \"___utmvbtouVBFmB=gZg XbNOjalT: Lte; path=/; Max-Age=900\","
+            },
+            {
+              "kind": "add",
+              "newLine": 126,
+              "text": "                \"ordinary=1; Path=/\","
+            },
+            {
+              "kind": "add",
+              "newLine": 127,
+              "text": "            ]"
+            },
+            {
+              "kind": "add",
+              "newLine": 128,
+              "text": "            assert r.headers[\"fold-space-space\"] == \"before after\""
+            },
+            {
+              "kind": "add",
+              "newLine": 129,
+              "text": "            assert r.headers[\"fold-space-tab\"] == \"before after\""
+            },
+            {
+              "kind": "add",
+              "newLine": 130,
+              "text": "            assert r.headers[\"fold-tab-space\"] == \"before after\""
+            },
+            {
+              "kind": "add",
+              "newLine": 131,
+              "text": "            assert r.headers[\"fold-tab-tab\"] == \"before after\""
+            },
+            {
+              "kind": "add",
+              "newLine": 132,
+              "text": "            assert r.headers[\"fold-mixed-repeated\"] == \"one two three\""
+            },
+            {
+              "kind": "add",
+              "newLine": 133,
+              "text": "            assert r.headers[\"ordinary\"] == \"one\\t two\""
+            },
+            {
+              "kind": "add",
+              "newLine": 134,
+              "text": "            assert r.headers[\"content-length\"] == \"0\""
+            },
+            {
+              "kind": "add",
+              "newLine": 135,
+              "text": "            assert all("
+            },
+            {
+              "kind": "add",
+              "newLine": 136,
+              "text": "                \"\\r\" not in value and \"\\n\" not in value for value in r.headers.values()"
+            },
+            {
+              "kind": "add",
+              "newLine": 137,
+              "text": "            )"
+            },
+            {
+              "kind": "add",
+              "newLine": 138,
+              "text": ""
+            },
+            {
+              "kind": "add",
+              "newLine": 139,
+              "text": "            assert isinstance(r, HTTPResponse)"
+            },
+            {
+              "kind": "add",
+              "newLine": 140,
+              "text": "            assert r._original_response is not None"
+            },
+            {
+              "kind": "add",
+              "newLine": 141,
+              "text": "            assert r._original_response.headers is r._original_response.msg"
+            },
+            {
+              "kind": "add",
+              "newLine": 142,
+              "text": "            assert r._original_response.msg.get_all(\"set-cookie\") == ["
+            },
+            {
+              "kind": "add",
+              "newLine": 143,
+              "text": "                \"___utmvbtouVBFmB=gZg XbNOjalT: Lte; path=/; Max-Age=900\","
+            },
+            {
+              "kind": "add",
+              "newLine": 144,
+              "text": "                \"ordinary=1; Path=/\","
+            },
+            {
+              "kind": "add",
+              "newLine": 145,
+              "text": "            ]"
+            },
+            {
+              "kind": "add",
+              "newLine": 146,
+              "text": "            assert r._original_response.msg[\"fold-mixed-repeated\"] == \"one two three\""
+            },
+            {
+              "kind": "add",
+              "newLine": 147,
+              "text": ""
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 91,
+              "newLine": 148,
+              "text": ""
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 92,
+              "newLine": 149,
+              "text": "class TestSNI(SocketDummyServerTestCase):"
+            },
+            {
+              "kind": "ctx",
+              "oldLine": 93,
+              "newLine": 150,
+              "text": "    def test_hostname_in_first_request_packet(self) -> None:"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "fileKey": "changelog-1362.bugfix.rst",
+      "path": "changelog/1362.bugfix.rst",
+      "category": "docs",
+      "hunks": [
+        {
+          "contentHash": "d1c6f159e5ffb42d",
+          "header": "@@ -0,0 +1,3 @@",
+          "newStart": 1,
+          "newEnd": 3,
+          "oldStart": 0,
+          "oldEnd": 0,
+          "added": 3,
+          "removed": 0,
+          "lines": [
+            {
+              "kind": "add",
+              "newLine": 1,
+              "text": "Fixed response header handling to replace obsolete folded header lines"
+            },
+            {
+              "kind": "add",
+              "newLine": 2,
+              "text": "(`obs-fold`) with spaces in accordance with RFC 9112, preventing raw"
+            },
+            {
+              "kind": "add",
+              "newLine": 3,
+              "text": "CRLF sequences from appearing in header values such as ``Set-Cookie``."
+            }
+          ],
+          "hiddenReason": "docs / config"
+        }
+      ],
+      "isNew": true
+    }
+  ],
+  "description": {
+    "html": "<div class=\"desc\"><h3>Unfold obsolete folded response headers</h3><p class=\"para\" id=\"d-p1\">Addresses the original obs-fold response-header case discussed in #1362. Python's <code>http.client</code> preserves obsolete folded response header lines in <code>HTTPMessage</code> values. This change replaces each RFC 9112 <code>OWS CRLF RWS</code> sequence with a single space before urllib3 or downstream consumers interpret the value.</p><h3>The normalization</h3><ul class=\"para\" id=\"d-p2\"><li>keeps urllib3's <code>HTTPHeaderDict</code> and the original <code>HTTPMessage</code> synchronized, preventing cookie consumers such as Requests from re-emitting raw CRLF;</li><li>preserves header names, ordering, duplicate fields, and parser state;</li><li>uses a common-case fast path and a linear-time pattern for long field values.</li></ul><h3>Tests</h3><p class=\"para\" id=\"d-p3\">The socket regression covers the original folded <code>Set-Cookie</code>, duplicate cookies, every SP/HTAB combination around CRLF, mixed and repeated whitespace, multiple folds, and ordinary headers. Focused unit coverage also verifies adjacent folds and preservation of the original message's order, duplicates, payload, policy, and defects.</p><p class=\"para\" id=\"d-p4\">This intentionally does not address the separate whitespace-before-colon/header name validation scope discussed on #1362.</p><h3>Validation performed</h3><ul class=\"para\" id=\"d-p5\"><li>full local suite: 2,279 passed, 333 skipped, 4 xfailed;</li><li>focused strict nox sessions on Python 3.12, 3.13, and 3.14;</li><li>pyupgrade, Black, isort, and flake8;</li><li>towncrier changelog validation;</li><li>source distribution and wheel builds;</li><li>end-to-end Requests cookie extraction and subsequent request serialization.</li></ul><h3>Review checklist</h3><ol class=\"para\" id=\"d-p6\"><li>confirm <code>HTTPMessage</code> no longer carries a raw <code>CRLF</code> after unfolding;</li><li>confirm <code>HTTPHeaderDict</code> matches the message on <code>Set-Cookie</code> pairs;</li><li>check duplicate headers keep their order and <code>defects</code> list;</li><li>check adjacent folds collapse to one <code>space</code>, not zero;</li><li>check mixed <code>SP</code> and <code>HTAB</code> runs around <code>CRLF</code> unfold cleanly;</li><li>check repeated folds produce one space per fold;</li><li>check ordinary header values pass through unchanged;</li><li>run the socket-level test with <code>fold-mixed-repeated</code> payloads;</li><li>run the unit suite for <code>test_connection.py</code> on Python 3.12;</li><li>run <code>towncrier</code> validation for the changelog fragment;</li><li>build the source distribution and the <code>wheel</code> artifacts;</li><li>verify Requests cookie extraction on the next request.</li></ol></div>",
+    "rev": "1",
+    "source": "pr",
+    "editable": false
+  },
+  "ingest": {
+    "status": "ready"
+  },
+  "pages": [
+    {
+      "id": "root",
+      "kind": "root",
+      "title": "Unfold obsolete folded response headers",
+      "cards": [
+        {
+          "id": "problem",
+          "pageId": "root",
+          "title": "The problem",
+          "collapsed": false,
+          "revision": 1,
+          "blocks": [
+            {
+              "type": "paragraph",
+              "id": "b1",
+              "text": "HTTP/1.1 servers may still send obsolete folded header lines (<code>obs-fold</code>), where a value continues on the next line after CRLF plus whitespace. Python's <code>http.client</code> keeps those raw CRLFs inside the <code>HTTPMessage</code> values. urllib3 then copied them unchanged into <code>HTTPHeaderDict</code>, so a header such as a folded <code>Set-Cookie</code> reached consumers with embedded <code>\\r\\n</code> in it.  ",
+              "citations": [
+                {
+                  "target": "desc:d-p1"
+                },
+                {
+                  "target": "diff:src-urllib3-connection.py:647-651"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b2",
+              "text": "Before the change, <code>getresponse</code> built the headers with <code>HTTPHeaderDict(httplib_response.msg.items())</code>, with no cleanup. The original <code>HTTPMessage</code> stayed on the response as <code>_original_response.msg</code>. Cookie consumers such as Requests read that message directly, and they could re-emit raw CRLF on later requests.  ",
+              "citations": [
+                {
+                  "target": "desc:d-p2"
+                },
+                {
+                  "target": "diff:src-urllib3-connection.py:647-651"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b3",
+              "text": "The reported case is #1362. Whitespace before the colon and header-name validation are a separate issue and are not part of this change. ",
+              "citations": [
+                {
+                  "target": "desc:d-p4"
+                }
+              ]
+            }
+          ],
+          "undoStack": []
+        },
+        {
+          "id": "central",
+          "pageId": "root",
+          "title": "The central idea",
+          "collapsed": false,
+          "revision": 1,
+          "blocks": [
+            {
+              "type": "paragraph",
+              "id": "b1",
+              "text": "The change unfolds every <code>obs-fold</code> right after parsing, before anything reads the headers. <code>_OBSOLETE_FOLD_RE</code> matches optional whitespace, then CRLF, then required whitespace, and <code>_normalize_header_value</code> replaces each match with one space. ",
+              "citations": [
+                {
+                  "target": "diff:src-urllib3-connection.py:80-88"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b2",
+              "text": "<code>_normalize_header_values</code> applies this to the <code>HTTPMessage</code> items. If any value changed, it deletes and re-adds the headers on the original message, so the message and urllib3's <code>HTTPHeaderDict</code> agree. It returns the cleaned items, and <code>getresponse</code> builds <code>HTTPHeaderDict</code> from them.  ",
+              "citations": [
+                {
+                  "target": "diff:src-urllib3-connection.py:91-110"
+                },
+                {
+                  "target": "diff:src-urllib3-connection.py:647-651"
+                }
+              ]
+            }
+          ],
+          "undoStack": []
+        },
+        {
+          "id": "decisions",
+          "pageId": "root",
+          "title": "Decisions and questions",
+          "collapsed": false,
+          "revision": 1,
+          "blocks": [
+            {
+              "type": "paragraph",
+              "id": "b1",
+              "text": "<strong>Decisions</strong>",
+              "citations": []
+            },
+            {
+              "type": "list",
+              "id": "b2",
+              "ordered": false,
+              "items": [
+                {
+                  "html": "<strong>Normalize in <code>getresponse</code>, and mutate the original message.</strong> The alternative is to clean only the <code>HTTPHeaderDict</code> copy. That would leave the CRLF in <code>msg</code>, which Requests reads for cookies. The description gives this as the reason. The cost is that urllib3 now rewrites an <code>http.client</code> object it does not own.  ",
+                  "citations": [
+                    {
+                      "target": "desc:d-p2"
+                    },
+                    {
+                      "target": "diff:src-urllib3-connection.py:102-108"
+                    }
+                  ]
+                },
+                {
+                  "html": "<strong>Rewrite by delete and re-add.</strong> <code>HTTPMessage</code> has no in-place item replacement. Delete-and-re-add keeps the object's identity, and the order is preserved because every name is removed and then re-added in the original sequence. The reason is inferred. ",
+                  "citations": [
+                    {
+                      "target": "diff:src-urllib3-connection.py:105-108"
+                    }
+                  ]
+                },
+                {
+                  "html": "<strong>Fast path and regex shape.</strong> The code skips values without <code>\\r\\n</code>. A lookbehind keeps matching of the leading whitespace linear in long runs; the comment says it avoids quadratic backtracking. ",
+                  "citations": [
+                    {
+                      "target": "diff:src-urllib3-connection.py:80-88"
+                    }
+                  ]
+                },
+                {
+                  "html": "<strong>Collapse to a single space.</strong> The change follows RFC 9112, and each fold becomes one space. Adjacent folds collapse to one space too, with no zero-space case. ",
+                  "citations": [
+                    {
+                      "target": "diff:test-test_connection.py:218-220"
+                    }
+                  ]
+                }
+              ],
+              "citations": [
+                {
+                  "target": "desc:d-p2"
+                },
+                {
+                  "target": "diff:src-urllib3-connection.py:102-108"
+                },
+                {
+                  "target": "diff:src-urllib3-connection.py:105-108"
+                },
+                {
+                  "target": "diff:src-urllib3-connection.py:80-88"
+                },
+                {
+                  "target": "diff:test-test_connection.py:218-220"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b3",
+              "text": "<strong>Invariants</strong>",
+              "citations": []
+            },
+            {
+              "type": "list",
+              "id": "b4",
+              "ordered": false,
+              "items": [
+                {
+                  "html": "After <code>getresponse</code>, no header value in <code>HTTPHeaderDict</code> or in <code>msg</code> contains a fold CRLF. Only the socket test checks that the message and the dict agree. ",
+                  "citations": [
+                    {
+                      "target": "diff:test-with_dummyserver-test_socketlevel.py:135-146"
+                    }
+                  ]
+                },
+                {
+                  "html": "Header names, order, duplicates, payload, policy and defects are preserved. The unit test checks this. ",
+                  "citations": [
+                    {
+                      "target": "diff:test-test_connection.py:226-249"
+                    }
+                  ]
+                }
+              ],
+              "citations": [
+                {
+                  "target": "diff:test-with_dummyserver-test_socketlevel.py:135-146"
+                },
+                {
+                  "target": "diff:test-test_connection.py:226-249"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b5",
+              "text": "<strong>Known uncertainties</strong>",
+              "citations": []
+            },
+            {
+              "type": "list",
+              "id": "b6",
+              "ordered": false,
+              "items": [
+                {
+                  "html": "Values containing a bare <code>\\r\\n</code> that is not followed by whitespace are left unchanged. Nothing tests that case. Reading the code is enough to confirm it.",
+                  "citations": []
+                },
+                {
+                  "html": "<code>del message[name]</code> removes all headers with that name. The loop does this once per occurrence, which is harmless because deleting an absent name is a no-op. Re-adding follows <code>header_items</code> order, so duplicates stay in order. ",
+                  "citations": [
+                    {
+                      "target": "diff:src-urllib3-connection.py:105-108"
+                    }
+                  ]
+                },
+                {
+                  "html": "Header names are re-set from the <code>message.items()</code> output. A name containing a CRLF would not be affected, but no test exercises this.",
+                  "citations": []
+                }
+              ],
+              "citations": [
+                {
+                  "target": "diff:src-urllib3-connection.py:105-108"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b7",
+              "text": "<strong>Interfaces with reach</strong>",
+              "citations": []
+            },
+            {
+              "type": "list",
+              "id": "b8",
+              "ordered": false,
+              "items": [
+                {
+                  "html": "The new helpers are private to <code>connection.py</code>, so the public surface is unchanged.",
+                  "citations": []
+                },
+                {
+                  "html": "The visible effect is on <code>HTTPResponse.headers</code> and on <code>_original_response.msg</code>, which Requests and others read. ",
+                  "citations": [
+                    {
+                      "target": "diff:test-with_dummyserver-test_socketlevel.py:139-146"
+                    }
+                  ]
+                }
+              ],
+              "citations": [
+                {
+                  "target": "diff:test-with_dummyserver-test_socketlevel.py:139-146"
+                }
+              ]
+            }
+          ],
+          "undoStack": []
+        },
+        {
+          "id": "g-alt",
+          "pageId": "root",
+          "title": "Mutating msg vs. only the dict",
+          "collapsed": false,
+          "revision": 1,
+          "blocks": [
+            {
+              "type": "paragraph",
+              "id": "b1",
+              "text": "The fix has to reach two copies of the headers. <code>getresponse</code> used to build <code>HTTPHeaderDict</code> from <code>httplib_response.msg.items()</code>. The <code>HTTPMessage</code> itself stayed on the response as <code>_original_response.msg</code> . The description says cookie consumers such as Requests read that message, not urllib3's dict. A fix that cleaned only <code>HTTPHeaderDict</code> would leave the raw CRLF in <code>msg</code>, and Requests could re-emit it . So <code>_normalize_header_values</code> also writes the cleaned values back into the message . The socket test checks both copies. It asserts the dict's <code>set-cookie</code> list, then asserts the same list through <code>_original_response.msg.get_all(&quot;set-cookie&quot;)</code> .",
+              "citations": [
+                {
+                  "target": "diff:src-urllib3-connection.py:647-651"
+                },
+                {
+                  "target": "desc:d-p2"
+                },
+                {
+                  "target": "diff:src-urllib3-connection.py:102-108"
+                },
+                {
+                  "target": "diff:test-with_dummyserver-test_socketlevel.py:124-146"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b2",
+              "text": "The write-back is a delete and re-add of every header, on the same <code>HTTPMessage</code> object. The alternative is to build a fresh <code>HTTPMessage</code> and swap it onto the response. That would change object identity. The socket test asserts <code>_original_response.headers is _original_response.msg</code> . The unit test asserts that <code>defects</code> and <code>policy</code> are the same objects before and after . Anything holding a reference to the old message, or relying on its parser state, would keep seeing the folded values after a swap. The code comment says the point is &quot;preserving its identity and header ordering&quot; . That the author chose delete and re-add over a swap for this reason is my inference.",
+              "citations": [
+                {
+                  "target": "diff:test-with_dummyserver-test_socketlevel.py:141"
+                },
+                {
+                  "target": "diff:test-test_connection.py:248-249"
+                },
+                {
+                  "target": "diff:src-urllib3-connection.py:103-104"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b3",
+              "text": "A third option is to fix the parse itself, by patching <code>http.client.parse_headers</code> or subclassing the response class. This would unfold the values before any copy exists. It would also mean patching a stdlib module-level function, which affects every user of <code>http.client</code> in the process. No code in this change tries it, and I have no stated reason for rejecting it, so that is my inference too. Normalizing after <code>begin()</code> inside <code>getresponse</code> keeps the change local to urllib3's own connection class.",
+              "citations": []
+            },
+            {
+              "type": "paragraph",
+              "id": "b4",
+              "text": "The costs are these. urllib3 now rewrites an object it does not own, and it depends on <code>HTTPMessage</code> semantics. <code>del message[name]</code> drops every occurrence of a name, and <code>message[name] = value</code> appends. The loop works because it deletes everything first and then re-adds in <code>header_items</code> order, so duplicate names keep their order . Because the rewrite runs only when <code>headers_changed</code> is true, responses without folds never touch the message . The function also returns the cleaned items, so <code>HTTPHeaderDict</code> is built from the same data that was written back, not from a second read of <code>msg</code>  .",
+              "citations": [
+                {
+                  "target": "diff:src-urllib3-connection.py:105-108"
+                },
+                {
+                  "target": "diff:src-urllib3-connection.py:94-102"
+                },
+                {
+                  "target": "diff:src-urllib3-connection.py:110"
+                },
+                {
+                  "target": "diff:src-urllib3-connection.py:650-651"
+                }
+              ]
+            },
+            {
+              "type": "follow-up",
+              "id": "b5",
+              "items": [
+                {
+                  "label": "Does anything else read `_original_response.msg` or `.headers` besides Requests cookie extraction?",
+                  "ask": "Which consumers read `_original_response.msg` or `.headers`, and would any of them see different behavior from the delete-and-re-add rewrite?"
+                },
+                {
+                  "label": "What would break if `_normalize_header_values` replaced the message instead of mutating it?",
+                  "ask": "If `_normalize_header_values` returned a new `HTTPMessage` and `getresponse` swapped it onto the response, which tests and which consumers would break?"
+                },
+                {
+                  "label": "Is the order of duplicate headers really preserved when a fold sits in the middle?",
+                  "ask": "Walk through `_normalize_header_values` for a message with Set-Cookie, X-Second, Set-Cookie where only the first Set-Cookie is folded, and show the resulting order."
+                }
+              ],
+              "citations": []
+            }
+          ],
+          "undoStack": []
+        },
+        {
+          "id": "g-regex",
+          "pageId": "root",
+          "title": "The _OBSOLETE_FOLD_RE lookbehind",
+          "collapsed": false,
+          "revision": 1,
+          "blocks": [
+            {
+              "type": "paragraph",
+              "id": "b1",
+              "text": "<code>_OBSOLETE_FOLD_RE</code> is <code>(?:(?&lt;![ \\t])[ \\t]+)?\\r\\n[ \\t]+</code>. It has an optional leading OWS group, then the required CRLF, then required RWS.  The leading group exists so that whitespace before the CRLF is swallowed into the replacement. Otherwise <code>&quot;before \\t\\r\\n\\t  after&quot;</code> would become <code>&quot;before \\t after&quot;</code>, not <code>&quot;before after&quot;</code>. ",
+              "citations": [
+                {
+                  "target": "diff:src-urllib3-connection.py:80-82"
+                },
+                {
+                  "target": "diff:test-test_connection.py:218"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b2",
+              "text": "Without the lookbehind, <code>(?:[ \\t]+)?\\r\\n</code> would be quadratic on a value like <code>&quot;a&quot; + &quot; &quot; * n + &quot;b&quot;</code> that also contains a CRLF elsewhere. <code>re.sub</code> tries a match at every offset. At each of the n offsets inside the run, <code>[ \\t]+</code> would greedily consume the rest of the run and then give back one character at a time looking for <code>\\r\\n</code>. That is O(n) work per start and O(n²) overall. <code>(?&lt;![ \\t])</code> lets the group begin only at the first character of a run. At every later offset the lookbehind fails at once, the optional group is skipped, and <code>\\r\\n</code> fails on the next character. The run is scanned and backtracked once, so the cost is O(n). The code comment states this, and the reasoning checks out on paper. ",
+              "citations": [
+                {
+                  "target": "diff:src-urllib3-connection.py:80-82"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b3",
+              "text": "The alternative would be to not require the OWS in the regex and strip trailing whitespace separately. For example, you could split on <code>\\r\\n</code> and then <code>rstrip</code>/<code>lstrip</code> each piece. That would be linear without regex tricks. The author's choice, whose reasons are inferred, keeps the whole rule in one <code>sub</code> call. The cost is a subtle pattern. <code>_normalize_header_value</code> also skips values that contain no <code>\\r\\n</code>, so ordinary headers never reach the regex. ",
+              "citations": [
+                {
+                  "target": "diff:src-urllib3-connection.py:85-88"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b4",
+              "text": "The lookbehind inspects the original string, not the output of earlier matches. Take <code>&quot;one\\r\\n \\r\\n\\tthree&quot;</code>. The first match is <code>&quot;\\r\\n &quot;</code>, and its greedy <code>[ \\t]+</code> consumes the space. At the second <code>\\r\\n</code>, the preceding character is that already-consumed space, so the lookbehind blocks the OWS group and the second fold matches as plain <code>\\r\\n\\t</code>. The result is two spaces, one per fold, and the unit test pins <code>&quot;one  three&quot;</code>.  So &quot;adjacent folds collapse to one space, not zero&quot; in the decisions card is imprecise. Each fold yields exactly one space, so a whitespace-only continuation line gives two. The other cases behave as expected. Mixed SP/HTAB runs on either side collapse into one space, and repeated folds in one value each become one space.  ",
+              "citations": [
+                {
+                  "target": "diff:test-test_connection.py:220"
+                },
+                {
+                  "target": "diff:test-test_connection.py:218-219"
+                },
+                {
+                  "target": "diff:test-with_dummyserver-test_socketlevel.py:112-114"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b5",
+              "text": "No test exercises the linear-time claim. The cases are all short, so a regression to a quadratic pattern would still pass. A bare <code>\\r\\n</code> not followed by SP/HTAB never matches, because the trailing <code>[ \\t]+</code> is required, and that case is also untested. ",
+              "citations": [
+                {
+                  "target": "diff:src-urllib3-connection.py:82"
+                }
+              ]
+            },
+            {
+              "type": "follow-up",
+              "id": "b6",
+              "items": [
+                {
+                  "label": "Is there an input that is still superlinear with this pattern?",
+                  "ask": "Can you construct a header value, such as many CRLF-space pairs or long whitespace runs without CRLF, where `_OBSOLETE_FOLD_RE` backtracks more than linearly?"
+                },
+                {
+                  "label": "What would a performance regression test for this look like?",
+                  "ask": "How would you write a test that fails if `_OBSOLETE_FOLD_RE` loses its lookbehind, without making the test timing-flaky?"
+                },
+                {
+                  "label": "Why not split and strip instead of a regex?",
+                  "ask": "Would splitting on `\\r\\n` and stripping each piece give the same results as `_OBSOLETE_FOLD_RE` for all the cases in `test_normalize_header_value`?"
+                }
+              ],
+              "citations": []
+            }
+          ],
+          "undoStack": []
+        },
+        {
+          "id": "g-tests",
+          "pageId": "root",
+          "title": "What the tests cover and miss",
+          "collapsed": false,
+          "revision": 1,
+          "blocks": [
+            {
+              "type": "paragraph",
+              "id": "b1",
+              "text": "The tests exercise the whitespace combinations around the CRLF thoroughly, and they check that the message is preserved. They are thin on inputs that are not a well-formed <code>obs-fold</code>.",
+              "citations": []
+            },
+            {
+              "type": "paragraph",
+              "id": "b2",
+              "text": "<strong>Covered.</strong> <code>_normalize_header_value</code> is parametrized over four cases. The first is an ordinary value with an inner tab that passes through unchanged. The second is mixed SP/HTAB runs around the CRLF. The third is multiple folds in one value. The fourth is adjacent folds, which collapse to two spaces (<code>&quot;one  three&quot;</code>) and not zero.  The unit test for <code>_normalize_header_values</code> checks that a mixed list keeps its order and duplicate <code>Set-Cookie</code> entries. It also checks that the payload is kept and that <code>defects</code> and <code>policy</code> are the same objects as before.  The socket test covers the full path through <code>getresponse</code>. It sends a folded <code>Set-Cookie</code>, every SP/HTAB pairing around the CRLF, a mixed and repeated fold, and an ordinary header whose inner <code>\\t</code> must survive. It asserts that <code>HTTPHeaderDict</code> and <code>_original_response.msg</code> agree, and that no value contains <code>\\r</code> or <code>\\n</code>. ",
+              "citations": [
+                {
+                  "target": "diff:test-test_connection.py:214-224"
+                },
+                {
+                  "target": "diff:test-test_connection.py:226-249"
+                },
+                {
+                  "target": "diff:test-with_dummyserver-test_socketlevel.py:92-146"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b3",
+              "text": "<strong>Missed: a bare CRLF.</strong> <code>_OBSOLETE_FOLD_RE</code> requires at least one SP/HTAB after the CRLF.  A value that contains <code>\\r\\n</code> but no following whitespace goes through the slow path and comes out unchanged. No test pins that behavior, so the fast-path guard and the &quot;leave it alone&quot; outcome are both untested. A lone <code>\\n</code> or <code>\\r</code> is also never exercised. In practice <code>http.client</code> splits on line ends, so this input may not be reachable from the socket. The unit helpers accept any string, though, so a direct test would be cheap.",
+              "citations": [
+                {
+                  "target": "diff:src-urllib3-connection.py:80-82"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b4",
+              "text": "<strong>Missed: the &quot;unchanged message&quot; path and the linear-time claim.</strong> Every test that touches the message has at least one folded value. Nothing asserts that <code>_normalize_header_values</code> leaves the message alone when no value changes. That <code>headers_changed</code> guard exists so the delete-and-re-add loop is skipped in the common case.  The regex comment claims the lookbehind prevents quadratic backtracking. No test feeds a long whitespace run to guard against that regression, so a later simplification of the pattern would not fail any test. ",
+              "citations": [
+                {
+                  "target": "diff:src-urllib3-connection.py:102-108"
+                },
+                {
+                  "target": "diff:src-urllib3-connection.py:80-82"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b5",
+              "text": "<strong>Missed: header-name edge cases.</strong> The helpers rewrite the message with <code>del message[name]</code> and <code>message[name] = value</code>, with names taken from <code>message.items()</code>.  All test names are plain tokens, differing only in case. Nothing covers names that differ only by case but appear as separate fields, or a name with unusual characters. Whitespace before the colon is explicitly out of scope.  Case-insensitive deletion, though, means that deleting one name removes every casing of it. Whether the re-added headers keep each original casing is not tested.",
+              "citations": [
+                {
+                  "target": "diff:src-urllib3-connection.py:105-108"
+                },
+                {
+                  "target": "desc:d-p4"
+                }
+              ]
+            },
+            {
+              "type": "follow-up",
+              "id": "b6",
+              "items": [
+                {
+                  "label": "Does `del message[name]` followed by re-adding keep each header's original name casing when two fields differ only in case?",
+                  "ask": "If a response has \"Set-Cookie\" and \"set-cookie\" as separate fields, what does _normalize_header_values produce for the message and for HTTPHeaderDict?"
+                },
+                {
+                  "label": "Can `http.client` ever hand `_normalize_header_value` a value with a CRLF that is not followed by whitespace?",
+                  "ask": "Can a bare CRLF or lone CR/LF without following whitespace reach _normalize_header_value from a real socket response?"
+                },
+                {
+                  "label": "What test would catch a regression in the lookbehind?",
+                  "ask": "What test would fail if the lookbehind in _OBSOLETE_FOLD_RE were removed, and how long would the whitespace run need to be?"
+                }
+              ],
+              "citations": []
+            }
+          ],
+          "undoStack": []
+        },
+        {
+          "id": "g-reach",
+          "pageId": "root",
+          "title": "Who reads _original_response.msg",
+          "collapsed": false,
+          "revision": 1,
+          "blocks": [
+            {
+              "type": "paragraph",
+              "id": "b1",
+              "text": "Only the test code in this checkout touches <code>_original_response</code>. The urllib3 source isn't here, so the consumers below come from the PR description, not from code I could read. The description says cookie consumers such as Requests read the original <code>HTTPMessage</code> instead of <code>HTTPHeaderDict</code>. It names the failure as them &quot;re-emitting raw CRLF&quot;. ",
+              "citations": [
+                {
+                  "target": "desc:d-p2"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b2",
+              "text": "That is why the change has two outputs. <code>getresponse</code> builds <code>HTTPHeaderDict</code> from the items that <code>_normalize_header_values</code> returns.  The same function also deletes and re-adds every header on <code>httplib_response.msg</code>.  If only <code>HTTPHeaderDict</code> were cleaned, <code>r.headers</code> would look correct. A reader going through <code>_original_response.msg</code> would still get a <code>Set-Cookie</code> with an <code>obs-fold</code> CRLF in it, and the bug would remain for that reader. The inferred cost is that urllib3 now treats <code>msg</code> as a second public output. Its contents are part of the contract, not an internal detail.",
+              "citations": [
+                {
+                  "target": "diff:src-urllib3-connection.py:650-651"
+                },
+                {
+                  "target": "diff:src-urllib3-connection.py:102-110"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b3",
+              "text": "The socket test pins this contract from both sides. It asserts that <code>_original_response.headers is _original_response.msg</code>, and that <code>msg.get_all(&quot;set-cookie&quot;)</code> and <code>msg[&quot;fold-mixed-repeated&quot;]</code> hold the unfolded values.  The <code>is</code> check matters because <code>http.client.HTTPResponse</code> exposes the same <code>HTTPMessage</code> as both <code>.headers</code> and <code>.msg</code>. Mutating the message in place fixes both names. Building a replacement <code>HTTPMessage</code> would not, unless the response were also repointed.",
+              "citations": [
+                {
+                  "target": "diff:test-with_dummyserver-test_socketlevel.py:139-146"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b4",
+              "text": "This also explains why <code>_normalize_header_values</code> keeps the message's identity instead of building a new one. Any consumer that already holds a reference sees the change. The unit test checks that <code>defects</code> and <code>policy</code> are the same objects and that the payload survives.  That matters for parsers that read <code>msg.defects</code>, or that check the policy when they re-serialize.",
+              "citations": [
+                {
+                  "target": "diff:test-test_connection.py:226-249"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b5",
+              "text": "What is not covered: no test uses a real cookie consumer. The Requests cookie-extraction claim is only in the description's verification notes.  Ordering matters for cookie jars, because they usually read <code>get_all(&quot;Set-Cookie&quot;)</code> in order. The unit test checks that duplicates stay ordered after the rewrite. ",
+              "citations": [
+                {
+                  "target": "desc:d-p5"
+                },
+                {
+                  "target": "diff:test-test_connection.py:246"
+                }
+              ]
+            },
+            {
+              "type": "follow-up",
+              "id": "b6",
+              "items": [
+                {
+                  "label": "Does anything in urllib3 itself, not Requests, read `msg` after `getresponse` returns?",
+                  "ask": "Which code paths in urllib3 read `_original_response.msg` or `.headers` after `getresponse`, and would they see the normalized values?"
+                },
+                {
+                  "label": "What happens to a consumer that grabbed `msg` before the rewrite?",
+                  "ask": "Since `_normalize_header_values` deletes and re-adds headers in place, can any caller observe a half-rewritten `HTTPMessage`?"
+                },
+                {
+                  "label": "Could `HTTPHeaderDict` be the only source of truth?",
+                  "ask": "What would it take for Requests to stop reading `_original_response.msg`, making the in-place mutation unnecessary?"
+                }
+              ],
+              "citations": []
+            }
+          ],
+          "undoStack": []
+        }
+      ]
+    },
+    {
+      "id": "f-critic",
+      "kind": "finding",
+      "title": "Adjacent folds yield two spaces, contradicting the description",
+      "parent": "root",
+      "confidence": "high",
+      "summary": "The lookbehind in _OBSOLETE_FOLD_RE keeps a space left by an earlier fold from being absorbed, so 'one\\r\\n \\r\\n\\tthree' becomes 'one  three'. The description says adjacent folds collapse to one space.",
+      "cards": [
+        {
+          "id": "evidence-adjacent-folds",
+          "pageId": "f-critic",
+          "title": "Evidence",
+          "collapsed": false,
+          "revision": 1,
+          "blocks": [
+            {
+              "type": "paragraph",
+              "id": "b1",
+              "text": "The description says adjacent folds collapse to one space. The unit test expects two. The regex is <code>(?:(?&lt;![ \\t])[ \\t]+)?\\r\\n[ \\t]+</code>, and the lookbehind only lets the optional leading whitespace match at the start of a whitespace run. ",
+              "citations": [
+                {
+                  "target": "diff:src-urllib3-connection.py:80-82"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b2",
+              "text": "For <code>&quot;one\\r\\n \\r\\n\\tthree&quot;</code>, the first match is <code>\\r\\n </code> and becomes one space. The second fold then starts right after that match, where the preceding character is the space the first match just consumed. Because of the lookbehind, the second match cannot absorb that space. It matches only <code>\\r\\n\\t</code> and becomes a second space.",
+              "citations": []
+            },
+            {
+              "type": "paragraph",
+              "id": "b3",
+              "text": "The test pins the result as <code>&quot;one  three&quot;</code>, with two spaces. ",
+              "citations": [
+                {
+                  "target": "diff:test-test_connection.py:220"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b4",
+              "text": "The description and the guide state a different behavior, &quot;adjacent folds collapse to one space, not zero&quot;. That is not what the code does.  ",
+              "citations": [
+                {
+                  "target": "desc:d-p6"
+                },
+                {
+                  "target": "desc:d-p3"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b5",
+              "text": "The socket test has no adjacent-fold case. Its mixed case, <code>one \\t\\r\\n\\t  two\\t \\r\\n \\tthree</code>, has non-whitespace between the folds. ",
+              "citations": [
+                {
+                  "target": "diff:test-with_dummyserver-test_socketlevel.py:112-114"
+                }
+              ]
+            }
+          ],
+          "undoStack": []
+        },
+        {
+          "id": "assessment-adjacent-folds",
+          "pageId": "f-critic",
+          "title": "Assessment",
+          "collapsed": false,
+          "revision": 1,
+          "blocks": [
+            {
+              "type": "paragraph",
+              "id": "b1",
+              "text": "This is a description/code mismatch, not a functional bug. RFC 9112 allows replacing each obs-fold with one or more SP, so two spaces is acceptable.",
+              "citations": []
+            },
+            {
+              "type": "paragraph",
+              "id": "b2",
+              "text": "It still matters for two reasons:",
+              "citations": []
+            },
+            {
+              "type": "list",
+              "id": "b3",
+              "ordered": false,
+              "items": [
+                {
+                  "html": "The checklist item &quot;adjacent folds collapse to one space&quot; would fail if someone ran it.",
+                  "citations": []
+                },
+                {
+                  "html": "The result depends on an asymmetry: whitespace before a fold is absorbed, but whitespace after a previous fold is not. A reader will not expect that.",
+                  "citations": []
+                }
+              ],
+              "citations": []
+            },
+            {
+              "type": "paragraph",
+              "id": "b4",
+              "text": "To close it, either fix the description and test name to say &quot;one space per fold&quot;, or change the regex so adjacent folds collapse to one space. A short comment on the test case would also help.",
+              "citations": []
+            },
+            {
+              "type": "comment-link",
+              "id": "b-comment",
+              "diffRef": "diff:test-test_connection.py:220",
+              "threadId": "t-sgperf",
+              "citations": [
+                {
+                  "target": "diff:test-test_connection.py:220"
+                }
+              ]
+            }
+          ],
+          "undoStack": []
+        }
+      ]
+    },
+    {
+      "id": "f-critic-2",
+      "kind": "finding",
+      "title": "Bare-LF folds are not unfolded, so raw newlines can still reach Set-Cookie",
+      "parent": "root",
+      "confidence": "medium",
+      "summary": "The fast path and regex only handle \\r\\n. http.client accepts \\n-terminated lines, so a bare-LF fold would keep a raw \\n in the value. Untested; the changelog and description claim only CRLF removal.",
+      "cards": [
+        {
+          "id": "evidence-bare-lf",
+          "pageId": "f-critic-2",
+          "title": "Evidence",
+          "collapsed": false,
+          "revision": 1,
+          "blocks": [
+            {
+              "type": "paragraph",
+              "id": "b1",
+              "text": "The fast path and the regex both key on <code>&quot;\\r\\n&quot;</code>.  A fold that ends in a bare <code>\\n</code> is not matched.",
+              "citations": [
+                {
+                  "target": "diff:src-urllib3-connection.py:86-88"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b2",
+              "text": "I read this from <code>http.client</code>'s parser behaviour and did not run it here. <code>http.client</code> splits header lines on <code>\\n</code>, so a line terminated only by <code>\\n</code> is still read as a line. The email parser then joins a continuation line into the value with whatever terminator that line had. For a bare-LF server, the value would contain <code>\\n </code> and urllib3 would leave it untouched.",
+              "citations": []
+            },
+            {
+              "type": "paragraph",
+              "id": "b3",
+              "text": "The changelog says the fix prevents &quot;raw CRLF sequences&quot;, and the description says <code>HTTPMessage</code> &quot;no longer carries a raw CRLF after unfolding&quot;. Both claims are scoped to CRLF, so the bare-LF case is outside them.  ",
+              "citations": [
+                {
+                  "target": "diff:changelog-1362.bugfix.rst:1-3"
+                },
+                {
+                  "target": "desc:d-p6"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b4",
+              "text": "The socket test sends only <code>\\r\\n</code> terminators. Its final assertion, that no value contains <code>\\r</code> or <code>\\n</code>, is therefore only established for CRLF input. ",
+              "citations": [
+                {
+                  "target": "diff:test-with_dummyserver-test_socketlevel.py:99-137"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b5",
+              "text": "Nothing tests a lone <code>\\n</code>, a lone <code>\\r</code>, or a <code>\\r\\n</code> not followed by whitespace.",
+              "citations": []
+            }
+          ],
+          "undoStack": []
+        },
+        {
+          "id": "assessment-bare-lf",
+          "pageId": "f-critic-2",
+          "title": "Assessment",
+          "collapsed": false,
+          "revision": 1,
+          "blocks": [
+            {
+              "type": "paragraph",
+              "id": "b1",
+              "text": "I did not run the parser here, so the bare-LF behaviour is unverified. Confidence is medium.",
+              "citations": []
+            },
+            {
+              "type": "paragraph",
+              "id": "b2",
+              "text": "If it holds, the fix covers only one of two line-ending forms that <code>http.client</code> accepts. Some real servers send bare-LF folds. Those would still put a raw newline into <code>Set-Cookie</code> values, which is the exact symptom this PR targets.",
+              "citations": []
+            },
+            {
+              "type": "paragraph",
+              "id": "b3",
+              "text": "To close it, run <code>http.client</code> on a bare-LF folded response and see what the value contains. If it holds a raw <code>\\n</code>, either widen the pattern to <code>\\r?\\n</code> (and the fast-path check) or state in the changelog that only CRLF folds are handled. Add one socket test for the chosen behaviour.",
+              "citations": []
+            },
+            {
+              "type": "comment-link",
+              "id": "b-comment",
+              "diffRef": "diff:src-urllib3-connection.py:86",
+              "threadId": "t-sglf",
+              "citations": [
+                {
+                  "target": "diff:src-urllib3-connection.py:86"
+                }
+              ]
+            }
+          ],
+          "undoStack": []
+        }
+      ]
+    }
+  ],
+  "annotations": [
+    {
+      "id": "x-seed",
+      "type": "thread",
+      "anchor": {
+        "host": {
+          "kind": "block",
+          "blockId": "problem#b1"
+        },
+        "quotedText": "obs-fold",
+        "prefix": "header lines ( ",
+        "suffix": " ), where a",
+        "position": 0,
+        "version": 1
+      },
+      "open": true,
+      "pinned": true,
+      "post": false,
+      "replies": [
+        {
+          "id": "ans_seed1",
+          "seq": 1,
+          "kind": "explain",
+          "who": "agent",
+          "question": null,
+          "blocks": [
+            {
+              "type": "paragraph",
+              "id": "b1",
+              "text": "<code>http.client</code> doesn't unfold continuation lines when it parses a response. It stores each header value as the raw text of the field, and for a folded field that text still contains the line break and the indent. For the socket test's <code>Set-Cookie</code>, the stored value is <code>&quot;___utmvbtouVBFmB=gZg\\r\\n    XbNOjalT: Lte; path=/; Max-Age=900&quot;</code>. The value is one string, but it spans two lines.  ",
+              "citations": [
+                {
+                  "target": "desc:d-p1"
+                },
+                {
+                  "target": "diff:test-with_dummyserver-test_socketlevel.py:101-102"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b2",
+              "text": "<strong>Why this is a problem.</strong> The parser is faithful to the bytes the server sent. But a header value that contains <code>\\r\\n</code> breaks a basic assumption of HTTP/1.x, because <code>\\r\\n</code> is also the delimiter between field lines. Any consumer that writes the value back out can have that <code>\\r\\n</code> read as a real line break. RFC 9112 closes this gap by requiring the recipient to replace each <code>obs-fold</code> with a single space before using the value. Nothing in the old path did that. Before the change, <code>getresponse</code> copied <code>httplib_response.msg.items()</code> straight into <code>HTTPHeaderDict</code>. ",
+              "citations": [
+                {
+                  "target": "diff:src-urllib3-connection.py:647-651"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b3",
+              "text": "<strong>Where the change shows this behavior.</strong>",
+              "citations": []
+            },
+            {
+              "type": "list",
+              "id": "b4",
+              "ordered": false,
+              "items": [
+                {
+                  "html": "<code>_normalize_header_value</code> begins with <code>if &quot;\\r\\n&quot; not in value: return value</code>. That fast path only makes sense if parsed values can still contain <code>\\r\\n</code>. ",
+                  "citations": [
+                    {
+                      "target": "diff:src-urllib3-connection.py:85-88"
+                    }
+                  ]
+                },
+                {
+                  "html": "The unit test builds an <code>HTTPMessage</code> with <code>&quot;a=1 \\r\\n two&quot;</code> as a stored value and expects the cleanup to rewrite it. ",
+                  "citations": [
+                    {
+                      "target": "diff:test-test_connection.py:229"
+                    }
+                  ]
+                }
+              ],
+              "citations": [
+                {
+                  "target": "diff:src-urllib3-connection.py:85-88"
+                },
+                {
+                  "target": "diff:test-test_connection.py:229"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "b5",
+              "text": "<strong>What I haven't verified.</strong> This checkout has no stdlib source, and I didn't run the parser. The mechanism (the email parser behind <code>http.client</code> joining continuation lines without removing the line ending) comes from my knowledge of the stdlib and from the description. The tests above are consistent with it, but they don't prove it.",
+              "citations": []
+            },
+            {
+              "type": "paragraph",
+              "id": "b6",
+              "text": "The stored <code>HTTPMessage</code> is also what <code>_original_response.msg</code> exposes, so the raw <code>\\r\\n</code> sits in the object that cookie consumers read, not only in urllib3's copy. That is why the fix rewrites the message and doesn't just clean <code>HTTPHeaderDict</code>. ",
+              "citations": [
+                {
+                  "target": "diff:src-urllib3-connection.py:102-108"
+                }
+              ]
+            },
+            {
+              "type": "follow-up",
+              "id": "b7",
+              "items": [
+                {
+                  "label": "Does `http.client` keep the line ending when a folded line ends in a bare `\\n`?",
+                  "ask": "When `http.client` parses a folded header whose lines end in bare `\\n`, does the stored value contain `\\n` and would `_normalize_header_value` leave it untouched?"
+                },
+                {
+                  "label": "Where does the stdlib join continuation lines?",
+                  "ask": "Which part of `http.client`'s header parsing joins continuation lines into one value, and why does it keep the line ending?"
+                }
+              ],
+              "citations": []
+            }
+          ],
+          "revision": 1,
+          "undoStack": []
+        }
+      ]
+    },
+    {
+      "id": "t-seed",
+      "type": "thread",
+      "anchor": {
+        "host": {
+          "kind": "block",
+          "blockId": "central#b2"
+        },
+        "quotedText": "the original message",
+        "prefix": "headers on ",
+        "suffix": ", so the",
+        "position": 0,
+        "version": 1
+      },
+      "open": true,
+      "pinned": false,
+      "replies": [
+        {
+          "id": "ans_you_47b5cb",
+          "seq": 1,
+          "kind": "comment",
+          "who": "you",
+          "question": null,
+          "blocks": [
+            {
+              "type": "paragraph",
+              "id": "b1",
+              "text": "Is the rewritten message the same object downstream code already holds, or a copy?",
+              "citations": []
+            }
+          ],
+          "revision": 1,
+          "undoStack": []
+        }
+      ],
+      "post": false
+    },
+    {
+      "id": "t-sglf",
+      "type": "thread",
+      "anchor": {
+        "host": {
+          "kind": "diff-line",
+          "fileKey": "src-urllib3-connection.py",
+          "line": 86
+        },
+        "quotedText": "\"\\r\\n\" not in value",
+        "prefix": "",
+        "suffix": "",
+        "position": 0,
+        "version": 1
+      },
+      "open": true,
+      "pinned": false,
+      "replies": [
+        {
+          "id": "ans_agent_5l07yh",
+          "seq": 1,
+          "kind": "comment",
+          "who": "agent",
+          "question": null,
+          "blocks": [
+            {
+              "type": "paragraph",
+              "id": "b1",
+              "text": "http.client accepts lines ending in a bare \\n, so a folded header from such a server would leave '\\n ' in the value and skip both this fast path and the regex. Should the pattern use \\r?\\n? Please add a socket test with bare-LF folds, or state that only CRLF folds are handled.\n\n(Example comment for the demo)",
+              "citations": []
+            }
+          ],
+          "revision": 1,
+          "undoStack": [],
+          "suggested": true
+        }
+      ],
+      "post": false
+    },
+    {
+      "id": "t-sgperf",
+      "type": "thread",
+      "anchor": {
+        "host": {
+          "kind": "diff-line",
+          "fileKey": "test-test_connection.py",
+          "line": 220
+        },
+        "quotedText": "one  three",
+        "prefix": "",
+        "suffix": "",
+        "position": 0,
+        "version": 1
+      },
+      "open": true,
+      "pinned": false,
+      "replies": [
+        {
+          "id": "ans_agent_ink5dx",
+          "seq": 1,
+          "kind": "comment",
+          "who": "agent",
+          "question": null,
+          "blocks": [
+            {
+              "type": "paragraph",
+              "id": "b1",
+              "text": "The test at this line expects two spaces for adjacent folds, but the PR description says adjacent folds collapse to one space. Please align the description or the regex, and explain the lookbehind asymmetry (whitespace before a fold is absorbed, whitespace after a previous fold is not).\n\n(Example comment for the demo)",
+              "citations": []
+            }
+          ],
+          "revision": 1,
+          "undoStack": [],
+          "suggested": true
+        }
+      ],
+      "post": false
+    },
+    {
+      "id": "t-diff",
+      "type": "thread",
+      "anchor": {
+        "host": {
+          "kind": "diff-line",
+          "fileKey": "test-test_connection.py",
+          "line": 220
+        },
+        "quotedText": "one  three",
+        "prefix": "",
+        "suffix": "",
+        "position": 0,
+        "version": 1
+      },
+      "open": true,
+      "pinned": false,
+      "replies": [
+        {
+          "id": "ans_you_nb0q0v",
+          "seq": 1,
+          "kind": "comment",
+          "who": "you",
+          "question": null,
+          "blocks": [
+            {
+              "type": "paragraph",
+              "id": "b1",
+              "text": "Is the double space here intended?",
+              "citations": []
+            }
+          ],
+          "revision": 1,
+          "undoStack": []
+        }
+      ],
+      "post": false
+    }
+  ],
+  "hunkStates": [
+    {
+      "contentHash": "fa60105d7fcbe8fe",
+      "folded": false,
+      "reviewed": false
+    },
+    {
+      "contentHash": "b355d2096d4d7f39",
+      "folded": false,
+      "reviewed": false
+    },
+    {
+      "contentHash": "6cfb09ec98cba6ba",
+      "folded": false,
+      "reviewed": false
+    },
+    {
+      "contentHash": "92cf4ca541bdb0f2",
+      "folded": false,
+      "reviewed": false
+    },
+    {
+      "contentHash": "b33779988cee5f8a",
+      "folded": true,
+      "reviewed": true
+    },
+    {
+      "contentHash": "29382503b8689e5f",
+      "folded": false,
+      "reviewed": false
+    },
+    {
+      "contentHash": "949dda852e448b55",
+      "folded": false,
+      "reviewed": false
+    },
+    {
+      "contentHash": "d1c6f159e5ffb42d",
+      "folded": false,
+      "reviewed": false
+    }
+  ],
+  "fileStates": [],
+  "viewPrefs": {
+    "showExistingComments": false,
+    "existingCommentsCollapsed": false,
+    "hideLevel": "uninteresting"
+  },
+  "jobs": [
+    {
+      "id": "job-reader",
+      "kind": "reader",
+      "model": "fixture",
+      "effort": "",
+      "priority": 1,
+      "state": "done"
+    },
+    {
+      "id": "job-critic",
+      "kind": "critic",
+      "model": "fixture",
+      "effort": "",
+      "priority": 2,
+      "state": "done"
+    },
+    {
+      "id": "job-hunk-pass",
+      "kind": "hunk-pass",
+      "model": "fixture",
+      "effort": "",
+      "priority": 3,
+      "state": "done"
+    }
+  ],
+  "contributions": [],
+  "logTail": [],
+  "rev": 1
+}
