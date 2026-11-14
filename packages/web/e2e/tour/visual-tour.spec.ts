@@ -945,7 +945,9 @@ test.describe("visual tour passes", () => {
     await expect(seedCard.locator(".ctl").first()).toBeVisible({ timeout: 15_000 });
     await waitForJobsIdle(svc.origin, svc.token, reviewId);
     await stepChecks(page, "guide-pinned");
-    await shot(page, "guide-pinned", suffix, "three pieces");
+    // Issue #405 drops the build-up card that carried "three pieces";
+    // the pinned reply names the raw stored value instead.
+    await shot(page, "guide-pinned", suffix, "The problem");
 
     // A reply inside the pinned thread (guide): Explain on selected text
     // inside the reply appends to the same thread (flat, #273).
