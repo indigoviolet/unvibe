@@ -7,8 +7,6 @@ import {
   BUILT_IN_PERSONA_ID,
   CLARITY_PERSONA,
   CLARITY_PERSONA_ID,
-  TEACH_PERSONA,
-  TEACH_PERSONA_ID,
   GUIDE_PERSONA,
   GUIDE_PERSONA_ID,
   PERSONA_COLORS,
@@ -127,21 +125,11 @@ describe("built-in Second opinion", () => {
   it("defaultPersonas returns a fresh seed list", () => {
     const a = defaultPersonas();
     const b = defaultPersonas();
-    expect(a).toEqual([GUIDE_PERSONA, SECOND_OPINION_PERSONA, CLARITY_PERSONA, TEACH_PERSONA]);
+    expect(a).toEqual([GUIDE_PERSONA, SECOND_OPINION_PERSONA, CLARITY_PERSONA]);
     expect(a).not.toBe(b);
     expect(a[0]).not.toBe(GUIDE_PERSONA);
     expect(a[1]).not.toBe(SECOND_OPINION_PERSONA);
     expect(a[2]).not.toBe(CLARITY_PERSONA);
-    expect(a[3]).not.toBe(TEACH_PERSONA);
-  });
-
-  it("the built-in Teach persona follows main, is valid and has its own colour (#397)", () => {
-    expect(TEACH_PERSONA.id).toBe(TEACH_PERSONA_ID);
-    expect(TEACH_PERSONA.id).toBe("teach");
-    expect(TEACH_PERSONA.followMain).toBe(true);
-    expect(TEACH_PERSONA.enabled).toBe(true);
-    expect(TEACH_PERSONA.color).toBe(PERSONA_COLORS[3]);
-    expect(validatePersona(TEACH_PERSONA)).toEqual([]);
   });
 });
 
@@ -198,7 +186,7 @@ describe("built-in Guide (issue #379)", () => {
 
   it("seeds first, leaving Second opinion and Clarity on their colours", () => {
     const seed = defaultPersonas();
-    expect(seed.map((p) => p.id)).toEqual(["guide", "second-opinion", "clarity", "teach"]);
+    expect(seed.map((p) => p.id)).toEqual(["guide", "second-opinion", "clarity"]);
     expect(seed[0]).toMatchObject({ id: GUIDE_PERSONA_ID });
     expect(seed[1]).toMatchObject({ id: "second-opinion", color: PERSONA_COLORS[0] });
     expect(seed[2]).toMatchObject({ id: "clarity", color: PERSONA_COLORS[1] });

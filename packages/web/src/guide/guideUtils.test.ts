@@ -70,7 +70,6 @@ describe("contents model (PRD §4.3)", () => {
     const root = mkPage("root", [
       mkCard("problem", "root", { title: "The problem" }),
       mkCard("central", "root", { title: "The central change" }),
-      mkCard("buildup", "root", { title: "How it's built up" }),
       mkCard("decisions", "root", { title: "Decisions and questions" }),
       mkCard("names", "root", { title: "Names" }),
     ], "root");
@@ -78,7 +77,6 @@ describe("contents model (PRD §4.3)", () => {
     expect(cards.map((c) => [c.id, c.title])).toEqual([
       ["problem", "The problem"],
       ["central", "The central change"],
-      ["buildup", "How it's built up"],
       ["decisions", "Decisions and questions"],
       ["names", "Names"],
     ]);

@@ -184,7 +184,6 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
     const t = (title ?? "").trim().toLowerCase();
     if (t === "the problem") return "problem";
     if (t === "the central idea" || t === "the central change") return "central";
-    if (t === "how it's built up") return "buildup";
     if (t === "decisions and questions") return "decisions";
     if (t === "names") return "names";
     return `reader-${i}`;

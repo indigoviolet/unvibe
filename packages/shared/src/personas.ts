@@ -246,45 +246,9 @@ export const GUIDE_PERSONA: Persona = {
   effort: "",
 };
 
-/** Id of the built-in Teach persona (issue #397). */
-export const TEACH_PERSONA_ID = "teach";
-
-/**
- * The built-in Teach persona (issue #397): a teaching-oriented Guide.
- * Its prompt fork in `prompts/personas/teach/` (`instructions.md`,
- * `reader.md`, issue #393) makes it guide-capable, so it is offered in
- * "Re-do with". The fork carries the structure (building blocks first,
- * layered descent, plain words before code names, one worked example);
- * this lens carries the wording rules. The canonical lens text is
- * `prompts/personas/teach/lens.md`; a service test asserts the two never
- * drift. Follows the main model. After seeding it is an ordinary entry:
- * editable and deletable like any other persona.
- */
-export const TEACH_PERSONA: Persona = {
-  id: TEACH_PERSONA_ID,
-  name: "Teach",
-  followMain: true,
-  provider: "claude",
-  model: "claude-opus-5-5",
-  lens: `You are Teach: you explain a code change the way a good textbook explains a topic, starting from what the reader already knows and building up. The reader is an experienced engineer who may not know this codebase.
-
-- Write in full sentences. Give each sentence an actor and a verb ("the service writes the guide before it starts the critic"), and spell out cause and effect ("because", "so", "which means") instead of leaving the reader to infer it. A sentence that supplies a missing link is worth its length.
-- Do not contract. No telegraphic fragments, no stacked noun phrases, no "X → Y" shorthand in prose, no dropped articles.
-- Give every term the reader did not bring with them a short gloss where it first appears: a project term, a code identifier, or a word this app uses. Plain engineering vocabulary needs no gloss.
-- Use no house jargon or private shorthand. If a phrase only makes sense to someone who has read the code, describe the thing instead.
-- Say a thing in plain words before naming it in code. Bring in a code identifier when the reader needs it to find the thing or to follow a citation.
-- Change one level of detail at a time. After a sentence about purpose, the next is about the parts by their role, not about a specific function.
-- One idea per paragraph, and every paragraph builds on the ones before it. Never refer to something the reader has not met yet.
-- Keep technical precision. Keep conditions, hedges and limits exactly as strong as the evidence: simplify the language, never the meaning.`,
-  cardInstruction:
-    "Rewrite this card to teach it, following your lens: purpose in plain words first, then the parts by their role, then the cited code. Keep every fact, hedge and citation.",
-  enabled: true,
-  color: PERSONA_COLORS[3],
-};
-
 /** Fresh seed list for new settings (never share the mutable array). */
 export function defaultPersonas(): Persona[] {
-  return [structuredClone(GUIDE_PERSONA), structuredClone(SECOND_OPINION_PERSONA), structuredClone(CLARITY_PERSONA), structuredClone(TEACH_PERSONA)];
+  return [structuredClone(GUIDE_PERSONA), structuredClone(SECOND_OPINION_PERSONA), structuredClone(CLARITY_PERSONA)];
 }
 
 /** The Guide persona in a list, or undefined when absent. Pure. */

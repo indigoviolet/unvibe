@@ -852,7 +852,7 @@ test.describe("J374 margin pill", () => {
     svc = await startService(dataDir, { agent: "replay" });
     reviewId = await createDemoReview(svc);
     // One pill per block: problem#b1's threads (first-line, unquoted,
-    // mid-paragraph) share one pill; problem#b2 and buildup's list block
+    // mid-paragraph) share one pill; problem#b2 and decisions' list block
     // each get one single-thread pill. Guide comments start closed; the
     // pills show regardless.
     const snap = await apiJson(svc, "GET", `/api/reviews/${reviewId}`);
@@ -863,7 +863,7 @@ test.describe("J374 margin pill", () => {
       { name: "unquoted", blockId: `problem#${card("problem")?.blocks[0]?.id}`, quote: "", text: "Unquoted note" },
       { name: "mid", blockId: `problem#${card("problem")?.blocks[0]?.id}`, quote: "value continues on the next line", text: "Mid-paragraph note" },
       { name: "single", blockId: `problem#${card("problem")?.blocks[1]?.id}`, quote: "built the headers", text: "Second paragraph note" },
-      { name: "list", blockId: `buildup#${card("buildup")?.blocks.find((b) => b.id === "b2")?.id}`, quote: "They return early when a value has no CRLF.", text: "List note" },
+      { name: "list", blockId: `decisions#${card("decisions")?.blocks.find((b) => b.id === "b2")?.id}`, quote: "Rewrite by delete and re-add.", text: "List note" },
     ];
     for (const seed of seeds) {
       const made = await apiJson(svc, "POST", `/api/reviews/${reviewId}/comments`, {
@@ -893,7 +893,7 @@ test.describe("J374 margin pill", () => {
       const suffix = combo.name;
       await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
       await expect(page.locator("#C-problem")).toBeVisible({ timeout: 30_000 });
-      await expect(page.locator("#C-buildup")).toBeVisible({ timeout: 30_000 });
+      await expect(page.locator("#C-decisions")).toBeVisible({ timeout: 30_000 });
       await page.evaluate(() => document.fonts.ready).catch(() => {});
 
       // Issue #374: one pill per block — the b1 threads (first-line,
@@ -956,7 +956,7 @@ test.describe("J374 margin pill", () => {
         await expect(page.locator("#C-problem")).not.toHaveClass(/collapsed/, { timeout: 10_000 });
 
         // List blocks get the same gutter treatment.
-        const list = page.locator(`#C-buildup [data-thr-margin~="${ids.list}"]`);
+        const list = page.locator(`#C-decisions [data-thr-margin~="${ids.list}"]`);
         await expect(list).toBeVisible({ timeout: 15_000 });
         await list.evaluate((el) => el.scrollIntoView({ block: "center" }));
         await settleScroll(page);

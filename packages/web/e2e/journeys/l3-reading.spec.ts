@@ -1697,7 +1697,9 @@ test.describe("L3 demo guide reading", () => {
         () => snapshot(criticReview),
         (sn) => {
           const root = sn.pages.find((p) => p.id === "root");
-          return !!root && root.cards.length >= 8 && root.cards.every((c) => !c.pending);
+          // Issue #405 drops the buildup card: 3 guide cards + 4 filled
+          // go-deeper cards.
+          return !!root && root.cards.length >= 7 && root.cards.every((c) => !c.pending);
         },
       );
       const root = snap.pages.find((p) => p.id === "root")!;
@@ -2959,8 +2961,9 @@ const D2_LIFTED_SOURCE = [
 ].join("\n");
 
 const D2_LIFTED_HASH = diagramHash(canonicalizeD2Source(D2_LIFTED_SOURCE), D2_MIN_VERSION);
-// Issue #341: the re-recorded fixture pre-renders two on-demand diagrams.
-const D2_SEEDED_HASHES = new Set([D2_SEED_HASH, "22365f71688744f3"]);
+// Issue #341: the re-recorded fixture pre-renders the central on-demand
+// diagram (#405: the buildup diagram is gone with its card).
+const D2_SEEDED_HASHES = new Set([D2_SEED_HASH]);
 
 function seedD2Review(dataDir: string): void {
   const snapshot = JSON.parse(readFileSync(path.join(D2_FIXTURE_DIR, "snapshot.json"), "utf8")) as {

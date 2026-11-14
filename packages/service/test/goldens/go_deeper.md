@@ -1,7 +1,7 @@
 # Go deeper
 
 The reader asked to generate one of the review's placeholder cards. Write
-its content at standard depth.
+its content.
 
 ## Direction
 
@@ -30,9 +30,8 @@ Use these exact terms for the things they name: call each thing by this exact te
 - Explain, do not just restate: where the direction touches a decision,
   cover what was chosen, what else was possible, why this one and what
   it costs — naming an alternative only when it is real for this code,
-  and saying when a reason is inferred. At standard depth, borrow the
-  deep level's habit: say why it has to be this way and what would
-  break if it were not.
+  and saying when a reason is inferred. Say why it has to be this way
+  and what would break if it were not.
 - Every paragraph that states something about the change carries its
   citations. Fetch what you need with `get_hunk` or `get_code` first.
 - If the direction needs a diagram, use a fenced `d2` block per the D2

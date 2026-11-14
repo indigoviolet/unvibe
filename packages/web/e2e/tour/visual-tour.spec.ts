@@ -917,9 +917,9 @@ test.describe("visual tour passes", () => {
       await pick.click();
       await expect(page.locator('[data-filterchip="plotline"]')).toHaveCount(0, { timeout: 15_000 });
     }
-    // Explain-first guide (#198): the build-up and decisions cards sit
-    // after the central change in the settled reader order.
-    await expect(page.locator("#C-buildup")).toBeVisible({ timeout: 15_000 });
+    // Guide order (#198, #405: no build-up card): the decisions card
+    // sits after the central change in the settled reader order.
+    await expect(page.locator("#C-buildup")).toHaveCount(0);
     await expect(page.locator("#C-decisions")).toBeVisible({ timeout: 15_000 });
     await page.locator("#C-decisions").scrollIntoViewIfNeeded();
     // Issue #341: the re-recorded Decisions card uses **Bold** section
@@ -960,7 +960,9 @@ test.describe("visual tour passes", () => {
     await expect(seedCard.locator(".ctl").first()).toBeVisible({ timeout: 15_000 });
     await waitForJobsIdle(svc.origin, svc.token, reviewId);
     await stepChecks(page, "guide-pinned");
-    await shot(page, "guide-pinned", suffix, "three pieces");
+    // Issue #405 drops the build-up card that carried "three pieces";
+    // the pinned reply names the raw stored value instead.
+    await shot(page, "guide-pinned", suffix, "The problem");
 
     // A reply inside the pinned thread (guide): Explain on selected text
     // inside the reply appends to the same thread (flat, #273).
@@ -2741,14 +2743,15 @@ test("visual tour writing state (slow replay)", async ({ page }) => {
       .toBe(true);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${slow.origin}/review/${rid}?token=${slow.token}`);
-    // Issue #341: explain "three pieces" on the build-up card. No explain
-    // pattern matches a build-up-anchored prompt, so replay answers with
-    // the first explain entry (the recorded obs-fold explain) — still a
-    // real recording while the writing state is captured.
-    await expect(page.locator("#C-buildup")).toBeVisible({ timeout: 60_000 });
-    await selectText(page, "#C-buildup", "three pieces");
+    // Issue #341: explain "before anything reads the headers" on the
+    // central card (#405: the build-up card is gone). No explain pattern
+    // matches it, so replay answers with the first explain entry (the
+    // recorded obs-fold explain) — still a real recording while the
+    // writing state is captured.
+    await expect(page.locator("#C-central")).toBeVisible({ timeout: 60_000 });
+    await selectText(page, "#C-central", "before anything reads the headers");
     await page.locator('#selbar [data-act="explain"]').click();
-    const card = page.locator("#C-buildup [data-thread]").first();
+    const card = page.locator("#C-central [data-thread]").first();
     await expect(card).toBeVisible({ timeout: 15_000 });
     await expect(card.locator(".working")).toBeVisible({ timeout: 15_000 });
     // While writing: no answer toolbar, no reply box (#203), pinned (#204).

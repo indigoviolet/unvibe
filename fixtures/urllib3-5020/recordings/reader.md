@@ -12,16 +12,6 @@ The change unfolds every `obs-fold` right after parsing, before anything reads t
 
 `_normalize_header_values` applies this to the `HTTPMessage` items. If any value changed, it deletes and re-adds the headers on the original message, so the message and urllib3's `HTTPHeaderDict` agree. It returns the cleaned items, and `getresponse` builds `HTTPHeaderDict` from them. [[diff:src-urllib3-connection.py:91-110]] [[diff:src-urllib3-connection.py:647-651]]
 
-## How it's built up
-
-There is one plotline. It has three pieces:
-
-1. The regex and the single-value helper `_normalize_header_value`. They return early when a value has no CRLF. [[diff:src-urllib3-connection.py:80-88]]
-2. The message-level helper `_normalize_header_values`. It rewrites the message only if something changed, and it returns the items. [[diff:src-urllib3-connection.py:91-110]]
-3. The call in `getresponse`, which feeds the cleaned items to `HTTPHeaderDict`. [[diff:src-urllib3-connection.py:647-651]]
-
-The tests follow the same layers. Unit tests cover the single value and the message: order, duplicates, payload, policy and defects. A socket-level test covers the whole path, and a changelog fragment is added. [[diff:test-test_connection.py:214-249]] [[diff:test-with_dummyserver-test_socketlevel.py:92-146]] [[diff:changelog-1362.bugfix.rst:1-3]]
-
 ## Decisions and questions
 
 **Decisions**

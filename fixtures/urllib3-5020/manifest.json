@@ -124,11 +124,6 @@
       "file": "diagram-central.md"
     },
     {
-      "kind": "diagram",
-      "key": "buildup",
-      "file": "diagram-buildup.md"
-    },
-    {
       "kind": "explain",
       "key": "obsfold",
       "pattern": "keeps those raw CRLFs inside the HTTPMessage val",
@@ -259,11 +254,6 @@
       "file": "persona-central-clarity.md"
     },
     {
-      "kind": "persona",
-      "key": "central:teach",
-      "file": "persona-central-teach.md"
-    },
-    {
       "kind": "slower",
       "key": "central:1",
       "file": "slower-central-press1.md"
@@ -307,11 +297,6 @@
       "kind": "slower",
       "key": "central:terms:1",
       "file": "slower-central-terms1.md"
-    },
-    {
-      "kind": "slower",
-      "key": "buildup:terms:1",
-      "file": "slower-buildup-terms1.md"
     },
     {
       "kind": "slower",

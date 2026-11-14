@@ -61,10 +61,6 @@
     {
       "cardId": "central",
       "direction": "deeper"
-    },
-    {
-      "cardId": "buildup",
-      "direction": "deeper"
     }
   ],
   "examples": [
@@ -72,8 +68,7 @@
     "central"
   ],
   "diagram": [
-    "central",
-    "buildup"
+    "central"
   ],
   "explain": [
     {
@@ -114,22 +109,6 @@
       "anchor": {
         "where": "block",
         "blockId": "central#b2"
-      }
-    },
-    {
-      "key": "plotline",
-      "quote": "it builds up in three pieces",
-      "anchor": {
-        "where": "block",
-        "blockId": "buildup#b1"
-      }
-    },
-    {
-      "key": "changelog",
-      "quote": "A changelog fragment records the fix",
-      "anchor": {
-        "where": "block",
-        "blockId": "buildup#b3"
       }
     },
     {
@@ -204,15 +183,6 @@
       }
     },
     {
-      "key": "tests",
-      "quote": "Unit tests cover the single-value function",
-      "message": "Which cases do the unit tests pin, and what fold shapes have no test?",
-      "anchor": {
-        "where": "block",
-        "blockId": "buildup#b3"
-      }
-    },
-    {
       "key": "order",
       "quote": "interleaved duplicates",
       "message": "Only one unit test checks duplicates \u2014 is that enough to trust the ordering?",
@@ -256,15 +226,6 @@
       "anchor": {
         "where": "block",
         "blockId": "decisions#b6"
-      }
-    },
-    {
-      "key": "socket",
-      "quote": "A socket-level test covers real folded responses",
-      "message": "What does the socket-level test prove that the unit tests do not?",
-      "anchor": {
-        "where": "block",
-        "blockId": "buildup#b3"
       }
     }
   ],

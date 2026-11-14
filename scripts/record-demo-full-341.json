@@ -39,22 +39,6 @@
       "direction": "deeper"
     },
     {
-      "cardId": "buildup",
-      "direction": "simpler"
-    },
-    {
-      "cardId": "buildup",
-      "direction": "deeper"
-    },
-    {
-      "cardId": "buildup",
-      "direction": "deeper"
-    },
-    {
-      "cardId": "buildup",
-      "direction": "deeper"
-    },
-    {
       "cardId": "decisions",
       "direction": "simpler"
     },
@@ -206,8 +190,7 @@
     "g-tests"
   ],
   "diagram": [
-    "central",
-    "buildup"
+    "central"
   ],
   "explain": [
     {
@@ -319,15 +302,6 @@
       "anchor": {
         "where": "block",
         "blockId": "g-tests#b4"
-      }
-    },
-    {
-      "key": "socket",
-      "quote": "A socket-level test covers the whole path",
-      "message": "What does the socket-level test prove that the unit tests do not?",
-      "anchor": {
-        "where": "block",
-        "blockId": "buildup#b3"
       }
     },
     {

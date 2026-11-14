@@ -166,10 +166,11 @@ test.describe("L2 open and read", () => {
       await expect.soft(page.locator("#page .doc h1.title")).toContainText("Unfold obsolete folded response headers", { timeout: 30_000 });
       await expect.soft(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
       await expect.soft(page.locator("#C-problem")).toBeVisible();
-      // Explain-first reader order (#198/#212): build-up, then the renamed
-      // decisions card. The demo introduces no name with reach (only
-      // private helpers), so it correctly has no Names card.
-      await expect.soft(page.locator("#C-buildup")).toBeVisible();
+      // Reader order (#198/#212, #405: no build-up card): problem, the
+      // central change, then the renamed decisions card. The demo
+      // introduces no name with reach (only private helpers), so it
+      // correctly has no Names card.
+      await expect.soft(page.locator("#C-buildup")).toHaveCount(0);
       await expect.soft(page.locator("#C-decisions")).toBeVisible();
       await expect.soft(page.locator("#C-decisions")).toContainText("Decisions and questions");
       await expect.soft(page.locator("#C-names")).toHaveCount(0);

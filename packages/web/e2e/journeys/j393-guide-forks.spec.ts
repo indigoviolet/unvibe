@@ -252,9 +252,10 @@ test.describe("J393 guide forks", () => {
     await page.getByRole("button", { name: "Re-do guide" }).click();
     const menu = page.getByTestId("redo-menu");
     await expect(menu).toBeVisible();
-    // The built-in Teach persona (#397) is seeded and its fork ships in
-    // the repo prompts the fixture copies, so it is offered too.
-    await expect(menu.getByRole("menuitem", { name: "Re-do with Teach" })).toBeVisible();
+    // Issue #405 removes the Teach built-in; the Tutor fixture fork is
+    // the only other guide-capable persona, so it is the only menu item
+    // beside the plain re-do.
+    await expect(menu.getByRole("menuitem", { name: "Re-do with Tutor" })).toBeVisible();
     await menu.getByRole("menuitem", { name: "Re-do with Tutor" }).click();
     await expect(page.getByText("Confirm re-do with Tutor")).toBeVisible();
     await page.getByRole("button", { name: "Confirm re-do with Tutor" }).click();
