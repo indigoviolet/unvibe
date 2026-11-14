@@ -1697,7 +1697,9 @@ test.describe("L3 demo guide reading", () => {
         () => snapshot(criticReview),
         (sn) => {
           const root = sn.pages.find((p) => p.id === "root");
-          return !!root && root.cards.length >= 8 && root.cards.every((c) => !c.pending);
+          // Issue #405 drops the buildup card: 3 guide cards + 4 filled
+          // go-deeper cards.
+          return !!root && root.cards.length >= 7 && root.cards.every((c) => !c.pending);
         },
       );
       const root = snap.pages.find((p) => p.id === "root")!;

@@ -228,7 +228,7 @@ test.describe("L8 personas settings", () => {
       const seed = await personas(s);
       const added = await apiJson(s, "PUT", "/api/settings", { personas: [...seed, custom] });
       expect(added.status).toBe(200);
-      expect((added.json as { personas: PersonaBody[] }).personas).toHaveLength(5);
+      expect((added.json as { personas: PersonaBody[] }).personas).toHaveLength(4);
       await gotoPersonas(page, s);
       const row = page.getByTestId("persona-perf-sceptic");
       await expect.soft(row).toBeVisible({ timeout: 15_000 });
