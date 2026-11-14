@@ -902,6 +902,21 @@ test.describe("visual tour passes", () => {
     await page.locator(".plotlines").scrollIntoViewIfNeeded();
     await stepChecks(page, "guide-plotlines");
     await shot(page, "guide-plotlines", suffix, "Plotlines");
+    // #406: the plotlines card with one plotline selected — the picked
+    // row reads selected (existing sunk-row tint plus aria-current).
+    // Default frame set (#362): 1440px light Default theme only.
+    if (combo.name === "1440-light") {
+      const pick = page.locator(".plotlines [data-plotpick]").first();
+      await pick.click();
+      await expect(page.locator('[data-filterchip="plotline"]')).toContainText("Plotline:", { timeout: 15_000 });
+      await expect(pick).toHaveAttribute("aria-current", "true");
+      await page.locator(".plotlines").scrollIntoViewIfNeeded();
+      await stepChecks(page, "guide-plotlines-selected");
+      await shot(page, "guide-plotlines-selected", suffix, "Plotlines");
+      // Clear the filter so the diff shots below stay unfiltered.
+      await pick.click();
+      await expect(page.locator('[data-filterchip="plotline"]')).toHaveCount(0, { timeout: 15_000 });
+    }
     // Explain-first guide (#198): the build-up and decisions cards sit
     // after the central change in the settled reader order.
     await expect(page.locator("#C-buildup")).toBeVisible({ timeout: 15_000 });
