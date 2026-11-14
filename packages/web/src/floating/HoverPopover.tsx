@@ -51,7 +51,7 @@ function renderMsgs(msgs: import("@unvibe/shared").Reply[]): string {
       const text = m.kind === "comment"
         ? (m.blocks ?? []).map((b) => b.type === "paragraph" ? b.text : "").join(" ")
         : (m.question ?? "");
-      return `<div class="msg"><span class="av ${av}" role="img" aria-label="${name}" data-tip="${name}"><svg class="ic" viewBox="0 0 16 16" aria-hidden="true">${inner}</svg></span><div><p>${tick(text ?? "")}</p></div></div>`;
+      return `<div class="msg"><span class="av ${av}" role="img" aria-label="${name}" data-tip="${name}"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${inner}</svg></span><div><p>${tick(text ?? "")}</p></div></div>`;
     })
     .join("");
 }
@@ -130,7 +130,7 @@ function previewExpansion(expansion: Thread | undefined): string {
       : `<span class="hint">Writing explanation</span>`;
   return (
     `<span class="pv-thr">` +
-    `<span class="av ai" role="img" aria-label="Agent"><svg class="ic" viewBox="0 0 16 16" aria-hidden="true">${SPARK_SVG_INNER}</svg></span>` +
+    `<span class="av ai" role="img" aria-label="Agent"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${SPARK_SVG_INNER}</svg></span>` +
     `<span class="kind kind-${kind}">${esc(kind)}</span>` +
     `<span class="hint">${count} ${count === 1 ? "reply" : "replies"}</span></span>` +
     `<b>“${esc(expansion.anchor.quotedText)}”</b>${body}`
