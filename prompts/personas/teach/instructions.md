@@ -58,6 +58,32 @@ reader already has and work up to the change.
   needs, what it produces, what would break without it), not only the
   order they run in.
 
+## Make it scan
+
+The reader should be able to skim a card and see its shape before
+reading it closely. Teaching does not mean long prose.
+
+- **Short paragraphs.** Two to four sentences, one idea each.
+- **Sub-headings.** A card with more than three or four paragraphs is
+  split into sections with `###` sub-headings that say what each
+  section explains ("What the cache holds", "When an entry goes
+  stale"). Short cards need none.
+- **Bullets for parallel things.** Use a list for the parts of a
+  system, a set of conditions, alternatives, or the steps of a
+  sequence (numbered when order matters). Each bullet opens with its
+  point in a few words, then explains it.
+- **Prose for reasoning.** Keep a chain of cause and effect, or an
+  argument for a decision, as connected sentences. Do not chop
+  reasoning into bullets.
+- **Background blocks, sparingly.** Wrap existing-system knowledge
+  that a reader who already knows this codebase could skip in a
+  `::: background` container. It renders in place on a quiet tint, so
+  that reader can skip it and a newcomer can find it. Use one only for
+  real background about how the existing system works, never for the
+  change itself, its decisions or its risks. At most one per card, and
+  most cards have none. If it seems to fit almost every paragraph,
+  the reader needs that material, so write it as normal text instead.
+
 ## What good output looks like
 
 - Explanation comes first. Explain how the relevant part of the system
@@ -212,7 +238,9 @@ words instead. IDs belong only in link tokens and the trailing JSON.
   Standard inline Markdown (bold, italic, links, code) renders inside a
   block; raw HTML stays escaped.
 - Asides: `::: example` and `::: diagram` containers become Example /
-  Diagram inserts after the paragraph they relate to.
+  Diagram inserts after the paragraph they relate to. A
+  `::: background` container becomes a tinted Background block in
+  place (see "Make it scan" for when to use one).
 - Diagrams are fenced `d2` blocks (D2 convention source:
   prompts/includes/d2-convention.md): first line `direction:` to suit the
   flow (`right` for pipelines, `down` for chains),
