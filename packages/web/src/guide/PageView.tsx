@@ -299,6 +299,7 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
                       role: "button",
                       tabIndex: 0,
                       "aria-pressed": active,
+                      "aria-current": active ? "true" : undefined,
                       "data-plotpick": r.id,
                       "data-tip": active ? "Show all hunks" : `Show only ${stripCodeSpans(r.name)}`,
                       onClick: () => pick(r.id, r.ref),
@@ -318,8 +319,12 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
                 }
                 meta={
                   <>
+                    {/* Issue #406: the summary below carries no tooltip — it
+                      would repeat the row's own text verbatim. The row keeps
+                      its action hint ("Show only …") and the name keeps
+                      its full-name tooltip (#353). */}
                     {r.desc ? (
-                      <span className="pldesc" data-tip={stripCodeSpans(r.desc)}>
+                      <span className="pldesc">
                         <InlineCode text={r.desc} />
                       </span>
                     ) : null}
