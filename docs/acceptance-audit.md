@@ -4461,6 +4461,31 @@ one-variant union today).
   `redo-with-menu`, `redo-with-confirm`, `fork-drift` (inspected).
   Full gates not yet run.
 
+## Addendum: #401 — Default guide persona (branch `feat/401-default-guide`)
+
+- **Setting:** `defaultGuidePersonaId` (default `"guide"`) on
+  `Settings`, a per-key settings row (no `DATA_FORMAT` change).
+  Settings → Personas gets one `Default guide` picker listing the
+  enabled guide-capable personas (Guide, Teach, any fork with
+  `reader.md`); new reviews and plain Re-do guide runs record it
+  (`POST /api/reviews`, extension open, `POST /api/reviews/:id/redo`
+  with no `personaId`), while `Re-do with <persona>` still picks
+  explicitly. Document and demo reviews keep `guide`.
+- **Validation + fallback:** saving a default that is unknown,
+  disabled, or not guide-capable is a 400 naming the persona (checked
+  against the personas list the update leaves behind). Read sites
+  resolve the effective default at read time and never write it back:
+  a deleted, disabled, or de-forked default resolves to Guide, with a
+  one-line notice in Settings — a guide never fails to start because
+  of it.
+- Evidence: `packages/service/test/default-guide-401.test.ts`
+  (shape, capability 400s, read-time fallback, create/redo default
+  resolution), real-service journey `e2e/journeys/j393-guide-forks.spec.ts`
+  (default Tutor: new review runs the fork `reader.md` on the Tutor
+  model, plain Re-do re-runs it, Re-do with Guide stays explicit),
+  tour frame `personas-default-guide-1440-light` (inspected).
+  Full gates not yet run.
+
 ## Addendum: #398 — Help me understand replaces the body wholesale (branch `fix/398-slower-replace-body`)
 
 - **Wholesale replacement (§4.4):** a "Help me understand" press replaces
