@@ -259,6 +259,11 @@
       "file": "persona-central-clarity.md"
     },
     {
+      "kind": "persona",
+      "key": "central:teach",
+      "file": "persona-central-teach.md"
+    },
+    {
       "kind": "slower",
       "key": "central:1",
       "file": "slower-central-press1.md"
