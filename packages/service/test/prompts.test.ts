@@ -113,7 +113,7 @@ describe("repo prompts/ directory", () => {
     const lib = loadTemplatesDirSync(REPO_PROMPTS);
     const reader = lib.get("reader")?.body ?? "";
     const instructions = lib.get("instructions")?.body ?? "";
-    expect(reader).toContain("The first paragraph alone states the");
+    expect(reader).toContain("Open with the building blocks");
     expect(reader).not.toContain("need to read on");
     expect(instructions).toContain("Never address the reader about how to read the guide");
     expect(instructions).toContain('"TL;DR" framings');
@@ -143,7 +143,7 @@ describe("repo prompts/ directory", () => {
     }
   });
 
-  it("regularizer prompts: renamed card, Names, critic lens, tool preference (#212/#211)", () => {
+  it("teach-guide prompts: renamed card, Names, critic lens, tool preference (#212/#211/#405)", () => {
     const lib = loadTemplatesDirSync(REPO_PROMPTS);
     const instructions = lib.get("instructions")?.body ?? "";
     const reader = lib.get("reader")?.body ?? "";
@@ -151,19 +151,25 @@ describe("repo prompts/ directory", () => {
     const accessFull = lib.get("access-full")?.body ?? "";
     const hunk = lib.get("hunk_pass")?.body ?? "";
     const ask = lib.get("ask")?.body ?? "";
-    expect(instructions).toContain("system's regularizer");
+    // Issue #405: Teach's text is the only guide prompt set — the old
+    // regularizer wording is gone, replaced by the teaching brief.
+    expect(instructions).toContain("Your first job is to teach");
+    expect(instructions).toContain("## How to teach");
+    expect(instructions).toContain("## How to write");
+    expect(instructions).toContain("## Make it scan");
+    expect(instructions).not.toContain("system's regularizer");
     expect(instructions).toContain("get_hunk");
     expect(instructions).toContain("never to re-derive the diff");
     expect(reader).toContain("Decisions and questions");
     expect(reader).not.toContain("Decisions and alternatives");
-    expect(reader).toContain("Interfaces with reach");
+    expect(reader).toContain("Interfaces other code depends on");
     expect(reader).toContain("Known uncertainties");
     expect(reader).toContain("also stay in `open_questions`");
     expect(reader).toContain("**Names.**");
     expect(reader).toContain("Leave out");
     expect(reader).toContain("private helpers and plumbing");
     expect(reader).toContain("follows its effects");
-    expect(reader).toContain("its footprint");
+    expect(reader).toContain("what it costs the system");
     expect(reader).toContain("never to re-derive the diff");
     expect(critic).toContain("Overfitting");
     expect(critic).toContain("widened interface for one caller");
@@ -192,7 +198,7 @@ describe("repo prompts/ directory", () => {
     expect(reader).toContain("one card per plotline");
     // Decisions parts in owner order; "What it adds and removes" gone.
     expect(reader).not.toContain("What it adds and removes");
-    const order = ["- **Decisions:**", "- **Invariants:**", "- **Known uncertainties:**", "- **Interfaces with reach:**"].map((s) => reader.indexOf(s));
+    const order = ["- **Decisions:**", "- **Invariants:**", "- **Known uncertainties:**", "- **Interfaces other code depends on:"].map((s) => reader.indexOf(s));
     expect(order.every((i) => i >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
     // Second-way signal lives in Decisions, with no inventories.

@@ -444,7 +444,7 @@ describe("ReviewBar", () => {
         JSON.stringify({
           forks: [
             { personaId: "guide", name: "Guide", enabled: true, guideCapable: false, drifted: [] },
-            { personaId: "teach", name: "Teach", enabled: true, guideCapable: true, drifted: [] },
+            { personaId: "tutor", name: "Tutor", enabled: true, guideCapable: true, drifted: [] },
             { personaId: "quiet", name: "Quiet", enabled: false, guideCapable: true, drifted: [] },
           ],
         }),
@@ -455,16 +455,16 @@ describe("ReviewBar", () => {
       const items = within(menu);
       // The plain choice stays; disabled personas are never offered.
       expect(items.getByRole("menuitem", { name: "Re-do guide" })).toBeInTheDocument();
-      expect(items.getByRole("menuitem", { name: "Re-do with Teach" })).toBeInTheDocument();
+      expect(items.getByRole("menuitem", { name: "Re-do with Tutor" })).toBeInTheDocument();
       expect(items.queryByRole("menuitem", { name: "Re-do with Quiet" })).toBeNull();
       const redo = vi.spyOn(api, "redoReview");
-      fireEvent.click(items.getByRole("menuitem", { name: "Re-do with Teach" }));
-      await screen.findByText("Confirm re-do with Teach");
-      fireEvent.click(screen.getByRole("button", { name: "Confirm re-do with Teach" }));
+      fireEvent.click(items.getByRole("menuitem", { name: "Re-do with Tutor" }));
+      await screen.findByText("Confirm re-do with Tutor");
+      fireEvent.click(screen.getByRole("button", { name: "Confirm re-do with Tutor" }));
       await waitFor(() => expect(screen.getByTestId("loc")).not.toHaveTextContent("/review/r-old"));
-      expect(redo).toHaveBeenCalledWith("r-old", "teach");
+      expect(redo).toHaveBeenCalledWith("r-old", "tutor");
       const newId = (screen.getByTestId("loc").textContent ?? "").replace("/review/", "");
-      expect((await api.review(newId)).review.guidePersonaId).toBe("teach");
+      expect((await api.review(newId)).review.guidePersonaId).toBe("tutor");
     });
 
     it("Escape closes the menu without calling", async () => {
@@ -473,7 +473,7 @@ describe("ReviewBar", () => {
         JSON.stringify({
           forks: [
             { personaId: "guide", name: "Guide", enabled: true, guideCapable: false, drifted: [] },
-            { personaId: "teach", name: "Teach", enabled: true, guideCapable: true, drifted: [] },
+            { personaId: "tutor", name: "Tutor", enabled: true, guideCapable: true, drifted: [] },
           ],
         }),
       );

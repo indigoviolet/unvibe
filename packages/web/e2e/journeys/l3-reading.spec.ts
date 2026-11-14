@@ -2915,8 +2915,9 @@ const D2_LIFTED_SOURCE = [
 ].join("\n");
 
 const D2_LIFTED_HASH = diagramHash(canonicalizeD2Source(D2_LIFTED_SOURCE), D2_MIN_VERSION);
-// Issue #341: the re-recorded fixture pre-renders two on-demand diagrams.
-const D2_SEEDED_HASHES = new Set([D2_SEED_HASH, "22365f71688744f3"]);
+// Issue #341: the re-recorded fixture pre-renders the central on-demand
+// diagram (#405: the buildup diagram is gone with its card).
+const D2_SEEDED_HASHES = new Set([D2_SEED_HASH]);
 
 function seedD2Review(dataDir: string): void {
   const snapshot = JSON.parse(readFileSync(path.join(D2_FIXTURE_DIR, "snapshot.json"), "utf8")) as {

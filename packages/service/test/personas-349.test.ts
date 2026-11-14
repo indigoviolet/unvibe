@@ -127,8 +127,9 @@ describe("Settings → Personas CRUD routes", () => {
       const body = get.json() as SettingsBody;
       // Issue #359 seeds a second built-in (Clarity) after Second opinion;
       // issue #379 seeds the fixed Guide first (the main agent).
-      expect(body.personas).toHaveLength(4);
-      expect(body.personas.map((p) => p.id)).toEqual(["guide", "second-opinion", "clarity", "teach"]);
+      // Issue #405 removes the Teach built-in again.
+      expect(body.personas).toHaveLength(3);
+      expect(body.personas.map((p) => p.id)).toEqual(["guide", "second-opinion", "clarity"]);
       expect(body.personas[0]).toMatchObject({
         id: "guide",
         name: "Guide",
@@ -164,7 +165,7 @@ describe("Settings → Personas CRUD routes", () => {
         payload: { personas: [...seed.personas, CUSTOM] },
       });
       expect(added.statusCode).toBe(200);
-      expect((added.json() as SettingsBody).personas).toHaveLength(5);
+      expect((added.json() as SettingsBody).personas).toHaveLength(4);
 
       // Edit (rename + disable).
       const editedList = [...seed.personas, { ...CUSTOM, name: "Perf sceptic", enabled: false }];
@@ -187,11 +188,11 @@ describe("Settings → Personas CRUD routes", () => {
         payload: { personas: editedList.filter((p) => p.id !== "second-opinion") },
       });
       expect(deleted.statusCode).toBe(200);
-      expect((deleted.json() as SettingsBody).personas.map((p) => p.id)).toEqual(["guide", "clarity", "teach", CUSTOM.id]);
+      expect((deleted.json() as SettingsBody).personas.map((p) => p.id)).toEqual(["guide", "clarity", CUSTOM.id]);
 
       // Round-trips through GET.
       const get = await app.inject({ method: "GET", url: "/api/settings", headers: { authorization: "Bearer tok" } });
-      expect((get.json() as SettingsBody).personas.map((p) => p.id)).toEqual(["guide", "clarity", "teach", CUSTOM.id]);
+      expect((get.json() as SettingsBody).personas.map((p) => p.id)).toEqual(["guide", "clarity", CUSTOM.id]);
     } finally {
       await app.close();
     }

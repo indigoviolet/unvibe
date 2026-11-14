@@ -126,7 +126,8 @@ describe("Clarity seed and prompt composition", () => {
       );
       expect(clarity!.color).toBe(PERSONA_COLORS[1]);
       // Guide seeds first, then Second opinion (colour order is stable, #379).
-      expect(body.personas.map((p) => p.id)).toEqual(["guide", "second-opinion", "clarity", "teach"]);
+      // Issue #405 removes the Teach built-in.
+      expect(body.personas.map((p) => p.id)).toEqual(["guide", "second-opinion", "clarity"]);
     } finally {
       await app.close();
     }
