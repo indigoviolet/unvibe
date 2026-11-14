@@ -24,6 +24,7 @@ import { openPopup } from "../select.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { tourCombos } from "../tour-matrix.js";
 import {apiJson, createScratchReview, git, makeScratchRepo, realGitPath, writeFakeGitOffline, writeFakeShell, fakeServicePath} from "../journeys/journey-helpers.js";
+import { writeL1Pools } from "../journeys/l1-fakes.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
 test.beforeEach(async ({ page }) => {
@@ -33,84 +34,12 @@ test.use({ channel: "chromium" });
 
 const SHOTS = fileURLToPath(new URL("../../visual-tour", import.meta.url));
 
-interface FakePr {
-  number: number;
-  title: string;
-  author: { login: string };
-  updatedAt: string;
-  headRefName: string;
-  additions: number;
-  deletions: number;
-  changedFiles: number;
-  url: string;
-  reviewRequests: { login?: string; slug?: string }[];
-  state: string;
-  isDraft: boolean;
-}
-
-function pr(n: number, title: string, author: string, branch: string, extra: Partial<FakePr> = {}): FakePr {
-  return {
-    number: n,
-    title,
-    author: { login: author },
-    updatedAt: new Date().toISOString(),
-    headRefName: branch,
-    additions: 10 + n,
-    deletions: n,
-    changedFiles: 2,
-    url: `https://github.com/acme/widgets/pull/${n}`,
-    reviewRequests: [],
-    state: "OPEN",
-    isDraft: false,
-    ...extra,
-  };
-}
-
-// Your PRs: one by alice, one by bob (the filter must ignore them).
-// Requested of you: bob's ask; requested of your team: alice's ask.
-const AUTHORING: FakePr[] = [
-  pr(101, "Alice adds folded-header parsing", "alice", "alice-parse"),
-  pr(102, "Bob fixes header unfolding", "bob", "bob-unfold"),
-];
-const DIRECT: FakePr[] = [pr(103, "Bob asks for your review", "bob", "bob-ask")];
-const TEAM: FakePr[] = [
-  pr(103, "Bob asks for your review", "bob", "bob-ask"),
-  pr(104, "Alice asks the team", "alice", "alice-team", { reviewRequests: [{ slug: "core-team" }] }),
-];
-
-/** A flat fixture PR as a GraphQL search node (what `gh api graphql` returns). */
-function toNode(p: FakePr): unknown {
-  const { reviewRequests, ...rest } = p as FakePr & { latestReviews?: unknown };
-  return {
-    __typename: "PullRequest",
-    ...rest,
-    reviewRequests: {
-      nodes: (reviewRequests ?? []).map((r) => ({
-        requestedReviewer: {
-          __typename: "login" in r && r.login !== undefined ? "User" : "Team",
-          ...r,
-        },
-      })),
-    },
-    latestReviews: { nodes: (("latestReviews" in p ? (p as { latestReviews?: unknown }).latestReviews : []) ?? []) as unknown[] },
-  };
-}
-
-function searchPage(rows: FakePr[]): string {
-  return JSON.stringify({
-    data: {
-      search: {
-        pageInfo: { hasNextPage: false, endCursor: null },
-        nodes: rows.map(toNode),
-      },
-    },
-  });
-}
-
+// J228 rows come from the shared L1 pools (`fi-authoring`, `fi-direct`,
+// `fi-team` in `journeys/l1-fakes.ts`): Your PRs ignore the filter, the
+// requested groups carry the authors. Shared so search-shape changes
+// (like #385's per-author search) only need one update.
 function writeFakeGhAuthorFilter(binDir: string, logDir: string, poolDir: string, headSha: string): void {
-  for (const [name, rows] of Object.entries({ authoring: AUTHORING, direct: DIRECT, team: TEAM }) as [string, FakePr[]][]) {
-    writeFileSync(path.join(poolDir, `${name}.json`), searchPage(rows));
-  }
+  writeL1Pools(poolDir);
   const script = `#!/bin/sh
 POOL="${poolDir}"
 LOG="${logDir}"
@@ -118,10 +47,14 @@ mkdir -p "$LOG"
 printf '%s\\n' "$*" >> "$LOG/calls.log"
 if [ "$1" = "api" ] && [ "$2" = "graphql" ]; then
   case "$*" in
+    # Same dispatch as the journey's filter repo (#385): the Your-PRs
+    # search (is:pr author:@me) reads the authoring pool; the
+    # author's-other-PRs search (author:<login>) is empty here, so
+    # picking bob adds no "Not requested of you" rows.
     *reviewed-by:*) echo '{"data":{"search":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}' ;;
-    *"user-review-requested:@me"*) cat "$POOL/direct.json" ;;
-    *"review-requested:@me"*) cat "$POOL/team.json" ;;
-    *"author:"*) cat "$POOL/authoring.json" ;;
+    *"user-review-requested:@me"*) cat "$POOL/fi-direct.json" ;;
+    *"review-requested:@me"*) cat "$POOL/fi-team.json" ;;
+    *"is:pr"*) cat "$POOL/fi-authoring.json" ;;
     *) echo '{"data":{"search":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}'; ;;
   esac
   exit 0
