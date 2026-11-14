@@ -47,6 +47,7 @@ docs/              design notes and decisions (spikes live on spike/* branches)
 - When a gate fails: fix, re-run only the failed specs (`mise run gate:failed` — Playwright `--last-failed`; failed vitest files by name, vitest keeps no last-failed state) until green, then ONE final full gate — not a full re-run per fix (issue #358).
 - When a test fails, name the cause or race in the fix (what rendered, loaded or polled late, and what the assert now waits on). Raising a timeout or adding a sleep is not a fix.
 - A test fixed twice for timing gets rewritten or deleted on the second fix — the third strike is the rewrite, not a third patch.
+- `test:affected` and `gate:failed` run browsers at normal speed (default workers, no throttle). `UNVIBE_E2E_WORKERS=1 UNVIBE_E2E_CPU_THROTTLE=4` is only for reproducing a specific flake.
 - A CI-only flake is root-caused the same day (throttle locally with `UNVIBE_E2E_CPU_THROTTLE=4` and repeat until it shows) or quarantined with `test.skip` + a tracking issue the same day. It never blocks a release unresolved: quarantined tests are listed in the issue comment at publish time.
 - A defect you know about (seen in a frame, a test, or review) gets fixed before publishing. Never ship it with a note calling it "minor": it is usually easy to fix.
 - When a change seeds new defaults into stored settings (a built-in persona, a new setting's default) that existing installs won't get without a reset, say so in the preview and release notes, with what users with existing data must do.

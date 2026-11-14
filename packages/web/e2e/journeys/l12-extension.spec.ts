@@ -190,7 +190,7 @@ async function startOnExtensionPort(
 }
 
 // The extension flows drive their own contexts; each created page gets the
-// shared throttle hook (one throttled core in `test:affected`, #363 §6).
+// shared throttle hook (`UNVIBE_E2E_CPU_THROTTLE`, set when reproducing a flake).
 
 test.describe("L12 extension PR button", () => {
   let repoDir = "";
