@@ -38,7 +38,7 @@ export function QuestionToggleButton(): React.JSX.Element | null {
 
   return (
     <button
-      className="ib bd"
+      className="ib"
       type="button"
       data-tip="Pick terms you don't understand"
       data-testid="question-toggle"

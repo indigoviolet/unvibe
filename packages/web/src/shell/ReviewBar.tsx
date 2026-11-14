@@ -173,7 +173,7 @@ export function ReviewBar({
     <div className="rbar" id="reviewbar">
       <div className="rid">
         <Link
-          className="ib bd"
+          className="ib"
           to="/"
           aria-label="Back to the start page"
           title="Back to the start page"
@@ -207,7 +207,7 @@ export function ReviewBar({
         )}
         {!isDocument && !STATIC_DEMO ? (
           <button
-            className="ib bd"
+            className="ib"
             type="button"
             data-tip="Refresh"
             aria-label="Refresh"
@@ -220,7 +220,7 @@ export function ReviewBar({
         <VersionSwitcher />
         {ingestReady && !STATIC_DEMO ? (
           <Link
-            className="ib bd"
+            className="ib"
             to={`/review/${encodeURIComponent(reviewId)}/debug`}
             aria-label="Debug"
             title="Debug"
@@ -241,7 +241,7 @@ export function ReviewBar({
         <RedoGuideButton reviewId={reviewId} />
         {(snapshot?.annotations?.length ?? 0) > 0 ? (
           <button
-            className="ib bd"
+            className="ib"
             type="button"
             data-testid="collapse-threads"
             data-tip={collapseAll ? "Expand threads" : "Collapse threads"}

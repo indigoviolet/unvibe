@@ -220,7 +220,7 @@ button:disabled { cursor: default; opacity: .35; }
 button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: var(--focus-offset); }
 code { font-family: var(--mono); font-size: .86em; }
 .sp { flex: 1; }
-.ic { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; flex: none; vertical-align: -2px; }
+.ic { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; flex: none; vertical-align: -2px; }
 .ib { display: inline-grid; place-items: center; width: 26px; height: 24px; border: 1px solid transparent; background: none; border-radius: var(--radius-6); color: var(--muted); padding: 0; }
 .ib:hover:not(:disabled) { background: var(--sunk); color: var(--ink); }
 .ib[aria-pressed="true"] { color: var(--ok); }
@@ -430,7 +430,10 @@ code { font-family: var(--mono); font-size: .86em; }
 .seg { display: inline-flex; border: var(--border-width) solid var(--line); border-radius: var(--radius-button); overflow: hidden; }
 .seg button { border: 0; background: var(--surface); font-size: var(--text-xs); padding: var(--space-1) var(--space-2); color: var(--text-secondary); }
 .seg button + button { border-left: var(--border-width) solid var(--line); }
-.seg button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+/* #407: a pressed segment reads selected, not primary — a light
+   ink-mixed tint with ink text and a slightly heavier weight. Submit
+   review stays the only solid dark button in the bar. */
+.seg button[aria-pressed="true"] { background: color-mix(in srgb, var(--ink) 12%, transparent); color: var(--ink); font-weight: 600; }
 .chip { border: var(--border-width) solid var(--line); background: var(--surface); border-radius: var(--radius-pill); padding: 0 8px; font-size: 11.5px; color: var(--muted); height: 22px; }
 .chip[aria-pressed="true"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
 .chip span { opacity: .7; margin-left: 3px; }

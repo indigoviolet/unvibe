@@ -896,6 +896,12 @@ test.describe("visual tour passes", () => {
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator("#page .doc h1.title")).toContainText("Unfold obsolete folded response headers", { timeout: 30_000 });
     await page.evaluate(() => document.fonts.ready).catch(() => {});
+    // #407: the review bar shown plainly — borderless Tabler icon
+    // buttons, the quiet pressed Guide segment, solid Submit. Element
+    // shot (the full-page frames shrink the bar). Runs in 1440-light
+    // and 1440-dark via this loop's slim combos.
+    await stepChecks(page, "reviewbar-main");
+    await page.locator("#reviewbar").screenshot({ path: path.join(SHOTS, `reviewbar-main-${suffix}.png`) });
     // #242: the Plotlines card tops the guide root (two plotlines,
     // one building on the other) — capture it before scrolling on.
     await expect(page.locator(".plotlines")).toBeVisible({ timeout: 15_000 });
