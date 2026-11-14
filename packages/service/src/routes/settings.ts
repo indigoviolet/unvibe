@@ -21,6 +21,8 @@
 import type { FastifyInstance } from "fastify";
 import type { Persona, Settings, ThinkingResponse } from "@unvibe/shared";
 import { GUIDE_PERSONA_ID } from "@unvibe/shared";
+import { resolvePromptsDir } from "../prompts/index.js";
+import { isGuideCapable } from "../prompts/personas.js";
 import { resolveEffectiveSettings, validateSettings } from "../settings/index.js";
 import type { RouteDeps } from "./deps.js";
 
@@ -53,6 +55,33 @@ export async function registerSettings(app: FastifyInstance, deps: RouteDeps = {
     const patch = ((req.body ?? {}) as Partial<Settings>) ?? {};
     const syncErrors = validateSettings(patch as Record<string, unknown>);
     if (syncErrors.length > 0) return reply.code(400).send({ errors: syncErrors });
+    // Issue #401: the default guide must name an enabled guide-capable
+    // persona (its fork holds `reader.md`); the built-in Guide always
+    // qualifies. Validated against the personas list this update leaves
+    // behind (a same-update `personas` list wins). A prompts dir that
+    // cannot be located skips the capability check — the read-time
+    // fallback still guards every guide start.
+    if (typeof patch.defaultGuidePersonaId === "string" && patch.defaultGuidePersonaId.trim() !== "") {
+      const stored = patch.defaultGuidePersonaId;
+      if (stored !== GUIDE_PERSONA_ID) {
+        const list = Array.isArray(patch.personas)
+          ? (patch.personas as Persona[])
+          : (deps.settings.get().personas ?? []);
+        const persona = list.find((p) => p?.id === stored);
+        if (!persona) {
+          return reply.code(400).send({ errors: [`defaultGuidePersonaId names unknown persona "${stored}"`] });
+        }
+        if (!persona.enabled) {
+          return reply.code(400).send({ errors: [`defaultGuidePersonaId names disabled persona "${persona.name ?? stored}"`] });
+        }
+        const dir = deps.promptsDir ?? resolvePromptsDir();
+        if (dir && !isGuideCapable(dir, stored)) {
+          return reply.code(400).send({
+            errors: [`persona "${persona.name ?? stored}" can't write a guide (its prompt folder holds no reader.md)`],
+          });
+        }
+      }
+    }
     // Never persist a model id the adapter does not offer. Unknown
     // offerings (adapter down) skip validation; readiness flags the pick
     // if it later disappears.

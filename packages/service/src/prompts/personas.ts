@@ -33,6 +33,26 @@ import { parseTemplate, TemplateLoadError } from "./loader.js";
 import { renderSystemPrompt } from "./access.js";
 
 /**
+ * Effective default Guide persona (issue #401): the stored id when it
+ * names a persona that exists, is enabled, and is guide-capable (its
+ * fork holds `reader.md`); the built-in Guide otherwise. Resolved at
+ * read time and never written back, so a deleted, disabled or
+ * de-forked default self-heals and a guide never fails to start
+ * because of it. Pure except for the existence check.
+ */
+export function effectiveDefaultGuideId(
+  personas: Persona[],
+  promptsDir: string | null | undefined,
+  storedId: string,
+): string {
+  const found = personas.find((p) => p.id === storedId);
+  if (!found || !found.enabled) return GUIDE_PERSONA_ID;
+  if (storedId === GUIDE_PERSONA_ID) return GUIDE_PERSONA_ID;
+  if (!promptsDir) return GUIDE_PERSONA_ID;
+  return isGuideCapable(promptsDir, storedId) ? storedId : GUIDE_PERSONA_ID;
+}
+
+/**
  * Main writing turns covered by the Guide lens (issue #379): the
  * templates rendered for main-agent turns (`runInFork` plus the reader
  * guide turn). Persona turns and the repair follow-ups that continue an
