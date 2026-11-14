@@ -43,7 +43,7 @@ function goldenValues(): Record<string, RenderValues> {
   const glossary = "## Glossary\n\nUse these exact terms for the things they name: call each thing by this exact term everywhere, never a synonym, abbreviation or paraphrase.\n\n- `HTTPHeaderDict` — Headers view.\n";
   return {
     instructions: {},
-    reader: { source, diff_inline: diff, repo_path: "/tmp/unvibe-wt/branch" },
+    reader: { source, diff_inline: diff, repo_path: "/tmp/unvibe-wt/branch", reviewed_context: "(No prior-review baseline: explain the whole change; write no Since-B section.)" },
     base_pack: { source, diff_inline: diff, pinned_code: pinned, guide, concepts, hunk_summaries: hunkSummaries },
     critic: {},
     hunk_pass: {
@@ -75,7 +75,7 @@ function goldenValues(): Record<string, RenderValues> {
       changed_hunks: "h:conn:h111",
       message: "What about ordering?",
     },
-    slower: { card },
+    slower: { card, terms: "", guide: "" },
     examples: { card },
     diagram: { card },
     go_deeper: { direction: "Data flow: from the socket to HTTPHeaderDict — follows a folded header to both views.", glossary },

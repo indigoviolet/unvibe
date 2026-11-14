@@ -69,7 +69,7 @@ def _normalize_header_value(value: bytes) -> bytes:
 ```
 
 
-## Guide (standard depth)
+## Guide
 
 ### The problem [[card:c-problem]]
 

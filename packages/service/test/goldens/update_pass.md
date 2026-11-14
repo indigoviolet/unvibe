@@ -1,10 +1,11 @@
 # Update pass: explain the delta since B, and append
 
-New commits landed on the branch. The reviewer last opened baseline B;
-the head has moved since. Your job is to **explain what changed between
-B and the head and append that explanation** — not to rewrite the guide.
-No background work, no extra sessions: one reply, then the trailing
-JSON block.
+New commits landed on the branch. The baseline B is named in ##
+Baseline below — usually the version the reviewer last opened, sometimes
+a commit they picked (or already reviewed on GitHub). The head has moved
+since. Your job is to **explain what changed between B and the head and
+append that explanation** — not to rewrite the guide. No background
+work, no extra sessions: one reply, then the trailing JSON block.
 
 ## Baseline
 
@@ -34,9 +35,9 @@ B is v1 · aaa1111 · 3 Nov; head is v2 · bbb2222 · 4 Nov. Explain only the 1 
    (`[{ "kind": "comment", "id": "7" }]`: kind is `comment`, `thread`,
    `conversation` or `commit`; the id is the bracketed comment, thread
    or conversation id, or the full commit sha). Title each card with
-   the change alone — never repeat the baseline ("since vN"): the
-   section header already says it. Keep each card to its
-   own thread; don't restate the old guide.
+   the change alone — never repeat the baseline ("since vN" or
+   "since <sha>"): the section header already says it. Keep each card to
+   its own thread; don't restate the old guide.
 2. **Append addenda, don't rewrite cards.** Where a change affects an
    existing card, write an "Updated since B" addendum for the end of
    that card: dated, explaining what changed relative to what the card
@@ -56,6 +57,10 @@ B is v1 · aaa1111 · 3 Nov; head is v2 · bbb2222 · 4 Nov. Explain only the 1 
    becomes a new plotline. Name only hunks listed above.
 7. **Pin again.** Pin excerpts the new cards need with `pin_context`,
    and say which old pins no longer apply.
+8. **Confirm every other stale card.** For every stale card listed
+   above that you neither revised nor annotated, list its ID under
+   `unaffectedCards` in the trailing JSON block; that confirms you
+   checked it and found it unaffected by the delta.
 
 ## Rules
 
