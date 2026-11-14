@@ -14,6 +14,7 @@ const settings: Settings = {
   uiTheme: "default",
   small: { provider: "claude", model: "mock-small", effort: "" },
   personas: [MOCK_GUIDE],
+  defaultGuidePersonaId: "guide",
   sessionsPerProvider: 4, inlineBudgetTokens: 40000, rebuildSupersededRatio: 0.2,
   rebuildAppendedTokens: 10000, logBatchTokens: 2000, cacheLifetimeMs: 300000,
   idleExitMinutes: 10, hunkSummaryLimit: 50, versionPickerEnabled: false, fullAccess: false,

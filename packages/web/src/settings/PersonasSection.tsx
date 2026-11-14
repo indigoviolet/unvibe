@@ -117,12 +117,14 @@ export function PersonasSection({
         Each runs on its model — or on the Guide&apos;s model — with its lens; the colour is
         assigned automatically. Second opinion, Clarity and Teach are built in — edit or delete
         them like any other persona. Teach can also write a whole guide: use Re-do with Teach.
+        New reviews and plain Re-do guide runs use the default guide below.
       </p>
       {error ? (
         <p className="err" role="alert">
           {error}
         </p>
       ) : null}
+      <DefaultGuidePicker settings={settings} forks={forks} onSaved={onSaved} onError={setError} />
       {personas.length === 0 ? <p className="hint">No personas yet. Add one below.</p> : null}
       <div className="ui-list" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {personas.map((p) => (
@@ -281,6 +283,80 @@ export function PersonasSection({
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * Default guide picker (issue #401): which guide-capable persona writes
+ * new reviews and plain Re-do guide runs. The built-in Guide is always
+ * offered; every other choice is an enabled guide-capable persona (its
+ * fork holds `reader.md`) from `GET /api/prompt-forks`. When the stored
+ * default no longer qualifies (deleted, disabled, or de-forked) a
+ * one-line notice says the Guide stands in — resolution is read-time,
+ * so the stored value is left for the owner to change.
+ */
+function DefaultGuidePicker({
+  settings,
+  forks,
+  onSaved,
+  onError,
+}: {
+  settings: Settings;
+  forks: PromptForkStatus[] | null;
+  onSaved: (next: Settings) => void;
+  onError: (message: string) => void;
+}): React.JSX.Element {
+  const [saving, setSaving] = useState(false);
+  const guide = getGuidePersona(settings.personas);
+  const forkChoices = (forks ?? []).filter((f) => f.enabled && f.guideCapable);
+  const stored = settings.defaultGuidePersonaId ?? GUIDE_PERSONA_ID;
+  const effective =
+    stored === GUIDE_PERSONA_ID || forkChoices.some((c) => c.personaId === stored)
+      ? stored
+      : GUIDE_PERSONA_ID;
+  const storedName =
+    settings.personas.find((p) => p.id === stored)?.name ??
+    (forks ?? []).find((f) => f.personaId === stored)?.name ??
+    stored;
+
+  const save = async (next: string): Promise<void> => {
+    setSaving(true);
+    try {
+      onSaved(await api.saveSettings({ defaultGuidePersonaId: next }));
+    } catch (err) {
+      onError(friendlyError(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <Field label="Default guide" htmlFor="default-guide">
+        {forks === null ? (
+          <span className="hint">Loading guide choices…</span>
+        ) : (
+          <Select
+            id="default-guide"
+            data-testid="default-guide"
+            value={effective}
+            disabled={saving}
+            onValueChange={(v) => void save(v)}
+            options={[
+              { value: GUIDE_PERSONA_ID, label: guide?.name ?? "Guide" },
+              ...forkChoices.map((f) => ({ value: f.personaId, label: f.name })),
+            ]}
+          />
+        )}
+      </Field>
+      {forks !== null && stored !== effective ? (
+        <p className="hint" data-testid="default-guide-fallback" style={{ margin: "4px 0 0" }}>
+          <span className="warnline" role="status">
+            {`“${storedName}” is gone or can’t write a guide — the Guide stands in until you pick another.`}
+          </span>
+        </p>
+      ) : null}
+    </div>
   );
 }
 
