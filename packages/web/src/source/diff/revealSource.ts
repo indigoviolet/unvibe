@@ -55,7 +55,13 @@ const DHUNK_FALLBACK = 31;
 
 function measuredHeight(el: Element | null, fallback: number): number {
   if (!(el instanceof HTMLElement)) return 0;
-  const h = el.offsetHeight;
+  // Fractional (issue #407): offsetHeight rounds away sub-pixel
+  // heights, and a sticky `top` built from the rounded value can leave
+  // a >0.2px seam between layers — the 16px icons make the actions bar
+  // 43.5px tall, and the rounded 44px var overshoots its true bottom by
+  // half a pixel. Rect heights track the true box so the layers abut
+  // exactly (jsdom rects are 0, so the fallback path is unchanged).
+  const h = el.getBoundingClientRect().height;
   return h > 0 ? h : fallback;
 }
 
