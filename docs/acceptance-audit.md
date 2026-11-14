@@ -1166,6 +1166,9 @@ needed (that deviation is closed, not added).
   Settings → Environment); readiness, Doctor,
   jobs and second-opinion labels use the same format; `opus` (Opus 5.5)
   outranks dated `claude-opus-5` (older Opus 5) in defaults + tests.
+  The "no longer offered" error shows only for a model the user saved
+  that the adapter dropped (issue #404: `GET /api/settings/saved-keys`
+  provenance; a never-saved static default never accuses the user).
 - Live role defaults (#88) — met: tiers opus | sol > sonnet | terra >
   haiku | luna with newest version per tier, never Fable/Astra, matched on
   family plus highest version (aliases lose to versioned ids, `opus` beats
