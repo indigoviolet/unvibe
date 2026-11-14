@@ -278,4 +278,44 @@ test.describe("J393 guide forks", () => {
     await expect(row).toBeVisible();
     await expect(row.getByTestId("persona-tutor-drift")).toContainText("reader.md");
   });
+
+  test("default guide: new reviews and plain Re-do run as Tutor", async () => {
+    test.setTimeout(300_000);
+    const s = service();
+    const saved = await apiJson(s, "PUT", "/api/settings", { defaultGuidePersonaId: "tutor" });
+    expect(saved.status).toBe(200);
+
+    const repoDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j393-default-repo-"));
+    dirs.push(repoDir);
+    const scratch = await makeScratchRepo(repoDir);
+    const id = await createScratchReview(s, scratch.dir);
+
+    await test.step("a new review records the default and runs its fork", async () => {
+      const created = await apiJson(s, "GET", `/api/reviews/${id}`);
+      expect((created.json as { review: { guidePersonaId: string } }).review.guidePersonaId).toBe("tutor");
+      await waitGuide(s, id);
+      const jobs = await jobsFor(s, id);
+      const reader = jobs.find((j) => j.kind === "reader");
+      expect(reader).toBeDefined();
+      expect(reader!.provider).toBe("codex");
+      expect(reader!.model).toBe("gpt-6.1-sol");
+      const prompt = await jobPrompt(s, reader!.id);
+      expect(prompt).toContain(TUTOR_SENTINEL.reader);
+      expect(prompt.startsWith(`# Writing style\n\n${TUTOR_LENS}\n\n`)).toBe(true);
+    });
+
+    await test.step("plain Re-do guide re-runs as the default", async () => {
+      const redo = await apiJson(s, "POST", `/api/reviews/${id}/redo`, {});
+      expect(redo.status).toBe(202);
+      const forkedId = (redo.json as { review: { id: string; guidePersonaId: string } }).review.id;
+      expect((redo.json as { review: { guidePersonaId: string } }).review.guidePersonaId).toBe("tutor");
+      await waitGuide(s, forkedId);
+
+      await test.step("Re-do with Guide still picks explicitly", async () => {
+        const explicit = await apiJson(s, "POST", `/api/reviews/${forkedId}/redo`, { personaId: "guide" });
+        expect(explicit.status).toBe(202);
+        expect((explicit.json as { review: { guidePersonaId: string } }).review.guidePersonaId).toBe("guide");
+      });
+    });
+  });
 });

@@ -17,6 +17,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "../network-guard.js";
 import { cpuThrottleFromEnv } from "../cpu-throttle.js";
+import { openPopup } from "../select.js";
 import { selectText } from "../select-text.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { apiJson, createSeededDemoReview } from "../journeys/journey-helpers.js";
@@ -117,6 +118,55 @@ test.describe("J349 personas settings", () => {
     await expect(clarityRow).toContainText("Guide's model (claude/claude-opus-5-5)");
     await checkLayout(page, "personas-1440-light");
     await page.screenshot({ path: path.join(SHOTS, "personas-1440-light.png") });
+  });
+
+  test("default guide picker frame", async ({ page }) => {
+    if (!svc) throw new Error("service not running");
+    const active: RunningService = svc;
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await gotoPersonas(page, svc);
+    // Issue #401: one Default guide picker above the list. The built-in
+    // Teach ships a guide-capable fork, so it is offered beside Guide.
+    const picker = page.getByTestId("default-guide");
+    await expect(picker).toBeVisible();
+    await expect(picker).toContainText("Guide");
+    await picker.click();
+    const teachOption = openPopup(page).getByRole("option", { name: "Teach" });
+    await expect(teachOption).toBeVisible();
+    await teachOption.scrollIntoViewIfNeeded();
+    await teachOption.click();
+    await expect
+      .poll(
+        async () =>
+          ((await apiJson(active, "GET", "/api/settings")).json as { defaultGuidePersonaId?: string })
+            .defaultGuidePersonaId,
+        { timeout: 15_000 },
+      )
+      .toBe("teach");
+    await expect(picker).toContainText("Teach");
+    // Disable Teach with the default still on it: the one-line fallback
+    // notice says the Guide stands in (read-time fallback; the stored
+    // value is left for the owner to change).
+    const full = (await apiJson(svc, "GET", "/api/settings")).json as { personas: Record<string, unknown>[] };
+    const disabled = await apiJson(svc, "PUT", "/api/settings", {
+      personas: full.personas.map((p) => (p["id"] === "teach" ? { ...p, enabled: false } : p)),
+    });
+    expect(disabled.status).toBe(200);
+    await page.reload();
+    await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible({ timeout: 30_000 });
+    await page.getByRole("tab", { name: "Personas" }).click();
+    await expect(page.getByTestId("personas-section")).toBeVisible();
+    await expect(page.getByTestId("default-guide-fallback")).toContainText("stands in");
+    await page.mouse.move(720, 20);
+    await checkLayout(page, "personas-default-guide-1440-light");
+    await page.screenshot({ path: path.join(SHOTS, "personas-default-guide-1440-light.png") });
+    // Restore: Teach back on, default back to Guide.
+    const restored = await apiJson(svc, "PUT", "/api/settings", {
+      personas: full.personas,
+      defaultGuidePersonaId: "guide",
+    });
+    expect(restored.status).toBe(200);
   });
 
   test("Clarity follows the main model until pinned", async ({ page }) => {
