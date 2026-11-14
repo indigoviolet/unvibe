@@ -115,7 +115,7 @@ export function RedoGuideButton({ reviewId }: { reviewId: string }): React.JSX.E
   if (ingestStatus === "loading") {
     return (
       <button
-        className="ib bd"
+        className="ib"
         type="button"
         data-tip="The review is still opening."
         aria-label="Re-do guide"
@@ -148,7 +148,7 @@ export function RedoGuideButton({ reviewId }: { reviewId: string }): React.JSX.E
         idleRender={({ ref, expanded, disabled, onOpen }) => (
           <button
             ref={ref}
-            className="ib bd"
+            className="ib"
             type="button"
             data-tip="Re-do guide"
             aria-label="Re-do guide"
@@ -192,7 +192,7 @@ export function RedoGuideButton({ reviewId }: { reviewId: string }): React.JSX.E
                 (ref as { current: HTMLButtonElement | null }).current = el;
               }
             }}
-            className="ib bd"
+            className="ib"
             type="button"
             data-tip="Re-do guide"
             aria-label="Re-do guide"

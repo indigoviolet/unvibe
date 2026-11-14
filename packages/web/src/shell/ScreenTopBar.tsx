@@ -51,7 +51,7 @@ export function ScreenTopBar({
       <Link className="brand" to="/" title="Back to the start page" aria-label="Unvibe" {...off}>
         <Wordmark />
       </Link>
-      <Link className="ib bd" to="/documents" aria-label="Documents" title="Documents" {...off}>
+      <Link className="ib" to="/documents" aria-label="Documents" title="Documents" {...off}>
         <Icon name="doc" />
       </Link>
       {crumbs && crumbs.length > 0 ? (
@@ -75,7 +75,7 @@ export function ScreenTopBar({
       {showBadge ? <FullAccessMarker compact disabled={disabled} /> : null}
       <UpdateIcon disabled={disabled} />
       {hideSettings ? null : (
-        <Link className="ib bd" to="/settings" aria-label="Settings" title="Settings" {...off}>
+        <Link className="ib" to="/settings" aria-label="Settings" title="Settings" {...off}>
           <Icon name="gear" />
         </Link>
       )}

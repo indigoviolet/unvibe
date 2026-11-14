@@ -57,7 +57,7 @@ export function GuideCopyButton({ reviewId }: { reviewId: string }): React.JSX.E
 
   return (
     <button
-      className="ib bd"
+      className="ib"
       type="button"
       data-tip="Copy guide as Markdown"
       aria-label="Copy guide as Markdown"

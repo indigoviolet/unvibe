@@ -33,7 +33,7 @@ export function UpdateIcon({ disabled }: { disabled?: boolean } = {}): React.JSX
   const label = `Update available: v${version}`;
   return (
     <Link
-      className="ib bd"
+      className="ib"
       to="/settings?tab=version"
       aria-label={label}
       title={label}
