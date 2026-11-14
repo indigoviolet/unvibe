@@ -77,7 +77,7 @@ test.describe("J349 personas settings", () => {
   test("built-ins are seeded and listed", async ({ page }) => {
     if (!svc) throw new Error("service not running");
     const list = await personas(svc);
-    expect(list).toHaveLength(3);
+    expect(list).toHaveLength(4);
     expect(list[0]).toMatchObject({
       id: "guide",
       name: "Guide",
@@ -104,6 +104,14 @@ test.describe("J349 personas settings", () => {
       enabled: true,
     });
     expect(list[2].lens).toContain("You are Clarity");
+    // The built-in Teach seeds fourth (it follows the Guide's model).
+    expect(list[3]).toMatchObject({
+      id: "teach",
+      name: "Teach",
+      followMain: true,
+      enabled: true,
+    });
+    expect(list[3].lens).toContain("You are Teach");
 
     await page.setViewportSize({ width: 1440, height: 900 });
     await gotoPersonas(page, svc);
@@ -116,6 +124,10 @@ test.describe("J349 personas settings", () => {
     await expect(clarityRow).toBeVisible();
     await expect(clarityRow).toContainText("Clarity");
     await expect(clarityRow).toContainText("Guide's model (claude/claude-opus-5-5)");
+    const teachRow = page.getByTestId("persona-teach");
+    await expect(teachRow).toBeVisible();
+    await expect(teachRow).toContainText("Teach");
+    await expect(teachRow).toContainText("Guide's model (claude/claude-opus-5-5)");
     await checkLayout(page, "personas-1440-light");
     await page.screenshot({ path: path.join(SHOTS, "personas-1440-light.png") });
   });
@@ -269,7 +281,7 @@ test.describe("J349 personas settings", () => {
     const seed = await personas(svc);
     const added = await apiJson(svc, "PUT", "/api/settings", { personas: [...seed, custom] });
     expect(added.status).toBe(200);
-    expect((added.json as { personas: PersonaBody[] }).personas).toHaveLength(4);
+    expect((added.json as { personas: PersonaBody[] }).personas).toHaveLength(5);
 
     await gotoPersonas(page, svc);
     const row = page.getByTestId("persona-perf-sceptic");
@@ -304,11 +316,11 @@ test.describe("J349 personas settings", () => {
     await page.keyboard.press("Escape");
     await expect(row.getByText("Confirm delete the “Perf sceptic” persona")).toHaveCount(0);
     await expect(row).toBeVisible();
-    // Confirm: the row goes and the API forgets it (both built-ins stay).
+    // Confirm: the row goes and the API forgets it (the built-ins stay).
     await row.getByRole("button", { name: "Delete Perf sceptic" }).click();
     await row.getByRole("button", { name: "Confirm delete the “Perf sceptic” persona" }).click();
     await expect(row).toHaveCount(0);
-    expect((await personas(svc)).map((p) => p.id)).toEqual(["guide", "second-opinion", "clarity"]);
+    expect((await personas(svc)).map((p) => p.id)).toEqual(["guide", "second-opinion", "clarity", "teach"]);
   });
 });
 
