@@ -360,6 +360,7 @@ test.describe("L14 re-do from the top bar", () => {
       // #405: with no other guide-capable persona, Re-do is a plain
       // button again (no #393 menu).
       await redo.click();
+      await expect(page.getByTestId("redo-menu")).toHaveCount(0);
       // #346: the shared inline confirm; the what-is-lost copy lives in
       // the pill's accessible name.
       const pill = page.locator("#reviewbar .uic-pill");
