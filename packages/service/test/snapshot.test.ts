@@ -31,9 +31,11 @@ describe("snapshot build", () => {
     // terms rewrite per guide card, keys `<card>:terms:1`; journey-covered).
     // + 1 hand-authored press-3 recording (issue #398: a third slower
     // press on central with a list and an example; journey-covered).
+    // + 1 hand-authored persona recording (issue #402: Teach on central,
+    // with a Background block, a sub-heading and bullets; journey-covered).
     // Journey-only manifest entries (the #351 update-pass reply) are not
     // demo content and are skipped by the builder.
-    expect(counts).toHaveLength(65);
+    expect(counts).toHaveLength(66);
     expect(snapshot.files.map((f) => [f.fileKey, f.hunks.length])).toEqual([
       ["src-urllib3-connection.py", 2],
       ["test-test_connection.py", 3],
