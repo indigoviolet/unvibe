@@ -77,28 +77,28 @@ export function requestedReaderFields(templateBody: string): string[] {
 export function readerCardId(index: number, cardIds: string[] = [], title?: string | null): string {
   // Issue #198/#212: the reader's settled order is problem, the one
   // central-idea card, per-plotline card(s) when there are several
-  // plotlines, "How it's built up", "Decisions and questions", "Names".
-  // Known titles win over position, so the per-plotline cards (any
-  // count) never steal the `buildup`/`decisions`/`names` ids. The
-  // `decisions` id is kept for the renamed card so existing anchors
-  // (`#C-decisions`, `card:decisions#…`) stay valid; `names` is the new
-  // card's stable id. No migration: card ids are assigned at apply time.
+  // plotlines (#405: no "How it's built up" card), "Decisions and
+  // questions", "Names". Known titles win over position, so the
+  // per-plotline cards (any count) never steal the
+  // `decisions`/`names` ids. The `decisions` id is kept for the renamed
+  // card so existing anchors (`#C-decisions`, `card:decisions#…`) stay
+  // valid; `names` is the new card's stable id. No migration: card ids
+  // are assigned at apply time.
   if (cardIds[index]) return cardIds[index];
   const t = (title ?? "").trim().toLowerCase();
   if (t === "the problem") return "problem";
   if (t === "the central idea" || t === "the central change") return "central";
-  if (t === "how it's built up") return "buildup";
   if (t === "decisions and questions") return "decisions";
   if (t === "names") return "names";
   // An unknown title at index 0/1 is still the problem / central card;
-  // anywhere else it is a per-plotline card, never the buildup,
-  // decisions or names card (those carry their known titles).
+  // anywhere else it is a per-plotline card, never the decisions or
+  // names card (those carry their known titles).
   return index === 0 ? "problem" : index === 1 ? "central" : `reader-${index}`;
 }
 
 /** True for ids `readerCardId` hands out when the reply names none. */
 export function isDefaultReaderCardId(id: string): boolean {
-  return id === "problem" || id === "central" || id === "buildup" || id === "decisions" || id === "names" || /^reader-\d+$/.test(id);
+  return id === "problem" || id === "central" || id === "decisions" || id === "names" || /^reader-\d+$/.test(id);
 }
 
 /**
