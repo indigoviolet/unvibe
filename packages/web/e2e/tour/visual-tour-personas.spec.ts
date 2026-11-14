@@ -139,10 +139,10 @@ test.describe("J349 personas settings", () => {
     const active: RunningService = svc;
     test.setTimeout(120_000);
     await page.setViewportSize({ width: 1440, height: 900 });
-    await gotoPersonas(page, svc);
     // Issue #401: one Default guide picker above the list. Issue #405
     // removes the Teach built-in, so the Tutor fixture fork (#393) is the
-    // non-Guide guide-capable choice: add its persona, then pick it.
+    // non-Guide guide-capable choice: add its persona before the page
+    // loads, so the forks it fetches on mount include Tutor.
     const seed = (await apiJson(svc, "GET", "/api/settings")).json as {
       personas: Record<string, unknown>[];
     };
@@ -163,6 +163,7 @@ test.describe("J349 personas settings", () => {
       ],
     });
     expect(added.status).toBe(200);
+    await gotoPersonas(page, svc);
     const picker = page.getByTestId("default-guide");
     await expect(picker).toBeVisible();
     await expect(picker).toContainText("Guide");
@@ -304,7 +305,8 @@ test.describe("J349 personas settings", () => {
     const seed = await personas(svc);
     const added = await apiJson(svc, "PUT", "/api/settings", { personas: [...seed, custom] });
     expect(added.status).toBe(200);
-    expect((added.json as { personas: PersonaBody[] }).personas).toHaveLength(5);
+    // Issue #405 removes the Teach built-in: three seeds plus the custom one.
+    expect((added.json as { personas: PersonaBody[] }).personas).toHaveLength(4);
 
     await gotoPersonas(page, svc);
     const row = page.getByTestId("persona-perf-sceptic");
