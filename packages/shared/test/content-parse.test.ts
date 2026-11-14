@@ -323,7 +323,7 @@ describe("parseBlocks lists (issue #314)", () => {
     const aside = blocks[1];
     if (aside.type !== "aside") throw new Error("not an aside");
     expect(aside.kind).toBe("Background");
-    expect(aside.citations.map((c) => c.raw ?? c)).toHaveLength(1);
+    expect(aside.citations).toHaveLength(1);
     expect(renderMarkdown(blocks)).toContain("::: background\n");
     const back = parseBlocks(renderMarkdown(blocks));
     expect(back[1].type === "aside" && back[1].kind).toBe("Background");
