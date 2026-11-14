@@ -317,6 +317,18 @@ describe("parseBlocks lists (issue #314)", () => {
     expect(aside.kind).toBe("Example");
   });
 
+  it("parses ::: background as a Background aside with its citations, and round-trips it (#402)", () => {
+    const blocks = parseBlocks("Lead.\n\n::: background\nThe cache keeps one entry per version. [[diff:conn:1-2]]\n:::\n\nAfter.\n");
+    expect(blocks.map((b) => b.type)).toEqual(["paragraph", "aside", "paragraph"]);
+    const aside = blocks[1];
+    if (aside.type !== "aside") throw new Error("not an aside");
+    expect(aside.kind).toBe("Background");
+    expect(aside.citations.map((c) => c.raw ?? c)).toHaveLength(1);
+    expect(renderMarkdown(blocks)).toContain("::: background\n");
+    const back = parseBlocks(renderMarkdown(blocks));
+    expect(back[1].type === "aside" && back[1].kind).toBe("Background");
+  });
+
   it("round-trips a loose list with a start number through renderMarkdown", () => {
     const blocks = parseBlocks("3. a [[diff:conn:1-2]]\n\n4. b\n");
     const back = parseBlocks(renderMarkdown(blocks));
