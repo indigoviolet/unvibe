@@ -97,7 +97,9 @@ container is not special; it falls back to a plain paragraph.
 `::: example` and `::: diagram` become the Example / Diagram inserts.
 `::: background` (issue #402) becomes a Background block rendered in
 place on a quiet tint: existing-system context a reader who already
-knows the codebase can skip. The guide's prompts ask for it wherever the card is long enough to need one.
+knows the codebase can skip. The guide's prompts ask for at most one
+per card: usually in the problem card, and in any later card that leans
+on how the existing system works (issue #408).
 Inner content is ordinary Markdown.
 
 ## 5. Diagrams
