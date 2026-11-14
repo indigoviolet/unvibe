@@ -1662,17 +1662,22 @@ test.describe("L6 demo diff work", () => {
       expect.soft(await nameEl.evaluate((el) => getComputedStyle(el).webkitLineClamp)).toBe("2");
       const descEl = box.locator(".pldesc").first();
       await expect.soft(descEl).toHaveText(J353_STRIPPED_DESC);
-      await expect.soft(descEl).toHaveAttribute("data-tip", J353_STRIPPED_DESC);
+      // #406: the summary carries no tooltip — it would repeat the
+      // row's own text verbatim.
+      await expect.soft(descEl).not.toHaveAttribute("data-tip");
       await expect.soft(descEl.locator("code").first()).toHaveText("some_very_long_table_identifier_xyz");
       expect.soft(await descEl.evaluate((el) => getComputedStyle(el).webkitLineClamp)).toBe("2");
 
-      // The tooltips show the full plain text.
+      // The name tooltip shows the full plain text; hovering the
+      // summary shows the row's action hint instead (#406), never the
+      // summary itself.
       const tip = page.locator("#tip");
       await nameEl.hover();
       await expect.soft(tip).toBeVisible({ timeout: 5_000 });
       await expect.soft(tip).toHaveText(J353_STRIPPED_NAME);
       await descEl.hover();
-      await expect.soft(tip).toHaveText(J353_STRIPPED_DESC);
+      await expect.soft(tip).toHaveText(`Show only ${J353_STRIPPED_NAME}`);
+      expect.soft((await tip.textContent()) ?? "").not.toContain(J353_STRIPPED_DESC);
 
       // The second row builds on the first: its chip names the long
       // name in plain text via its tooltip.

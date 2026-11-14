@@ -1636,6 +1636,15 @@ export interface ThinkingOption {
   description?: string;
 }
 
+/**
+ * GET /api/settings/saved-keys — keys the user explicitly saved (issue
+ * #404). Roles absent here take live defaults; the Models section shows
+ * the "no longer offered" error only for a saved pick.
+ */
+export interface SavedKeysResponse {
+  savedKeys: string[];
+}
+
 /** GET /api/thinking?provider=:id — thinking levels the adapter offers. */
 export interface ThinkingResponse {
   provider: string;

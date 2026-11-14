@@ -346,6 +346,43 @@ test.describe("L9 settings CRUD", () => {
     await expect(page.locator("html")).toHaveAttribute("data-ui-theme", "default");
   });
 
+  test("saving the Guide model leaves small on its live default (issue #404)", async ({ page }) => {
+    test.setTimeout(240_000);
+    const s = service();
+    await page.goto(`${s.origin}/settings?token=${s.token}`);
+    await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible({ timeout: 30_000 });
+    // Fresh-data-dir flow: change the Guide model in Personas, like the
+    // owner did. This PUTs only the personas list — small stays unsaved
+    // and keeps resolving live, so Models → Small must show no
+    // "no longer offered" error and an offered model.
+    await page.getByRole("tab", { name: "Personas" }).click();
+    await expect(page.getByTestId("personas-section")).toBeVisible({ timeout: 15_000 });
+    const row = page.getByTestId("persona-guide");
+    await expect(row).toBeVisible();
+    await row.getByTestId("persona-guide-edit").click();
+    await expect(page.getByTestId("persona-guide-model")).toBeVisible({ timeout: 15_000 });
+    await page.getByTestId("persona-guide-model").click();
+    const sonnet = openPopup(page).getByRole("option", { name: "Sonnet" });
+    await sonnet.scrollIntoViewIfNeeded();
+    const saved = page.waitForResponse(
+      (r) => r.url().includes("/api/settings") && r.request().method() !== "GET" && r.ok(),
+      { timeout: 15_000 },
+    );
+    await sonnet.click();
+    await page.getByTestId("persona-guide-save").click();
+    await saved;
+    await expect(row).toContainText("claude/claude-sonnet-5-5");
+    // Provenance: only the personas list counts as saved, never small.
+    const keys = (await apiJson(s, "GET", "/api/settings/saved-keys")).json as { savedKeys: string[] };
+    expect(keys.savedKeys).toContain("personas");
+    expect(keys.savedKeys).not.toContain("small");
+    // Models → Small: no false missing-model error, and an offered model.
+    await page.getByRole("tab", { name: "Models" }).click();
+    await expect(page.locator('[data-testid="model-small"]')).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator('[data-testid="model-small-missing"]')).toHaveCount(0);
+    await expect(page.locator("#model-small")).toContainText("claude-haiku-5-5", { timeout: 15_000 });
+  });
+
   test("repos add/remove + invalid + has-reviews refusal; data reset last", async ({ page }) => {
     test.setTimeout(240_000);
     const s = service();

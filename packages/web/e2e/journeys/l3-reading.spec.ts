@@ -2301,6 +2301,50 @@ test.describe("L3 demo guide reading", () => {
     });
   });
 
+  test("plotline rows carry no summary tooltip; picking one marks its row (#406)", async ({ page }) => {
+    test.setTimeout(240_000);
+    const s = service();
+    // Filter state is mutable: a fresh review, never shared.
+    const reviewId = await createDemoReview(s);
+    await openReview(page, reviewId);
+    const box = page.locator(".plotlines");
+    await expect(box).toBeVisible({ timeout: 15_000 });
+
+    await test.step("the summary carries no tooltip", async () => {
+      const desc = box.locator("[data-plotpick] .pldesc").first();
+      await expect.soft(desc).toBeVisible();
+      // The summary text is already the row body: no tooltip repeats it.
+      await expect.soft(desc).not.toHaveAttribute("data-tip");
+      const summary = ((await desc.textContent()) ?? "").trim().replace(/\s+/g, " ");
+      expect.soft(summary.length).toBeGreaterThan(0);
+      // Hover the summary past the tooltip delay: the shared tooltip
+      // may show the row's action hint, but never the summary text.
+      await hoverFresh(page, desc);
+      await expect.soft(page.locator("#tip")).toContainText("Show only", { timeout: 10_000 });
+      expect.soft((await page.locator("#tip").textContent()) ?? "").not.toContain(summary);
+    });
+
+    await test.step("picking a plotline marks its row; clearing unmarks it", async () => {
+      const row = box.locator("[data-plotpick]").first();
+      await expect.soft(row).not.toHaveAttribute("aria-current");
+      await expect.soft(row).not.toHaveClass(/sel/);
+      await row.click();
+      const fchip = page.locator('[data-filterchip="plotline"]');
+      await expect.soft(fchip).toContainText("Plotline:", { timeout: 15_000 });
+      // The picked row reads selected: the existing sunk-row tint plus
+      // the aria-current mark (role="button", so not aria-selected).
+      await expect.soft(row).toHaveAttribute("aria-current", "true");
+      await expect.soft(row).toHaveClass(/sel/);
+      // Clearing the filter unmarks the row.
+      await row.click();
+      await expect.soft(fchip).toHaveCount(0, { timeout: 15_000 });
+      await expect.soft(row).not.toHaveAttribute("aria-current");
+      await expect.soft(row).not.toHaveClass(/sel/);
+
+      await checkLayout(page, "j406-plotlines");
+    });
+  });
+
   test("card copies its Markdown to the clipboard (#377)", async ({ page, context }) => {
     test.setTimeout(180_000);
     const s = service();

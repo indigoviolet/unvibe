@@ -66,6 +66,13 @@ export function VersionSection({
     activeJobs: number;
     jobs: UpdateBlockedJob[];
   } | null>(null);
+  // #403: the checkbox is controlled by the SettingsPage-owned `settings`
+  // prop, which goes stale when the service changes underneath the open
+  // page (a switch or reset from another tab, the CLI, or a restart while
+  // this page sat open). Read through a ref so the stable status-polling
+  // callbacks below always compare against the latest prop.
+  const enabledRef = useRef(enabled);
+  enabledRef.current = enabled;
   const [switchingTo, setSwitchingTo] = useState<string | null>(null);
   const [switchError, setSwitchError] = useState<string | null>(null);
   const [doneNote, setDoneNote] = useState<string | null>(null);
@@ -84,19 +91,40 @@ export function VersionSection({
     };
   }, []);
 
+  /**
+   * #403: the status response carries the live saved toggle (`enabled`),
+   * so a read that disagrees with the `settings` prop re-GETs settings and
+   * the box snaps back to the saved value. Silent on failure:
+   * channels/status errors already surface through `error`, and the next
+   * status read retries.
+   */
+  const resyncSettings = useCallback(
+    async (serverEnabled: boolean): Promise<void> => {
+      if ((serverEnabled === true) === enabledRef.current) return;
+      try {
+        const fresh = await api.settings();
+        if (!cancelled.current) onSaved(fresh);
+      } catch {
+        // Keep the stale box; the next status read retries.
+      }
+    },
+    [onSaved],
+  );
+
   const loadStatus = useCallback(async (): Promise<UpdateStatusResponse | null> => {
     try {
       const st = await api.updateStatus();
       if (!cancelled.current) {
         setStatus(st);
         setError(null);
+        void resyncSettings(st.enabled);
       }
       return st;
     } catch (err) {
       if (!cancelled.current) setError(friendlyError(err));
       return null;
     }
-  }, []);
+  }, [resyncSettings]);
 
   const loadChannels = useCallback(
     async (build: UpdateBuildInfo | null, refresh?: boolean): Promise<void> => {
@@ -174,10 +202,16 @@ export function VersionSection({
     }
   }, [enabled, loadChannels, loadStatus, onSaved]);
 
-  /** Wait out a committed switch; reload on success, show the reason on rollback. */
+  /**
+   * Wait out a committed switch; reload on success, show the reason on
+   * rollback. Every status poll also resyncs settings (#403), so a
+   * service that comes back with reset data cannot leave a stale ticked
+   * box behind; the rollback and timeout settles resync once more.
+   */
   const waitForSwitch = useCallback(
     async (to: string, targetVersion: string | null, fromVersion: string | null, startedAt: string) => {
       const deadline = Date.now() + SWITCH_TIMEOUT_MS;
+      let lastEnabled: boolean | null = null;
       for (;;) {
         if (cancelled.current) return;
         let seen: string | null = null;
@@ -191,7 +225,11 @@ export function VersionSection({
         let st: UpdateStatusResponse | null = null;
         try {
           st = await api.updateStatus();
-          if (!cancelled.current) setStatus(st);
+          if (!cancelled.current) {
+            setStatus(st);
+            lastEnabled = st.enabled;
+            void resyncSettings(st.enabled);
+          }
         } catch {
           // Service down mid-switch: keep waiting.
         }
@@ -200,7 +238,10 @@ export function VersionSection({
             window.location.reload();
             return;
           }
-          if (!cancelled.current) setSwitchingTo(null);
+          if (!cancelled.current) {
+            setSwitchingTo(null);
+            if (lastEnabled !== null) void resyncSettings(lastEnabled);
+          }
           return;
         }
         const arrived =
@@ -212,6 +253,7 @@ export function VersionSection({
         if (Date.now() >= deadline) {
           if (!cancelled.current) {
             setSwitchingTo(null);
+            if (lastEnabled !== null) void resyncSettings(lastEnabled);
             setSwitchError(
               st?.pending
                 ? `The switch to ${to} is still running after 3 minutes — keep this page open; it finishes on its own.`
@@ -223,7 +265,7 @@ export function VersionSection({
         await new Promise((r) => setTimeout(r, SWITCH_POLL_MS));
       }
     },
-    [],
+    [resyncSettings],
   );
 
   /**
@@ -356,7 +398,15 @@ export function VersionSection({
                 }}
             onConfirm={(ref) => attemptSwitch(ref)}
             onForceConfirm={(ref) => void forceSwitch(ref)}
-            onRefresh={() => void loadChannels(status?.build ?? null, true)}
+            // #403: reload status first so a service that changed under
+            // the page (switch/reset from elsewhere) resyncs the toggle
+            // before the channels refetch filters on it.
+            onRefresh={() =>
+              void (async () => {
+                const st = await loadStatus();
+                void loadChannels(st?.build ?? null, true);
+              })()
+            }
             refreshing={refreshing}
             notesOpenRef={notesOpenRef}
             channelNotes={channelNotes}
