@@ -515,3 +515,119 @@ describe("shared context sees the same effective settings", () => {
     expect(seenBaseKeys[0]).toContain("claude|claude-opus-5-5");
   });
 });
+
+describe("issue #404: the missing-model error is only for user-saved picks", () => {
+  const auth = { authorization: "Bearer tok" };
+
+  function stubCatalog(
+    offered: Record<string, { models: ({ id: string } | string)[]; defaultId: string | null } | null>,
+  ): ModelCatalog {
+    const norm = (m: { id: string } | string): { id: string } => (typeof m === "string" ? { id: m } : m);
+    return {
+      listModels: (p: string) => Promise.resolve((offered[p]?.models ?? []).map(norm)),
+      offered: (p: string) => {
+        const o = offered[p] ?? null;
+        if (!o) return Promise.resolve(null);
+        return Promise.resolve({ models: o.models.map(norm), defaultId: o.defaultId });
+      },
+    };
+  }
+
+  async function makeApp(catalog: ModelCatalog) {
+    const db = openDatabase(":memory:");
+    migrate(db);
+    const settings = new SettingsStore(db);
+    const built = await createApp("tok", {
+      settings,
+      models: catalog,
+      jobs: new JobQueue(),
+      autoPipeline: false,
+    });
+    return { app: built.app, settings };
+  }
+
+  it("a partial personas PUT never marks small as saved; small still resolves live", async () => {
+    const claude = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"];
+    const { app, settings } = await makeApp(
+      stubCatalog({ claude: { models: claude, defaultId: null } }),
+    );
+    try {
+      const before = await app.inject({ method: "GET", url: "/api/settings", headers: auth });
+      const seedPersonas = (before.json() as { personas: { id: string }[] }).personas;
+      const put = await app.inject({
+        method: "PUT",
+        url: "/api/settings",
+        headers: auth,
+        payload: {
+          personas: seedPersonas.map((p) =>
+            p.id === GUIDE_PERSONA_ID ? { ...p, model: "claude-sonnet-5-5" } : p,
+          ),
+        },
+      });
+      expect(put.statusCode).toBe(200);
+      // Only the changed field counts as saved: small still takes the live default.
+      expect(settings.savedKeys()).toEqual(["personas"]);
+      const keys = await app.inject({ method: "GET", url: "/api/settings/saved-keys", headers: auth });
+      expect(keys.statusCode).toBe(200);
+      expect(keys.json()).toEqual({ savedKeys: ["personas"] });
+      const after = await app.inject({ method: "GET", url: "/api/settings", headers: auth });
+      expect((after.json() as { small: unknown }).small).toEqual({
+        provider: "claude",
+        model: "claude-haiku-5-5",
+        effort: "",
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("a listing with only the haiku alias and a dated pin resolves small live", async () => {
+    const { app, settings } = await makeApp(
+      stubCatalog({ claude: { models: ["haiku", "claude-haiku-4-5-20251001"], defaultId: null } }),
+    );
+    try {
+      const get = await app.inject({ method: "GET", url: "/api/settings", headers: auth });
+      expect((get.json() as { small: unknown }).small).toEqual({
+        provider: "claude",
+        model: "haiku",
+        effort: "",
+      });
+      expect(settings.savedKeys()).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("a saved small sticks when the listing later drops it (the error case)", async () => {
+    // Mutable listing: the adapter drops the saved id mid-test.
+    const claudeIds = ["claude-opus-5-5", "claude-haiku-5-5"];
+    const mutable: ModelCatalog = {
+      listModels: () => Promise.resolve(claudeIds.map((id) => ({ id }))),
+      offered: () => Promise.resolve({ models: claudeIds.map((id) => ({ id })), defaultId: null }),
+    };
+    const { app, settings } = await makeApp(mutable);
+    try {
+      const put = await app.inject({
+        method: "PUT",
+        url: "/api/settings",
+        headers: auth,
+        payload: { small: { provider: "claude", model: "claude-haiku-5-5", effort: "" } },
+      });
+      expect(put.statusCode).toBe(200);
+      expect(settings.savedKeys()).toEqual(["small"]);
+      // The adapter drops the saved id: GET keeps it (the Models section
+      // then warns, legitimately) instead of silently swapping models.
+      claudeIds.splice(1, 1, "claude-sonnet-5-5");
+      const get = await app.inject({ method: "GET", url: "/api/settings", headers: auth });
+      expect((get.json() as { small: unknown }).small).toEqual({
+        provider: "claude",
+        model: "claude-haiku-5-5",
+        effort: "",
+      });
+      const keys = await app.inject({ method: "GET", url: "/api/settings/saved-keys", headers: auth });
+      expect(keys.json()).toEqual({ savedKeys: ["small"] });
+    } finally {
+      await app.close();
+    }
+  });
+});

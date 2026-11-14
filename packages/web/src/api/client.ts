@@ -483,6 +483,9 @@ const realApi = {
   settings: (): Promise<Settings> => get("/api/settings"),
   saveSettings: (body: Partial<Settings>): Promise<Settings> =>
     request("/api/settings", { method: "PUT", body: JSON.stringify(body) }),
+  /** Issue #404: keys the user explicitly saved (unsaved roles take live defaults). */
+  savedSettingsKeys: (): Promise<import("@unvibe/shared").SavedKeysResponse> =>
+    get("/api/settings/saved-keys"),
   models: (provider: string): Promise<ModelsResponse> =>
     get(`/api/models?provider=${encodeURIComponent(provider)}`),
   /** Providers the pickers offer (issue #279): pi only when detected. */
