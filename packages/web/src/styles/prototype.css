@@ -885,7 +885,11 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
 .plotlines li { min-width: 0; }
 .plotlines .ui-row { border-top: 0; border-radius: var(--radius-6); padding: var(--space-2) var(--space-2); min-height: 0; }
 .plotlines .ui-row[role="button"] { cursor: pointer; }
-.plotlines .ui-row.sel { background: var(--sunk); }
+/* Issue #406: the picked plotline's row reads selected. The inset card
+   itself is sunk, so the sunk tint alone is invisible here: the row keeps
+   it and adds the app's accent rail (the same inset left rail the diff
+   uses for marked rows, sized by --rail-accent-width). */
+.plotlines .ui-row.sel { background: var(--sunk); box-shadow: inset var(--rail-accent-width) 0 0 var(--accent); }
 /* Titles show in full and all look the same (#242): no truncation,
    no ellipsis, no underline — long titles wrap, except the plotline
    name itself, which clamps to two lines (#353). This overrides the
