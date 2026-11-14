@@ -20,7 +20,7 @@ import { cpuThrottleFromEnv } from "../cpu-throttle.js";
 import { openPopup } from "../select.js";
 import { selectText } from "../select-text.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
-import { apiJson, createSeededDemoReview } from "../journeys/journey-helpers.js";
+import { TUTOR_LENS, apiJson, createSeededDemoReview, makeTutorForkPrompts } from "../journeys/journey-helpers.js";
 import { checkLayout } from "../layout-check.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
@@ -61,23 +61,34 @@ async function gotoPersonas(
 test.describe("J349 personas settings", () => {
   let dataDir = "";
   let svc: RunningService | null = null;
+  let promptDirs: string[] = [];
 
   test.beforeAll(async () => {
     mkdirSync(SHOTS, { recursive: true });
     dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j349-data-"));
-    svc = await startService(dataDir, { agent: "none" });
+    // Issue #405: the default-guide frame needs a non-Guide guide-capable
+    // choice, so this service boots over the Tutor fixture fork (#393).
+    const prompts = makeTutorForkPrompts("tourpersonas");
+    promptDirs.push(prompts.dir);
+    svc = await startService(dataDir, {
+      agent: "none",
+      extraEnv: { UNVIBE_PROMPTS_DIR: prompts.dir },
+    });
   });
 
   test.afterAll(async () => {
     await svc?.stop().catch(() => {});
     svc = null;
     rmSync(dataDir, { recursive: true, force: true });
+    for (const d of promptDirs) rmSync(d, { recursive: true, force: true });
+    promptDirs = [];
   });
 
   test("built-ins are seeded and listed", async ({ page }) => {
     if (!svc) throw new Error("service not running");
     const list = await personas(svc);
-    expect(list).toHaveLength(4);
+    // Issue #405 removes the Teach built-in: three seeds remain.
+    expect(list).toHaveLength(3);
     expect(list[0]).toMatchObject({
       id: "guide",
       name: "Guide",
@@ -104,14 +115,8 @@ test.describe("J349 personas settings", () => {
       enabled: true,
     });
     expect(list[2].lens).toContain("You are Clarity");
-    // The built-in Teach seeds fourth (it follows the Guide's model).
-    expect(list[3]).toMatchObject({
-      id: "teach",
-      name: "Teach",
-      followMain: true,
-      enabled: true,
-    });
-    expect(list[3].lens).toContain("You are Teach");
+    // Issue #405: no Teach seed remains.
+    expect(list.map((p) => p.id)).toEqual(["guide", "second-opinion", "clarity"]);
 
     await page.setViewportSize({ width: 1440, height: 900 });
     await gotoPersonas(page, svc);
@@ -124,10 +129,7 @@ test.describe("J349 personas settings", () => {
     await expect(clarityRow).toBeVisible();
     await expect(clarityRow).toContainText("Clarity");
     await expect(clarityRow).toContainText("Guide's model (claude/claude-opus-5-5)");
-    const teachRow = page.getByTestId("persona-teach");
-    await expect(teachRow).toBeVisible();
-    await expect(teachRow).toContainText("Teach");
-    await expect(teachRow).toContainText("Guide's model (claude/claude-opus-5-5)");
+    await expect(page.getByTestId("persona-teach")).toHaveCount(0);
     await checkLayout(page, "personas-1440-light");
     await page.screenshot({ path: path.join(SHOTS, "personas-1440-light.png") });
   });
@@ -138,16 +140,37 @@ test.describe("J349 personas settings", () => {
     test.setTimeout(120_000);
     await page.setViewportSize({ width: 1440, height: 900 });
     await gotoPersonas(page, svc);
-    // Issue #401: one Default guide picker above the list. The built-in
-    // Teach ships a guide-capable fork, so it is offered beside Guide.
+    // Issue #401: one Default guide picker above the list. Issue #405
+    // removes the Teach built-in, so the Tutor fixture fork (#393) is the
+    // non-Guide guide-capable choice: add its persona, then pick it.
+    const seed = (await apiJson(svc, "GET", "/api/settings")).json as {
+      personas: Record<string, unknown>[];
+    };
+    const added = await apiJson(svc, "PUT", "/api/settings", {
+      personas: [
+        ...seed.personas,
+        {
+          id: "tutor",
+          name: "Tutor",
+          followMain: false,
+          provider: "codex",
+          model: "gpt-6.1-sol",
+          lens: TUTOR_LENS,
+          cardInstruction: "",
+          enabled: true,
+          color: "#BE123C",
+        },
+      ],
+    });
+    expect(added.status).toBe(200);
     const picker = page.getByTestId("default-guide");
     await expect(picker).toBeVisible();
     await expect(picker).toContainText("Guide");
     await picker.click();
-    const teachOption = openPopup(page).getByRole("option", { name: "Teach" });
-    await expect(teachOption).toBeVisible();
-    await teachOption.scrollIntoViewIfNeeded();
-    await teachOption.click();
+    const tutorOption = openPopup(page).getByRole("option", { name: "Tutor" });
+    await expect(tutorOption).toBeVisible();
+    await tutorOption.scrollIntoViewIfNeeded();
+    await tutorOption.click();
     await expect
       .poll(
         async () =>
@@ -155,14 +178,14 @@ test.describe("J349 personas settings", () => {
             .defaultGuidePersonaId,
         { timeout: 15_000 },
       )
-      .toBe("teach");
-    await expect(picker).toContainText("Teach");
-    // Disable Teach with the default still on it: the one-line fallback
+      .toBe("tutor");
+    await expect(picker).toContainText("Tutor");
+    // Disable Tutor with the default still on it: the one-line fallback
     // notice says the Guide stands in (read-time fallback; the stored
     // value is left for the owner to change).
     const full = (await apiJson(svc, "GET", "/api/settings")).json as { personas: Record<string, unknown>[] };
     const disabled = await apiJson(svc, "PUT", "/api/settings", {
-      personas: full.personas.map((p) => (p["id"] === "teach" ? { ...p, enabled: false } : p)),
+      personas: full.personas.map((p) => (p["id"] === "tutor" ? { ...p, enabled: false } : p)),
     });
     expect(disabled.status).toBe(200);
     await page.reload();
@@ -173,9 +196,9 @@ test.describe("J349 personas settings", () => {
     await page.mouse.move(720, 20);
     await checkLayout(page, "personas-default-guide-1440-light");
     await page.screenshot({ path: path.join(SHOTS, "personas-default-guide-1440-light.png") });
-    // Restore: Teach back on, default back to Guide.
+    // Restore: Tutor removed, default back to Guide.
     const restored = await apiJson(svc, "PUT", "/api/settings", {
-      personas: full.personas,
+      personas: seed.personas,
       defaultGuidePersonaId: "guide",
     });
     expect(restored.status).toBe(200);
@@ -320,7 +343,7 @@ test.describe("J349 personas settings", () => {
     await row.getByRole("button", { name: "Delete Perf sceptic" }).click();
     await row.getByRole("button", { name: "Confirm delete the “Perf sceptic” persona" }).click();
     await expect(row).toHaveCount(0);
-    expect((await personas(svc)).map((p) => p.id)).toEqual(["guide", "second-opinion", "clarity", "teach"]);
+    expect((await personas(svc)).map((p) => p.id)).toEqual(["guide", "second-opinion", "clarity"]);
   });
 });
 
@@ -528,34 +551,4 @@ test.describe("J349b persona versions", () => {
     await page.screenshot({ path: path.join(SHOTS, "persona-clarity-1440-light.png") });
   });
 
-  test("Teach run on a card: tinted Background block, sub-heading, bullets (#402)", async ({ page }) => {
-    test.setTimeout(300_000);
-    if (!svc) throw new Error("no service");
-    await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
-    await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
-    const menuButton = page.locator('#C-central [data-persona-menu="central"]');
-    await expect(menuButton).toBeVisible({ timeout: 15_000 });
-    await menuButton.click();
-    const menu = page.locator('[data-persona-menu-list="central"]');
-    await menu.locator('[data-persona-option="teach"]').click();
-    {
-      const deadline = Date.now() + 90_000;
-      for (;;) {
-        const variants = await centralVariants(svc, reviewId);
-        if (variants["teach"]?.blocks.length) break;
-        if (Date.now() > deadline) throw new Error("teach variant never stored");
-        await new Promise((r) => setTimeout(r, 500));
-      }
-    }
-    const tabs = page.locator('[data-testid="versions-central"]');
-    await tabs.locator('[data-version-tab="teach"]').click();
-    const card = page.locator("#C-central");
-    const bg = card.locator(".blk.gen-aside.bg-aside");
-    await expect(bg).toBeVisible({ timeout: 15_000 });
-    await bg.scrollIntoViewIfNeeded();
-    await page.mouse.move(720, 20);
-    await checkLayout(page, "persona-teach-background-1440-light");
-    await page.screenshot({ path: path.join(SHOTS, "persona-teach-background-1440-light.png") });
-  });
 });

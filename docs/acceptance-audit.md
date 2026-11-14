@@ -1519,9 +1519,10 @@ needed (that deviation is closed, not added).
 1. Ingest (PR detection, fetch, merge-base diff, IDs, classification,
    budget check, worktree) — met (`ingest/*`; 300-file ingest 0.15 s —
    ran).
-2. Reader (explore, plotlines settled first, then problem (the problem
-   only) / one central-idea card (always, even with several plotlines;
-   per-plotline cards follow it when several) / "How it's built up" /
+2. Reader (explore, plotlines settled first, then problem (building
+   blocks first, the problem only) / one central-idea card (always,
+   even with several plotlines; per-plotline cards follow it when
+   several; #405 drops the "How it's built up" card) /
    "Decisions and questions" (parts in the order Decisions, Invariants,
    Known uncertainties, Interfaces; no "What it adds and removes" part;
    a decision that introduces a second way of doing something the
@@ -4456,7 +4457,7 @@ one-variant union today).
   hunk on the fork with its model and lens, Clarity on fork
   instructions under its lens, redo validation + stamping, endpoint,
   helper round-trip), real-service journey
-  `e2e/journeys/j393-guide-forks.spec.ts` (redo with a Teach fork,
+  `e2e/journeys/j393-guide-forks.spec.ts` (redo with a Tutor fork,
   fork prompts on the re-done review, drift warning), tour frames
   `redo-with-menu`, `redo-with-confirm`, `fork-drift` (inspected).
   Full gates not yet run.
@@ -4466,7 +4467,7 @@ one-variant union today).
 - **Setting:** `defaultGuidePersonaId` (default `"guide"`) on
   `Settings`, a per-key settings row (no `DATA_FORMAT` change).
   Settings → Personas gets one `Default guide` picker listing the
-  enabled guide-capable personas (Guide, Teach, any fork with
+  enabled guide-capable personas (Guide and any fork with
   `reader.md`); new reviews and plain Re-do guide runs record it
   (`POST /api/reviews`, extension open, `POST /api/reviews/:id/redo`
   with no `personaId`), while `Re-do with <persona>` still picks

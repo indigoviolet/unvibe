@@ -123,9 +123,9 @@ test.describe("L8 personas settings", () => {
 
   test("built-ins are seeded and listed", async ({ page }) => {
     const s = service();
-    await test.step("the API seeds the fixed Guide, Second opinion, Clarity and Teach", async () => {
+    await test.step("the API seeds the fixed Guide, Second opinion and Clarity", async () => {
       const list = await personas(s);
-      expect.soft(list).toHaveLength(4);
+      expect.soft(list).toHaveLength(3);
       // Issue #379: the fixed Guide seeds first (the main agent).
       expect.soft(list[0]).toMatchObject({
         id: "guide",
@@ -153,12 +153,11 @@ test.describe("L8 personas settings", () => {
         enabled: true,
       });
       expect.soft(list[2]!.lens).toContain("You are Clarity");
-      // Issue #397: Teach follows the Guide's model and owns a prompt fork.
-      expect.soft(list[3]).toMatchObject({ id: "teach", name: "Teach", followMain: true, enabled: true });
-      expect.soft(list[3]!.lens).toContain("You are Teach");
+      // Issue #405 removes the Teach built-in.
+      expect.soft(list.map((p) => p.id)).not.toContain("teach");
     });
 
-    await test.step("Settings lists all four with their models", async () => {
+    await test.step("Settings lists all three with their models", async () => {
       await page.setViewportSize({ width: 1440, height: 900 });
       await gotoPersonas(page, s);
       const guideRow = page.getByTestId("persona-guide");
@@ -173,9 +172,7 @@ test.describe("L8 personas settings", () => {
       await expect.soft(clarityRow).toBeVisible();
       await expect.soft(clarityRow).toContainText("Clarity");
       await expect.soft(clarityRow).toContainText("Guide's model (claude/claude-opus-5-5)");
-      const teachRow = page.getByTestId("persona-teach");
-      await expect.soft(teachRow).toBeVisible();
-      await expect.soft(teachRow).toContainText("Guide's model (claude/claude-opus-5-5)");
+      await expect.soft(page.getByTestId("persona-teach")).toHaveCount(0);
       await checkLayout(page, "personas-1440-light");
     });
   });
@@ -272,7 +269,7 @@ test.describe("L8 personas settings", () => {
       await row.getByRole("button", { name: "Delete Perf sceptic" }).click();
       await row.getByRole("button", { name: "Confirm delete the “Perf sceptic” persona" }).click();
       await expect.soft(row).toHaveCount(0);
-      expect.soft((await personas(s)).map((p) => p.id)).toEqual(["guide", "second-opinion", "clarity", "teach"]);
+      expect.soft((await personas(s)).map((p) => p.id)).toEqual(["guide", "second-opinion", "clarity"]);
     });
   });
 
@@ -572,56 +569,6 @@ test.describe("L8 persona runs on cards", () => {
       expect.soft(ring).toContain(CLARITY_RGB);
       await page.mouse.move(720, 20);
       await checkLayout(page, "persona-clarity-1440-light");
-    });
-  });
-
-  test("Teach run on a card: sub-heading, bullets and a tinted Background block", async ({ page }) => {
-    test.setTimeout(300_000);
-    const s = service();
-    // Issue #402: Teach's prompts ask for scannable structure and, rarely,
-    // a `::: background` container that renders in place on a quiet tint.
-    const TEACH_ID = "teach";
-    await openReview(page);
-    await test.step("run Teach on the central card", async () => {
-      const menuButton = page.locator('#C-central [data-persona-menu="central"]');
-      await expect.soft(menuButton).toBeVisible({ timeout: 15_000 });
-      await menuButton.click();
-      const menu = page.locator('[data-persona-menu-list="central"]');
-      await expect.soft(menu.locator(`[data-persona-option="${TEACH_ID}"]`)).toContainText("Teach");
-      await menu.locator(`[data-persona-option="${TEACH_ID}"]`).click();
-      const deadline = Date.now() + 90_000;
-      for (;;) {
-        const variants = await centralVariants(s, reviewId);
-        if (variants[TEACH_ID]?.blocks.length) break;
-        if (Date.now() > deadline) throw new Error("teach variant never stored");
-        await new Promise((r) => setTimeout(r, 500));
-      }
-      const stored = (await centralVariants(s, reviewId))[TEACH_ID]!;
-      const kinds = (stored.blocks as { type: string; kind?: string }[]).map((b) => (b.type === "aside" ? `aside:${b.kind}` : b.type));
-      expect.soft(kinds).toEqual(["aside:Background", "heading", "paragraph", "list"]);
-    });
-    await test.step("the Background block is tinted, tagged and keeps its citation", async () => {
-      const tabs = page.locator('[data-testid="versions-central"]');
-      await tabs.locator(`[data-version-tab="${TEACH_ID}"]`).click();
-      const card = page.locator("#C-central");
-      const bg = card.locator(".blk.gen-aside.bg-aside");
-      await expect.soft(bg).toBeVisible({ timeout: 15_000 });
-      await expect.soft(bg.locator(".tag")).toHaveText("Background");
-      await expect.soft(bg).toContainText("keeps two copies");
-      // The tint is the theme's sunk surface, not the card's own surface.
-      const [bgColor, cardColor] = await Promise.all([
-        bg.evaluate((el) => getComputedStyle(el).backgroundColor),
-        card.evaluate((el) => getComputedStyle(el).backgroundColor),
-      ]);
-      expect.soft(bgColor).not.toBe("rgba(0, 0, 0, 0)");
-      expect.soft(bgColor).not.toBe(cardColor);
-      // The block's citation renders as a source chip, like a paragraph's.
-      await expect.soft(bg.locator(".lo-row .lk[data-src]")).toHaveCount(1);
-      await expect.soft(bg.locator(".lo-row .lk[data-src]")).toHaveAttribute("data-src", /conn/);
-      await expect.soft(card.locator("h3.subhead").first()).toContainText("What the change does");
-      await expect.soft(card.locator("ul li")).toHaveCount(3);
-      await page.mouse.move(720, 20);
-      await checkLayout(page, "persona-teach-background-1440-light");
     });
   });
 

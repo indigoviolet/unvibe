@@ -531,7 +531,7 @@ A new base is built when any of these happens:
    - create or reuse the worktree.
 2. **Reader** (main model, one session, cards streamed as they finish):
    - explores the repo;
-   - settles the plotlines first (a pedagogic progression: how the change is built up, each unit understandable on its own), then writes the problem card (including how the system worked before), the central-idea card (one per plotline when there are several), the "How it's built up" card walking the plotlines in landing order, the "Decisions and alternatives" card (each key choice, what else was possible, why this one, what it costs — neutral explanation; verdicts stay with the critic), and the "Go deeper" directions (title plus why);
+   - settles the plotlines first (a pedagogic progression: how the change is built up, each unit understandable on its own), then writes the problem card (teaching the building blocks first, then the problem only), the central-idea card (one per plotline when there are several), the "Decisions and questions" card (each key choice, what else was possible, why this one, what it costs — neutral explanation; verdicts stay with the critic), and the "Go deeper" directions (title plus why);
    - **pins code** with a `pin_context(path, lines, why)` tool, the one tool only the reader gets.
 3. **Build the base** (§9.2).
 4. **Parallel forks of the base:**

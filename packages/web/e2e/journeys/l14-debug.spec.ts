@@ -357,13 +357,9 @@ test.describe("L14 re-do from the top bar", () => {
       await expect(redo).toBeVisible({ timeout: 30_000 });
       await expect(redo).toHaveAttribute("title", "Re-do guide");
       await expect(redo).toHaveText("");
-      // #397: the built-in Teach persona is guide-capable, so Re-do opens
-      // its menu (#393); "Re-do guide" there is the plain re-do.
-      const openPlainRedo = async (): Promise<void> => {
-        await redo.click();
-        await page.getByTestId("redo-menu").getByRole("menuitem", { name: "Re-do guide" }).click();
-      };
-      await openPlainRedo();
+      // #405: with no other guide-capable persona, Re-do is a plain
+      // button again (no #393 menu).
+      await redo.click();
       // #346: the shared inline confirm; the what-is-lost copy lives in
       // the pill's accessible name.
       const pill = page.locator("#reviewbar .uic-pill");
@@ -373,12 +369,12 @@ test.describe("L14 re-do from the top bar", () => {
       await pill.getByRole("button", { name: "Cancel" }).click();
       await expect(pill).toHaveCount(0);
       await expect(page.url()).toContain(`/review/${id}`);
-      await openPlainRedo();
+      await redo.click();
       await expect(pill).toContainText("Confirm re-do guide", { timeout: 15_000 });
       await page.keyboard.press("Escape");
       await expect(pill).toHaveCount(0);
       await expect(page.url()).toContain(`/review/${id}`);
-      await openPlainRedo();
+      await redo.click();
       await expect(pill).toContainText("Confirm re-do guide", { timeout: 15_000 });
       await pill.getByRole("button", { name: "Confirm re-do guide" }).click();
       await expect.poll(() => page.url(), { timeout: 60_000 }).not.toContain(`/review/${id}`);

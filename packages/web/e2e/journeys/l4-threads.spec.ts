@@ -1853,17 +1853,19 @@ test.describe("L4 threads on the demo (fast replay)", () => {
       const snap = snapRes.json as {
         pages?: { id: string; cards: { id: string; blocks: { id: string }[] }[] }[];
       };
-      const buildup = snap.pages?.find((p) => p.id === "root")?.cards.find((c) => c.id === "buildup");
-      const listBlock = buildup?.blocks.find((b) => b.id === "b2");
-      if (!buildup || !listBlock) throw new Error("no buildup list block");
+      // Issue #405 drops the buildup card; the decisions card's first
+      // list block takes its place as the list-margin carrier.
+      const decisions = snap.pages?.find((p) => p.id === "root")?.cards.find((c) => c.id === "decisions");
+      const listBlock = decisions?.blocks.find((b) => b.id === "b2");
+      if (!decisions || !listBlock) throw new Error("no decisions list block");
       const made = await apiJson(s, "POST", `/api/reviews/${reviewId}/comments`, {
-        anchor: { where: "block", blockId: `${buildup.id}#${listBlock.id}` },
-        quote: "They return early when a value has no CRLF.",
+        anchor: { where: "block", blockId: `${decisions.id}#${listBlock.id}` },
+        quote: "Rewrite by delete and re-add.",
         text: "List note",
       });
       expect(made.status).toBe(201);
       const listId = (made.json as { id: string }).id;
-      const listPill = page.locator(`#C-buildup [data-thr-margin~="${listId}"]`);
+      const listPill = page.locator(`#C-decisions [data-thr-margin~="${listId}"]`);
       await expect.soft(listPill).toBeVisible({ timeout: 15_000 });
       await expect.soft(listPill).toHaveAttribute("data-tip", "1 thread");
       const geom = await listPill.evaluate((el) => {
@@ -2072,14 +2074,15 @@ test.describe("L4 ask writing and recovery (slow replay)", () => {
     // answers after the writing frame, so the writing state is catchable.
     const reviewId = await createDemoReview(s);
     await page.goto(`${s.origin}/review/${reviewId}?token=${s.token}`);
-    // Issue #341: explain "three pieces" on the build-up card. No explain
-    // pattern matches a build-up-anchored prompt, so replay answers with
-    // the first explain entry (the recorded obs-fold explain) — still a
-    // real recording while the writing state is captured.
-    await expect(page.locator("#C-buildup")).toBeVisible({ timeout: 60_000 });
-    await selectText(page, "#C-buildup", "three pieces");
+    // Issue #341: explain "before anything reads the headers" on the
+    // central card (#405: the build-up card is gone). No explain pattern
+    // matches it, so replay answers with the first explain entry (the
+    // recorded obs-fold explain) — still a real recording while the
+    // writing state is captured.
+    await expect(page.locator("#C-central")).toBeVisible({ timeout: 60_000 });
+    await selectText(page, "#C-central", "before anything reads the headers");
     await page.locator('#selbar [data-act="explain"]').click();
-    const card = page.locator("#C-buildup [data-thread]").first();
+    const card = page.locator("#C-central [data-thread]").first();
     await test.step("the writing card shows the header and indicator only", async () => {
       await expect.soft(card).toBeVisible({ timeout: 15_000 });
       await expect.soft(card.locator(".working")).toBeVisible({ timeout: 15_000 });
