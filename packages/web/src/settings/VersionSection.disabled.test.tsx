@@ -23,6 +23,7 @@ const MOCK_GUIDE = { ...GUIDE_PERSONA, provider: "claude", model: "mock-main" };
 const SETTINGS: Settings = {
   small: { provider: "claude", model: "mock-small", effort: "" },
   personas: [MOCK_GUIDE],
+  defaultGuidePersonaId: "guide",
   sessionsPerProvider: 4,
   inlineBudgetTokens: 40000,
   rebuildSupersededRatio: 0.2,

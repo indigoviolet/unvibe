@@ -22,6 +22,7 @@ function settings(fullAccess: boolean): Awaited<ReturnType<typeof api.settings>>
   return {
     small: { provider: "claude", model: "m", effort: "" },
     personas: [MOCK_GUIDE],
+    defaultGuidePersonaId: "guide",
     sessionsPerProvider: 4,
     inlineBudgetTokens: 40000,
     rebuildSupersededRatio: 0.2,
