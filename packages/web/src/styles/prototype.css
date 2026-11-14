@@ -222,11 +222,7 @@ code { font-family: var(--mono); font-size: .86em; }
 .sp { flex: 1; }
 .ic { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; flex: none; vertical-align: -2px; }
 .ib { display: inline-grid; place-items: center; width: 26px; height: 24px; border: 1px solid transparent; background: none; border-radius: var(--radius-6); color: var(--muted); padding: 0; }
-/* #407: hover/focus tint is ink-mixed so it reads on every theme (a --sunk
-   wash is ~1.08:1 on a white surface — effectively invisible). The global
-   :focus-visible outline stays; the tint is in addition to it. */
-.ib:hover:not(:disabled) { background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink); }
-.ib:focus-visible { background: color-mix(in srgb, var(--ink) 8%, transparent); }
+.ib:hover:not(:disabled) { background: var(--sunk); color: var(--ink); }
 .ib[aria-pressed="true"] { color: var(--ok); }
 .ib.bd { border-color: var(--line); }
 .app { height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr); grid-template-columns: minmax(0, 1fr); }
@@ -434,12 +430,9 @@ code { font-family: var(--mono); font-size: .86em; }
 .seg { display: inline-flex; border: var(--border-width) solid var(--line); border-radius: var(--radius-button); overflow: hidden; }
 .seg button { border: 0; background: var(--surface); font-size: var(--text-xs); padding: var(--space-1) var(--space-2); color: var(--text-secondary); }
 .seg button + button { border-left: var(--border-width) solid var(--line); }
-/* #407: a pressed segment reads selected, not primary — an ink-mixed
-   tint (NOT --sunk, which is invisible on light surfaces) with ink text
-   and a slightly heavier weight. Submit review stays the only solid
-   dark button in the bar. Unpressed segments share the icon-button
-   hover tint so every segmented control behaves the same. */
-.seg button:hover:not(:disabled):not([aria-pressed="true"]) { background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink); }
+/* #407: a pressed segment reads selected, not primary — a light
+   ink-mixed tint with ink text and a slightly heavier weight. Submit
+   review stays the only solid dark button in the bar. */
 .seg button[aria-pressed="true"] { background: color-mix(in srgb, var(--ink) 12%, transparent); color: var(--ink); font-weight: 600; }
 .chip { border: var(--border-width) solid var(--line); background: var(--surface); border-radius: var(--radius-pill); padding: 0 8px; font-size: 11.5px; color: var(--muted); height: 22px; }
 .chip[aria-pressed="true"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
