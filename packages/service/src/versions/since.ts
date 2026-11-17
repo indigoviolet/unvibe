@@ -120,9 +120,32 @@ const MAX_COMMENT_MATCHES = 20;
 const MAX_THREAD_MATCHES = 10;
 const MAX_CONVERSATION_MATCHES = 10;
 
-function excerpt(text: string, cap: number): string {
+/**
+ * One-line excerpt capped at `cap` code points (issue #411): cut at the
+ * last sentence boundary (`.`, `!`, `?` followed by a space or the end)
+ * within the limit when there is one, else at the last word boundary,
+ * with an ellipsis. Pure. Never leaves a trailing space before the
+ * ellipsis; text within the cap passes through untouched.
+ */
+export function excerpt(text: string, cap: number): string {
   const oneLine = text.replace(/\s+/g, " ").trim();
-  return oneLine.length > cap ? `${oneLine.slice(0, cap)}…` : oneLine;
+  if (oneLine.length <= cap) return oneLine;
+  const window = oneLine.slice(0, cap);
+  let cut = -1;
+  for (let i = window.length - 1; i >= 0; i--) {
+    const ch = window[i];
+    if (
+      (ch === "." || ch === "!" || ch === "?") &&
+      (i + 1 >= oneLine.length || oneLine[i + 1] === " ")
+    ) {
+      cut = i + 1;
+      break;
+    }
+  }
+  if (cut > 0) return `${window.slice(0, cut).trimEnd()}…`;
+  const space = window.lastIndexOf(" ");
+  if (space > 0) return `${window.slice(0, space)}…`;
+  return `${window}…`;
 }
 
 /**
@@ -517,6 +540,12 @@ export function normalizeAgentSinceCards(v: unknown): SinceCardDraftWithRefs[] |
  * unique ids, resolved feedback links (unknown ids dropped at once),
  * canonical card shape. Shared by the update pass and the guide run so
  * both store the same shape. Pure over the snapshot (read-only).
+ *
+ * Issue #411: a card with no body blocks is a failed card — dropped on
+ * its own, like a blockless finding in `criticApplyAll` — never stored
+ * as a title-only card (the renderer would show its title and Answers
+ * line with no body). Callers store the section only when the returned
+ * list is non-empty.
  */
 export function buildSinceSectionCards(
   snapshot: ReviewSnapshot,
@@ -527,26 +556,30 @@ export function buildSinceSectionCards(
     for (const c of snapshot.sinceSection.cards) known.add(c.id);
   }
   const toVersion = snapshot.review.currentVersion;
-  return cards.map((c, i) => {
-    let id = typeof c.id === "string" && c.id.length > 0 ? c.id : `since-${toVersion}-${i + 1}`;
-    if (known.has(id)) id = `${id}-v${toVersion}`;
-    known.add(id);
-    const answers = resolveSinceAnswers(snapshot, c.answerRefs);
-    const cardOut: Card = {
-      ...(c as Card),
-      id,
-      pageId: typeof c.pageId === "string" && c.pageId.length > 0 ? c.pageId : "since",
-      collapsed: c.collapsed === true,
-      revision: typeof c.revision === "number" ? c.revision : 1,
-      undoStack: Array.isArray(c.undoStack) ? c.undoStack : [],
-      blocks: Array.isArray(c.blocks) ? c.blocks : [],
-    };
-    const rec = cardOut as unknown as Record<string, unknown>;
-    delete rec["answerRefs"];
-    delete rec["answers"];
-    if (answers.length > 0) cardOut.answers = answers;
-    return cardOut;
-  });
+  // Issue #411: bodyless model cards fail here (see above) — before id
+  // assignment, so a dropped card consumes no id.
+  return cards
+    .filter((c) => Array.isArray(c.blocks) && c.blocks.length > 0)
+    .map((c, i) => {
+      let id = typeof c.id === "string" && c.id.length > 0 ? c.id : `since-${toVersion}-${i + 1}`;
+      if (known.has(id)) id = `${id}-v${toVersion}`;
+      known.add(id);
+      const answers = resolveSinceAnswers(snapshot, c.answerRefs);
+      const cardOut: Card = {
+        ...(c as Card),
+        id,
+        pageId: typeof c.pageId === "string" && c.pageId.length > 0 ? c.pageId : "since",
+        collapsed: c.collapsed === true,
+        revision: typeof c.revision === "number" ? c.revision : 1,
+        undoStack: Array.isArray(c.undoStack) ? c.undoStack : [],
+        blocks: Array.isArray(c.blocks) ? c.blocks : [],
+      };
+      const rec = cardOut as unknown as Record<string, unknown>;
+      delete rec["answerRefs"];
+      delete rec["answers"];
+      if (answers.length > 0) cardOut.answers = answers;
+      return cardOut;
+    });
 }
 
 /**
