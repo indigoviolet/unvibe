@@ -22,6 +22,8 @@
  *
  * Guards kept: #322 (button starts the review, confirm flow intact);
  * #333 (one conversation button, no duplicates, quiet failure);
+ * #410 (new PR Overview PageHeader: one button in PH_Actions across
+ * tab switches, never in the sticky mini-header);
  * extension origin + token gate (403 on unknown origin for pr-status,
  * open and the create-or-open endpoint; pinned origin allowed);
  * network privacy (github.com routed locally, no non-local page
@@ -41,6 +43,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { cpuThrottleFromEnv } from "../cpu-throttle.js";
+import { pageHeaderBody, pageHeaderFixtureHtml } from "../extension-pageheader-fixture.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import {apiJson, git, makeScratchRepo, realGitPath, writeFakeGitOffline, writeFakeShell, fakeServicePath} from "./journey-helpers.js";
 
@@ -435,6 +438,81 @@ test.describe("L12 extension PR button", () => {
       }, CONVERSATION_BODY);
       await expect(button).toBeVisible({ timeout: 30_000 });
       expect(await page.locator("#unvibe-review-button").count()).toBe(1);
+
+      expect(errors).toEqual([]);
+    } finally {
+      await ctx.close().catch(() => {});
+      rmSync(profileDir, { recursive: true, force: true });
+    }
+  });
+
+  test("new PR Overview layout: one button in the PageHeader actions across tab switches (#410)", async () => {
+    test.setTimeout(240_000);
+    const profileDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-l12-410-profile-"));
+    const ctx = await chromium.launchPersistentContext(profileDir, {
+      channel: "chromium",
+      headless: true,
+      ignoreDefaultArgs: ["--disable-extensions"],
+      args: [`--load-extension=${EXTENSION_DIR}`, `--disable-extensions-except=${EXTENSION_DIR}`],
+    });
+    try {
+      await ctx.route("https://github.com/**", async (route) => {
+        await route.fulfill({ status: 200, contentType: "text/html", body: pageHeaderFixtureHtml(OWNER, NAME, PR_NUMBER) });
+      });
+      const page = await ctx.newPage();
+      await cpuThrottleFromEnv(page);
+      const errors: string[] = [];
+      page.on("pageerror", (e) => errors.push(String(e)));
+      await page.goto(`${PR_URL}?overview=true`);
+
+      const inActions = page.locator('[data-component="PageHeader"] [data-component="PH_Actions"] #unvibe-review-button');
+      const sticky = page.locator('[data-testid="diff-comparison-viewer-sticky-header-bar"] #unvibe-review-button');
+      const button = page.locator("#unvibe-review-button");
+
+      // Overview: exactly one button, in the PageHeader actions beside
+      // Preview / Code, never in the sticky mini-header; brand look kept.
+      await expect(inActions).toBeVisible({ timeout: 30_000 });
+      expect(await button.count()).toBe(1);
+      await expect(sticky).toHaveCount(0);
+      await expect(button).toHaveText(/^(Review in Unvibe|Open review|Start Unvibe)$/);
+      expect(await button.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe("rgb(56, 48, 158)");
+      // It sits on the actions row, vertically aligned with GitHub's
+      // buttons (same height, centres within 2px).
+      const [btnBox, codeBox] = await Promise.all([
+        button.boundingBox(),
+        page.locator('[data-component="PH_Actions"] button', { hasText: "Code" }).boundingBox(),
+      ]);
+      expect(btnBox && codeBox).toBeTruthy();
+      expect(Math.abs(btnBox!.y + btnBox!.height / 2 - (codeBox!.y + codeBox!.height / 2))).toBeLessThanOrEqual(2);
+      // Spaced like its neighbours: the gap to the previous action
+      // button equals the gap between GitHub's own buttons.
+      const gaps = await page.locator('[data-component="PH_Actions"] > button').evaluateAll((els) =>
+        els.slice(1).map((el, i) => Math.round(el.getBoundingClientRect().left - els[i].getBoundingClientRect().right)),
+      );
+      expect(new Set(gaps).size).toBe(1);
+
+      // Client-side tab switches re-render the whole header (new nodes)
+      // and change the URL: the button follows into the new PH_Actions,
+      // never duplicates and never lands in the sticky bar.
+      for (const [tab, sub] of [["Files changed", "/files"], ["Commits", "/commits"], ["Overview", "?overview=true"]] as const) {
+        await page.evaluate(
+          ([body, url]) => {
+            history.pushState({}, "", url);
+            document.body.innerHTML = body;
+          },
+          [pageHeaderBody(PR_NUMBER, tab), `${new URL(PR_URL).pathname}${sub}`] as const,
+        );
+        await expect(page.locator('[data-component="PH_Navigation"] [aria-current="page"]')).toHaveText(tab);
+        await expect(inActions).toBeVisible({ timeout: 30_000 });
+        expect(await button.count()).toBe(1);
+        await expect(sticky).toHaveCount(0);
+      }
+
+      // Dark scheme: still one visible button with the brand colours.
+      await page.emulateMedia({ colorScheme: "dark" });
+      await expect(inActions).toBeVisible();
+      expect(await button.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe("rgb(56, 48, 158)");
+      expect(await button.evaluate((el) => getComputedStyle(el).color)).toBe("rgb(255, 255, 255)");
 
       expect(errors).toEqual([]);
     } finally {
