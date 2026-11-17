@@ -1935,7 +1935,7 @@ export class Pipeline {
     const requestedKeys = requestedReaderFields(readerTemplateBody);
     // Issue #351 step 2: when the reviewer already reviewed this PR on
     // GitHub up to a commit B (accepted before this run), the reader is
-    // told so and writes the Since-B section in this same run — one run,
+    // told so and writes the Changes-since-X section in this same run — one run,
     // not two. Otherwise the variable sends it down the normal path.
     // The baseline may have been picked while the review was still
     // opening (no head diff to compare then): fill the missing hunk set
@@ -1976,7 +1976,7 @@ export class Pipeline {
       }
     }
     const reviewed_context = formatReaderReviewedContext(readerSnapshot, readerSnapshot.sinceHunks);
-    // Whether this run writes a Since-B section (for the repair message).
+    // Whether this run writes a Changes-since-X section (for the repair message).
     const wantsReaderSinceSection = readerSnapshot.sinceBaseline?.kind === "commit";
     let prompt = renderTemplate(lib.get("reader")!, {
       source,
@@ -2118,12 +2118,12 @@ export class Pipeline {
                 finalData = repaired.data as ReplyData;
               } else {
                 // Name only what the prompt requested (see above). The
-                // Since-B section only when this run had a commit baseline.
+                // Changes-since-X section only when this run had a commit baseline.
                 const missing = [
                   ...(requestedKeys.includes("plotlines") ? ["plotlines"] : []),
                   ...(requestedKeys.includes("glossary") ? ["glossary"] : []),
                   ...(requestedKeys.includes("pendingCards") ? ["go-deeper directions"] : []),
-                  ...(wantsReaderSinceSection ? ["Since-B section"] : []),
+                  ...(wantsReaderSinceSection ? ["Changes-since-X section"] : []),
                 ];
                 degradedReason =
                   "The reader's trailing data block did not parse and the repair reply did not parse either, " +
@@ -2426,7 +2426,7 @@ export class Pipeline {
         state.plotline = pid;
       }
       // Issue #351 step 2: the no-review-yet path — the reader wrote the
-      // Since-B section in this same run. Stored only when the run had a
+      // Changes-since-X section in this same run. Stored only when the run had a
       // commit baseline (a stray section without one is dropped, never
       // stored), with resolved feedback links like the update pass.
       const readerBaseline = draft.sinceBaseline;

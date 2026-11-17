@@ -2,9 +2,9 @@
  * versions/refresh: real-git integration (real `git`, no `gh`).
  *
  * (a) rebase onto a moved base, no conflicts → zero changed hunks, state
- *     and anchors preserved, version recorded but not stale.
+ *     and anchors preserved, no new-commits signal.
  * (b) amend changing one hunk → reviewed cleared, its
- *     comment outdated, citing cards stale, everything else untouched.
+ *     comment outdated, citing citation remapped, nothing flagged stale.
  * (c) new commit adding a file + shifting lines → anchors moved by offsets.
  * (d) file rename → anchors/citations follow the rename.
  * (e) force-push dropping a commit → dropped hunks removed, survivors kept.
@@ -120,12 +120,15 @@ describe("refresh integration", () => {
 
       const after = ctx.reviews.getSnapshot(id)!;
       expect(after.version.n).toBe(2);
-      expect(after.versionStatus?.stale).toBe(false);
+      // No new-commit signal on a content-identical rebase; the guide is untouched.
+      expect(after.versionStatus?.changedHunks).toBe(0);
+      expect(after.versionStatus?.newHunks).toBe(0);
+      expect(after.versionStatus?.removedHunks).toBe(0);
       // State preserved: still reviewed, comment moved not outdated.
       expect(after.hunkStates.find((s) => s.contentHash === hash)?.reviewed).toBe(true);
       const ann = after.annotations.find((a) => a.id === "ann-1")!;
       expect(ann.outdated).not.toBe(true);
-      expect(after.pages.flatMap((p) => p.cards).find((c) => c.id === "c1")?.stale).not.toBe(true);
+      expect("stale" in (after.pages.flatMap((p) => p.cards).find((c) => c.id === "c1") ?? {})).toBe(false);
 
       // Old version stays retrievable.
       const old = await app.inject({ method: "GET", url: `/api/reviews/${id}?version=1`, headers: authed });
@@ -136,7 +139,7 @@ describe("refresh integration", () => {
     }
   });
 
-  it("(b) amend changing one hunk → cleared review, outdated comment, stale card", async () => {
+  it("(b) amend changing one hunk → cleared review, outdated comment, remapped citation", async () => {
     const dir = await initRepo();
     fs.writeFileSync(path.join(dir, "a.py"), "x = 1\ny = 2\nz = 0\n");
     await git(dir, "add", ".");
@@ -210,9 +213,14 @@ describe("refresh integration", () => {
       const ann = after.annotations.find((a) => a.id === "ann-a")!;
       expect(ann.outdated).toBe(true);
       expect(ann.originalSnippet).toBe("z = 9");
-      // Citing card is stale; the other is not.
-      expect(after.pages.flatMap((p) => p.cards).find((c) => c.id === "c-a")?.stale).toBe(true);
-      expect(after.pages.flatMap((p) => p.cards).find((c) => c.id === "c-b")?.stale).not.toBe(true);
+      // The citing card's citation is remapped to the new hunk; no stale flags anywhere.
+      const cardA = after.pages.flatMap((p) => p.cards).find((c) => c.id === "c-a")!;
+      const cardB = after.pages.flatMap((p) => p.cards).find((c) => c.id === "c-b")!;
+      expect("stale" in cardA).toBe(false);
+      expect("stale" in cardB).toBe(false);
+      const citA = cardA.blocks[0].type === "paragraph" ? cardA.blocks[0].citations[0] : undefined;
+      expect(citA?.target).toContain(`${hunkHashFor(after, "a.py").fileKey}:`);
+      expect(citA?.target).not.toContain(aHash);
     } finally {
       await app.close();
     }
@@ -655,7 +663,7 @@ describe("refresh integration", () => {
       const after = ctx.reviews.getSnapshot(id)!;
       expect(after.files.some((f) => f.path === "helper.py")).toBe(false);
       const card = after.pages.flatMap((p) => p.cards).find((c) => c.id === "c-code")!;
-      expect(card.stale).not.toBe(true);
+      expect("stale" in card).toBe(false);
       const cit = card.blocks[0].type === "paragraph" ? card.blocks[0].citations[0] : undefined;
       expect(cit).toEqual({ target: `code:helper.py:2@${after.version.headSha}` });
     } finally {
@@ -696,7 +704,7 @@ describe("refresh integration", () => {
       const after = ctx.reviews.getSnapshot(id)!;
       expect(after.files.some((f) => f.path === "helper.py")).toBe(false);
       const card = after.pages.flatMap((p) => p.cards).find((c) => c.id === "c-code")!;
-      expect(card.stale).not.toBe(true);
+      expect("stale" in card).toBe(false);
       const cit = card.blocks[0].type === "paragraph" ? card.blocks[0].citations[0] : undefined;
       expect(cit).toEqual({ target: `code:helper.py:4@${after.version.headSha}` });
       // The remapped lines really hold the cited text at the new head.
@@ -707,7 +715,7 @@ describe("refresh integration", () => {
     }
   });
 
-  it("(p) #112 code citation text gone / file deleted upstream → unverified + stale, no throw", async () => {
+  it("(p) #112 code citation text gone / file deleted upstream → unverified, no throw", async () => {
     const dir = await initRepo();
     fs.writeFileSync(path.join(dir, "a.py"), "x = 1\n");
     fs.writeFileSync(path.join(dir, "helper.py"), "alpha = 1\nbeta = 2\ngamma = 3\n");
@@ -750,7 +758,7 @@ describe("refresh integration", () => {
       const after = ctx.reviews.getSnapshot(id)!;
       for (const cid of ["c-gone-text", "c-gone-file"]) {
         const card = after.pages.flatMap((p) => p.cards).find((c) => c.id === cid)!;
-        expect(card.stale, cid).toBe(true);
+        expect("stale" in card).toBe(false);
         const cit = card.blocks[0].type === "paragraph" ? card.blocks[0].citations[0] : undefined;
         expect(cit?.unverified, cid).toBe(true);
         expect(cit?.target, cid).toContain(`@${snap.version.headSha}`);

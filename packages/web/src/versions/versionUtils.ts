@@ -202,8 +202,8 @@ export function versionCountsText(s: {
   return `${part(s.changedHunks, "changed")} · ${part(s.newHunks, "new")} · ${part(s.removedHunks, "removed")}`;
 }
 
-/** Banner headline for a stale review (PRD §8 "New commits on this branch"). */
-export function staleHeadline(status: VersionStatus): string {
+/** Banner headline for a review with new commits (PRD §8 "New commits on this branch"). */
+export function newCommitsHeadline(status: VersionStatus): string {
   return `New commits on this branch: v${status.fromVersion} → v${status.toVersion} (${versionCountsText(status)} hunks)`;
 }
 

@@ -9,10 +9,10 @@
  * - `GET /prior-github-review` answers the authenticated user's own latest
  *   GitHub review `commit_id` (other users' reviews ignored, entries
  *   without a `commit_id` ignored), or null — best effort, never an error.
- * - The no-review path: with B from the stubbed reviews response, one
- *   guide run writes the normal guide plus the Since-B section (with a
- *   resolved feedback link), marks the all-since plotline new, and stores
- *   the hunk set the filter and markers read. No update-pass job runs.
+ * - The no-review path: with X from the stubbed reviews response, one
+ *   guide run writes the normal guide plus the Changes-since-X section
+ *   (with a resolved feedback link) and stores the hunk set the Since
+ *   filter reads. No explain-pass job runs.
  *
  * Fake/stub command runner (real local git, stubbed `gh`) + scripted fake
  * agent; made-up fixtures, no live spend.
@@ -33,7 +33,6 @@ import {
   computeSinceHunks,
   diffFilesAtCommit,
   formatReaderReviewedContext,
-  markNewSincePlotlines,
 } from "../src/versions/since.js";
 import { readerApply, requestedReaderFields } from "../src/pipeline/apply.js";
 import { isGitFetch } from "./git-args.js";
@@ -165,26 +164,6 @@ describe("since-B step 2: pure context builders", () => {
     expect(cards[0].pageId).toBe("since");
     // Unknown answer ids resolve to nothing (no comments on the snapshot).
     expect(cards[0].answers ?? []).toEqual([]);
-  });
-
-  it("markNewSincePlotlines marks only all-since plotlines", () => {
-    const plotlines: { id: string; newSinceBaseline?: boolean }[] = [
-      { id: "fresh" },
-      { id: "mixed" },
-      { id: "old" },
-    ];
-    const states = [
-      { contentHash: "a", plotline: "fresh" },
-      { contentHash: "b", plotline: "fresh" },
-      { contentHash: "b", plotline: "mixed" },
-      { contentHash: "c", plotline: "mixed" },
-      { contentHash: "c", plotline: "old" },
-    ];
-    const marked = markNewSincePlotlines(plotlines, states, new Set(["a", "b"]));
-    expect(marked).toEqual(["fresh"]);
-    expect(plotlines.find((p) => p.id === "fresh")?.newSinceBaseline).toBe(true);
-    expect(plotlines.find((p) => p.id === "mixed")?.newSinceBaseline).toBeUndefined();
-    expect(markNewSincePlotlines([{ id: "x" }], [{ contentHash: "a" }], new Set())).toEqual([]);
   });
 
   it("readerApply keeps sinceSection when the prompt requested it", () => {
@@ -369,9 +348,8 @@ describe("since-B step 2: the no-review-yet path", () => {
       const sinceIds = [...expected.changed, ...expected.added];
       expect(sinceIds.length).toBeGreaterThan(0);
 
-      // The reader reply cites real hunks: the guide plus one Since-B
-      // card answering the reviewed commit, and two plotlines — one over
-      // the whole PR, one over the delta only.
+      // The reader reply cites real hunks: the whole-PR plotlines plus
+      // one Since card answering the reviewed commit.
       const snap = ctx.reviews.getSnapshot(id)!;
       const ids = snap.files.flatMap((f) => f.hunks.map((h) => `h:${f.fileKey}:${h.contentHash}`));
       expect(ids.length).toBeGreaterThan(0);
@@ -416,7 +394,7 @@ describe("since-B step 2: the no-review-yet path", () => {
       const readers = jobs.filter((j) => j.kind === "reader");
       expect(readers).toHaveLength(1);
       expect(readers[0].state).toBe("done");
-      expect(jobs.some((j) => j.kind === "update-pass")).toBe(false);
+      expect(jobs.some((j) => j.kind === "explain-pass")).toBe(false);
 
       // The single run was told about B.
       const readerPrompt = agents.prompts.find((p) => p.text.includes("# Reader task"))?.text ?? "";
@@ -428,7 +406,7 @@ describe("since-B step 2: the no-review-yet path", () => {
       const root = after.pages.find((p) => p.id === "root")!;
       expect(root.cards.map((c) => c.id)).toEqual(expect.arrayContaining(["problem", "central"]));
 
-      // ...plus the Since-B section, with the commit answer resolved.
+      // ...plus the Changes-since-X section, with the commit answer resolved.
       expect(after.sinceSection?.baseline).toEqual({ kind: "commit", sha: c1 });
       expect(after.sinceSection?.headVersion).toBe(1);
       expect(after.sinceSection?.cards).toHaveLength(1);
@@ -438,10 +416,9 @@ describe("since-B step 2: the no-review-yet path", () => {
       expect(card.answers![0].kind).toBe("commit");
       expect(card.answers![0].label).toContain(c1.slice(0, 8));
 
-      // Plotlines: the delta-only thread reads new; the whole-PR one joins
-      // the count through the stored hunk set (no agent flag needed).
-      expect(after.plotlines?.find((p) => p.id === "fresh")?.newSinceBaseline).toBe(true);
-      expect(after.plotlines?.find((p) => p.id === "core")?.newSinceBaseline).toBeUndefined();
+      // Plotlines are assigned by content; the stored hunk set drives
+      // the Since filter (the section names the same range).
+      expect(after.plotlines?.find((p) => p.id === "fresh")?.name).toBe("Fresh follow-ups");
       expect(hunkChangedSinceB(cite, after.sinceHunks)).toBe(true);
       // The stored hunk set is the content-computed one, however it landed.
       expect(after.sinceHunks).toEqual({ added: expected.added, changed: expected.changed });

@@ -12,9 +12,9 @@
 import { useState } from "react";
 import type { VersionComparisonSummary, VersionStatus } from "@unvibe/shared";
 import { useReview } from "../state/store.js";
-import { SinceBaselineError } from "./PriorReviewOffer.js";
-import { defaultExplainX, ExplainXSelect, explainXLabel, type ExplainX } from "./ExplainXSelect.js";
-import { useExplainPass } from "./useExplainPass.js";
+import { SinceBaselineError } from "../guide/PriorReviewOffer.js";
+import { defaultExplainX, ExplainXSelect, explainXLabel, type ExplainX } from "../guide/ExplainXSelect.js";
+import { useExplainPass } from "../guide/useExplainPass.js";
 import { versionCountsText } from "./versionUtils.js";
 
 export interface BannerCounts {

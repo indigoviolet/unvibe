@@ -401,7 +401,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
   const sinceActive = plotFilter.sinceBaseline === true;
   const sinceChipLabel = snapshot?.sinceSection ? sinceBaselineLabel(snapshot.sinceSection.baseline) : "";
   const sinceIds = useMemo(() => {
-    if (!sinceActive) return undefined;
+    if (!sinceActive || !snapshot) return undefined;
     const ids = sinceSectionHunkIds(snapshot);
     return ids && ids.size > 0 ? ids : new Set<string>();
   }, [sinceActive, snapshot]);

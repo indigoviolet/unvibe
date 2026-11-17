@@ -46,8 +46,8 @@ describe("guessReplayKind", () => {
     expect(guessReplayKind("summarize this hunk")).toBe("hunk");
   });
 
-  it("matches the update pass by its title before critic/hunk words (#351)", () => {
-    expect(guessReplayKind("# Update pass\n\nThe critic's rules apply to these hunks.")).toBe("update-pass");
+  it("matches the explain pass by its title before critic/hunk words (#413)", () => {
+    expect(guessReplayKind("# Explain pass\n\nThese hunks changed since X.")).toBe("explain-pass");
   });
 
   it("returns null for unrecognized prompts", () => {

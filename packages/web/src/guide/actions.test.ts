@@ -10,7 +10,7 @@ import { api } from "../api/client.js";
 import * as ToastModule from "../floating/Toast.js";
 import { resetMockState } from "../mock/index.js";
 import { useReview } from "../state/store.js";
-import { performAction, performFollowUp, performUpdate } from "./actions.js";
+import { performAction, performExplain, performFollowUp } from "./actions.js";
 
 const REVIEW_ID = "demo";
 
@@ -220,15 +220,15 @@ describe("performAction in-flight funnel", () => {
     expect(useReview.getState().inflight["no-such-card"]).toBeUndefined();
   });
 
-  test("update shows until the mock update job settles", async () => {
+  test("explain shows until the mock explain job settles", async () => {
     // Fake timers for the mock's 100 ms latency + 800 ms settle timer.
     vi.useFakeTimers();
     try {
-      const p = performUpdate(REVIEW_ID);
-      expect(useReview.getState().inflight["update:demo"]).toMatchObject({ kind: "update" });
+      const p = performExplain(REVIEW_ID);
+      expect(useReview.getState().inflight["explain-run:demo"]).toMatchObject({ kind: "update" });
       await vi.advanceTimersByTimeAsync(1000);
       await p;
-      expect(useReview.getState().inflight["update:demo"]).toBeUndefined();
+      expect(useReview.getState().inflight["explain-run:demo"]).toBeUndefined();
     } finally {
       vi.useRealTimers();
     }

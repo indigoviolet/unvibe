@@ -235,8 +235,8 @@ plotlines and glossary travel in the trailing `json` block, not as cards:
 
 When the reviewed context at the top names a baseline commit, the
 reviewer has already reviewed up to that commit: after the normal guide
-cards, stream one Since-B card per thread of what changed since the
-baseline — what changed and how, **why** (from the commits' messages),
+cards, stream one Changes-since-X card per thread of what changed since
+the baseline — what changed and how, **why** (from the commits' messages),
 and **what feedback caused each change** (the review comment, thread or
 conversation remark it answers, where one exists in the context). Say
 what the change means for the earlier guide, and cite every claim into
