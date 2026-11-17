@@ -127,10 +127,15 @@ export interface VersionStatus {
 }
 
 /**
- * Issue #413: the shared update-availability predicate was removed
- * with the update pass. Explain runs any time (banner or section
- * control); there is no up-to-date state to gate on.
+ * Issue #413: whether a snapshot's `versionStatus` means unreviewed new
+ * commits — the one signal behind the "New commits · vN → vM" banner
+ * and the start-page marks. True when the status names real hunk
+ * changes (an empty diff says so in the banner instead). Pure.
  */
+export function hasNewCommits(status: VersionStatus | undefined | null): boolean {
+  if (!status) return false;
+  return status.changedHunks + status.newHunks + status.removedHunks > 0;
+}
 
 /** Reader-pinned excerpt stored in the snapshot (PRD §8 "Pinned code"). */
 export interface PinnedCode {

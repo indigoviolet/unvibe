@@ -8,7 +8,7 @@
  * endpoint stays fast for dozens of sessions (no gh/git calls here).
  */
 import type { Job, ReviewSummary, ReviewSnapshot } from "@unvibe/shared";
-import { isDefaultGuideTitle, isDocumentReview, isWebReview, prStateFromGh } from "@unvibe/shared";
+import { hasNewCommits, isDefaultGuideTitle, isDocumentReview, isWebReview, prStateFromGh } from "@unvibe/shared";
 import type { DatabaseSync } from "../store/index.js";
 
 export interface ListReviewsDeps {
@@ -152,8 +152,9 @@ export function listReviewSummaries(deps: ListReviewsDeps): ReviewSummary[] {
     ).length;
     // #298: the start page's batched status check only sets the tag
     // (`pendingHeadSha`); a real refresh's `versionStatus` also counts.
+    // Issue #413: unreviewed new commits (hunk changes), never a flag.
     const stale =
-      (snapshot?.versionStatus?.stale ?? false) ||
+      hasNewCommits(snapshot?.versionStatus) ||
       (snapshot?.pendingHeadSha !== undefined && snapshot.pendingHeadSha !== snapshot.version.headSha);
     // #224: PR badges from the gh data stored on the description at
     // ingest/refresh time (no gh call here, per this module's contract).
