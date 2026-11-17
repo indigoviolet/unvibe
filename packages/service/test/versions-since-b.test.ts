@@ -282,8 +282,9 @@ describe("since-B step 1", () => {
       const plotIds = new Set((after.plotlines ?? []).map((p) => p.id));
       expect(plotIds.has("core")).toBe(true);
       expect(plotIds.has("perf")).toBe(false);
+      // No plotline placement: the new hunk stays unclaimed ("Other").
       const assignedHash = changedHunk.contentHash;
-      expect(after.hunkStates.find((s) => s.contentHash === assignedHash)?.plotline).toBe("core");
+      expect(after.hunkStates.find((s) => s.contentHash === assignedHash)?.plotline).toBeUndefined();
       // Explain recorded the X it explained from.
       expect(after.sinceBaseline).toEqual({ kind: "version", version: 1 });
 

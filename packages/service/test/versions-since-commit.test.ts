@@ -125,14 +125,14 @@ describe("since-B step 2: pure context builders", () => {
     expect(withHunks).toContain(sha.slice(0, 8));
     expect(withHunks).toContain('"rework alpha"');
     expect(withHunks).toContain("h:k:b, h:k:a");
-    expect(withHunks).toContain("Since-B section");
+    expect(withHunks).toContain("Changes-since-X section");
     const empty = formatReaderReviewedContext(snap, { added: [], changed: [] });
     expect(empty).toContain("no hunks changed since B");
     const unavailable = formatReaderReviewedContext(snap, undefined);
     expect(unavailable).toContain("comparison is unavailable");
-    expect(unavailable).toContain("write the normal guide and no Since-B section");
+    expect(unavailable).toContain("write the normal guide and no Changes-since-X section");
     const plain = formatReaderReviewedContext({} as ReviewSnapshot, undefined);
-    expect(plain).toBe("(No prior-review baseline: explain the whole change; write no Since-B section.)");
+    expect(plain).toBe("(No prior-review baseline: explain the whole change; write no Changes-since-X section.)");
     expect(baselineIdentity(snap, { kind: "commit", sha })).toBe(`${sha.slice(0, 8)} "rework alpha"`);
     expect(sinceBaselineLabel({ kind: "commit", sha })).toBe(sha.slice(0, 8));
     expect(sinceBaselineLabel({ kind: "version", version: 2 })).toBe("v2");

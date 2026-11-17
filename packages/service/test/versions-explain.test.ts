@@ -126,9 +126,11 @@ describe("explain pass", () => {
       expect(JSON.stringify(after.pages)).toBe(beforePages);
       expect(after.versionStatus).toBe(before.versionStatus);
 
-      // An explicit version X is accepted too.
+      // An explicit commit X is accepted too.
+      const commits = (ctx.reviews.getSnapshot(id)!.commits ?? []);
+      expect(commits.length).toBeGreaterThan(0);
       const enq2 = await app.inject({
-        method: "POST", url: `/api/reviews/${id}/explain`, headers: authed, payload: { version: 1 },
+        method: "POST", url: `/api/reviews/${id}/explain`, headers: authed, payload: { sha: commits[0].sha },
       });
       expect(enq2.statusCode).toBe(202);
       await queue.drain(5000);
