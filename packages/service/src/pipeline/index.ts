@@ -4,7 +4,7 @@
  * - `Pipeline` — reader → base → critic/concepts → hunk pass, plus
  *   `runInFork` / `runSmall` (generic fork jobs), `ensureConceptPage`,
  *   `summarizeHunk`, `fillGoDeeper`, `startReview` / `resumeReview`, and
- *   `updateRunner` (UpdateBaseRunner for the versions module).
+ *   `explainRunner` (ExplainBaseRunner for the versions module).
  * - Demo ingest — repo-less fixture review running the same code path.
  * - Actions dispatcher — all interaction kinds.
  */

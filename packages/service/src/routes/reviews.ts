@@ -10,8 +10,8 @@
  * - `GET /api/reviews/:id[?version=n]` — current snapshot (with live jobs
  *   merged in), or an older version's `version` + `files` swapped in.
  * - `POST /api/reviews/:id/refresh` — fetch and compare (no agent time).
- * - `POST /api/reviews/:id/update` — manual update pass (M5, via the
- *   pipeline's UpdateBaseRunner by default).
+ * - `POST /api/reviews/:id/explain` — explain changes since X (one agent
+ *   call, via the pipeline's ExplainBaseRunner by default).
  * - `POST /api/reviews/:id/resume` — re-enqueue interrupted pipeline stages
  *   (M3 resilience; idempotent).
  * - `POST …/actions` — M3 dispatcher (`generate` implemented, rest 501).
@@ -31,7 +31,9 @@ import type {
   ResumeReviewResponse,
   ReviewSnapshot,
   SetSinceBaselineResponse,
-  UpdateReviewResponse,
+  ExplainReviewResponse,
+  type SinceBaseline,
+  type SinceHunks,
   Version,
 } from "@unvibe/shared";
 import { DEFAULT_REVIEW_VIEW_PREFS, GUIDE_PERSONA_ID, ingestStatusOf, isCommitSha, isDocumentReview, isReadySnapshot, parseDocumentMarkdown, summarizeComparison } from "@unvibe/shared";
@@ -52,13 +54,13 @@ import type { RouteDeps } from "./deps.js";
 import { listAllRepos } from "./repos.js";
 import { loadVersionFiles, saveVersionFiles } from "../versions/files.js";
 import { refreshReview } from "../versions/refresh.js";
-import { computeSinceHunks, diffFilesAtCommit, unfetchableCommitMessage } from "../versions/since.js";
+import { computeSinceHunks, diffFilesAtCommit, resolveSinceBaseline, unfetchableCommitMessage } from "../versions/since.js";
 import {
-  enqueueUpdatePass,
+  enqueueExplainPass,
   JsonBlockReplyParser,
-  type UpdateBaseRunner,
-  type UpdateReplyParser,
-} from "../versions/update.js";
+  type ExplainBaseRunner,
+  type ExplainReplyParser,
+} from "../versions/explain.js";
 import { demoFixtureName, fixturesDirDefault, ingestDemo, isDemoRequest } from "../pipeline/demo.js";
 import { refreshManagedCheckout, resolveContextRepo } from "../repos/index.js";
 import { dispatchAction } from "../pipeline/actions/dispatcher.js";
@@ -78,8 +80,8 @@ import { isNoneRunner } from "../agent/factory.js";
 import { hasGuideCards, reviewAttributes, traceRefresh, traceSpan, watchOpenToFirstCard } from "../traces/index.js";
 
 export interface ReviewsRouteDeps {
-  baseRunner?: UpdateBaseRunner;
-  parser?: UpdateReplyParser;
+  baseRunner?: ExplainBaseRunner;
+  parser?: ExplainReplyParser;
   promptsDir?: string;
   pipeline?: Pipeline;
   fixturesDir?: string;
@@ -1145,33 +1147,73 @@ export async function registerReviews(
     return response;
   });
 
-  app.post("/api/reviews/:id/update", async (req, reply) => {
+  /**
+   * Issue #413: resolve the X an Explain run explains from. An explicit
+   * `{ version }` reads the stored version diff; `{ sha }` diffs through
+   * git (unfetchable → loud error, nothing persisted); absent means the
+   * stored/default baseline with its stored hunk set.
+   */
+  async function resolveExplainBaseline(
+    reviewId: string,
+    snapshot: ReviewSnapshot,
+    body: { version?: unknown; sha?: unknown },
+  ): Promise<{ baseline: SinceBaseline; since: SinceHunks }> {
+    const current = snapshot.review.currentVersion;
+    if (typeof body.sha === "string") {
+      if (!isCommitSha(body.sha)) throw new Error("sha must be a commit sha (4-64 hex chars)");
+      const sha = body.sha.toLowerCase();
+      const row = readReviewRow(ctx.db, reviewId);
+      if (!row) throw new Error("unknown review");
+      const repo = ctx.repos.get(row.repoId);
+      if (!repo) throw new Error("unknown repo");
+      const bFiles = await diffFilesAtCommit(ctx.runner, repo.localPath, snapshot.version.mergeBaseSha, sha);
+      const since = computeSinceHunks(bFiles, snapshot.files);
+      return { baseline: { kind: "commit", sha }, since };
+    }
+    if (typeof body.version === "number") {
+      if (!Number.isSafeInteger(body.version) || body.version < 1 || body.version >= current) {
+        throw new Error(`version must be an earlier version (1 to ${current - 1})`);
+      }
+      const bFiles = loadVersionFiles(ctx.db, reviewId, body.version);
+      if (!bFiles) throw new Error(`no files stored for version ${body.version}`);
+      const since = computeSinceHunks(bFiles, snapshot.files);
+      return { baseline: { kind: "version", version: body.version }, since };
+    }
+    return { baseline: resolveSinceBaseline(snapshot), since: snapshot.sinceHunks ?? { added: [], changed: [] } };
+  }
+
+  app.post("/api/reviews/:id/explain", async (req, reply) => {
+    // Issue #413: explain changes since X — one agent call, only on
+    // stored/default baseline). The end is always the head. The run
+    // replaces the Changes-since-X section whole and touches nothing
+    // else in the old guide.
     const { id } = req.params as { id: string };
     const snapshot = ctx.reviews.getSnapshot(id);
     if (!snapshot) return reply.code(404).send({ error: "unknown review" });
-    const refusedUpdate = ingestRefusal(snapshot);
-    if (refusedUpdate) return reply.code(409).send({ error: refusedUpdate });
+    const refusedExplain = ingestRefusal(snapshot);
+    if (refusedExplain) return reply.code(409).send({ error: refusedExplain });
     // #179: never spend agent time on an empty diff (e.g. after a refresh
     // emptied it).
     if ((snapshot.files ?? []).every((f) => f.hunks.length === 0 && !f.isBinary)) {
-      return reply.code(409).send({ error: "No changes to review: the diff is empty, so there is nothing to update." });
+      return reply.code(409).send({ error: "No changes to review: the diff is empty, so there is nothing to explain." });
     }
     if (!deps.jobs || !deps.baseRunner) {
       return reply.code(501).send({ error: "not available in this build" });
     }
+    const body = (req.body ?? {}) as { version?: unknown; sha?: unknown };
     const parser = deps.parser ?? new JsonBlockReplyParser();
     let provider = "main";
     let model = "main-model";
     let effort = "";
-    // Issue #393: the update pass runs as the review's Guide persona.
-    let updateGuideId: string | undefined;
-    let updateLens = "";
+    // Issue #393: the explain pass runs as the review's Guide persona.
+    let explainGuideId: string | undefined;
+    let explainLens = "";
     try {
       const s = (deps as RouteDeps).settings?.get();
       if (s) {
         const guide = guidePersonaForReview(s.personas ?? [], snapshot.review.guidePersonaId);
-        updateGuideId = guide.id;
-        updateLens = guide.lens;
+        explainGuideId = guide.id;
+        explainLens = guide.lens;
         if (guide.id === GUIDE_PERSONA_ID) {
           const pick = guidePick(s);
           provider = pick.provider;
@@ -1191,7 +1233,8 @@ export async function registerReviews(
     }
     void req;
     try {
-      const job = enqueueUpdatePass(
+      const resolved = await resolveExplainBaseline(ctx, id, snapshot, body);
+      const job = enqueueExplainPass(
         {
           jobs: deps.jobs,
           reviews: ctx.reviews,
@@ -1201,27 +1244,30 @@ export async function registerReviews(
           provider,
           model,
           effort,
-          ...(updateGuideId !== undefined ? { guidePersonaId: updateGuideId, lens: updateLens } : {}),
+          ...(explainGuideId !== undefined ? { guidePersonaId: explainGuideId, lens: explainLens } : {}),
         },
-        { reviewId: id, toVersion: snapshot.review.currentVersion },
+        { reviewId: id, toVersion: snapshot.review.currentVersion, baseline: resolved.baseline, since: resolved.since },
       );
-      const response: UpdateReviewResponse = { jobId: job.id, toVersion: snapshot.review.currentVersion };
+      const response: ExplainReviewResponse = { jobId: job.id, toVersion: snapshot.review.currentVersion };
       return reply.code(202).send(response);
     } catch (err) {
       const msg = (err as Error).message;
-      if (/up to date/.test(msg)) return reply.code(409).send({ error: msg });
       if (/no prompts dir/.test(msg)) return reply.code(500).send({ error: msg });
+      if (/version must be|sha must be|no files stored|couldn't |Couldn't /.test(msg)) {
+        const code = /Couldn't find commit/.test(msg) ? 502 : 400;
+        return reply.code(code).send({ error: msg });
+      }
       return reply.code(500).send({ error: msg });
     }
   });
 
   app.post("/api/reviews/:id/since-baseline", async (req, reply) => {
-    // Issue #351: pick the baseline B the next update pass (or the
+    // Issue #351/#413: record the X the next Explain (or the
     // still-pending guide run) explains from — any earlier version, or
     // any commit sha. The since-hunk set is hunk-content comparison
     // against the head diff — never git ancestry, so a rebased or
-    // force-pushed B works the same. Setting a baseline never starts an
-    // agent run: the pending guide run picks it up, or the next update
+    // force-pushed X works the same. Recording X never starts an
+    // agent run: the pending guide run picks it up, or the next Explain
     // explains from it. An unfetchable commit sha fails loudly here.
     const { id } = req.params as { id: string };
     const body = (req.body ?? {}) as { version?: unknown; sha?: unknown };

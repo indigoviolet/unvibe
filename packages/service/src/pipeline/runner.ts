@@ -3522,8 +3522,8 @@ export class Pipeline {
     }
   }
 
-  updateRunner(): {
-    runUpdatePrompt: (
+  explainRunner(): {
+    runExplainPrompt: (
       prompt: string,
       opts: {
         reviewId: string;
@@ -3541,12 +3541,12 @@ export class Pipeline {
     ) => Promise<string>;
   } {
     return {
-      // The versions module renders `update_pass.md` already and encloses
-      // this call in the single `update-pass` job. Run directly in that
-      // job — enqueuing a second update-pass job here deadlocked on the
+      // The versions module renders `explain_pass.md` already and encloses
+      // this call in the single `explain-pass` job. Run directly in that
+      // job — enqueuing a second explain-pass job here deadlocked on the
       // enclosing job's dedupe key (issue #194: RUNNING forever, no
       // token counts). Retryable errors retry the turn in place.
-      runUpdatePrompt: async (prompt, opts) => {
+      runExplainPrompt: async (prompt, opts) => {
         for (let attempt = 0; ; attempt++) {
           try {
             const base = await this.ensureBase(opts.reviewId);

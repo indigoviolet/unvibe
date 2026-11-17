@@ -396,7 +396,7 @@ export const GUIDE_FORK_STYLE_TEMPLATES: ReadonlySet<string> = new Set([
   "examples",
   "diagram",
   "concept_page",
-  "update_pass",
+  "explain_pass",
   "critic",
   "hunk_pass",
 ]);

@@ -390,15 +390,11 @@ export async function refreshReview(
     idMapping,
   };
   const summary = summarizeComparison(comparison);
-  // A rebase without conflicts comes out as "no change": the version is
-  // still recorded (with its ID mapping) but nothing is stale, so the UI
-  // shows no Update banner and the update pass reports nothing to do.
-  const hasChanges = summary.changedHunks + summary.newHunks + summary.removedHunks > 0;
   // #179: the new diff is empty — say so in the banner instead of
   // silently showing no files, and never offer an agent update for it.
   const isEmpty = newFiles.every((f) => f.hunks.length === 0 && !f.isBinary);
   const versionStatus: VersionStatus = {
-    stale: hasChanges,
+    fromVersion: oldVersion.n,
     fromVersion: oldVersion.n,
     toVersion: version.n,
     unchangedHunks: summary.unchangedHunks,
@@ -638,25 +634,12 @@ export async function refreshReview(
     anchorsStep.finishedAt = Date.now();
     const citationsStep: TimedStep = { label: "Remapping citations", startedAt: Date.now() };
     remapSteps.push(citationsStep);
-    // Cards + findings: remap citations, flag stale / recheck.
+    // Cards: remap citations so they track the new version (#413:
+    // no stale flags — the old guide is never marked, only remapped).
     const ctx = { comparison: cmp, oldFiles, newHeadSha: head.headSha, codeFiles };
     for (const page of draft.pages) {
       for (const card of page.cards) {
-        const changedCount = remapCardCitations(card, ctx);
-        if (changedCount > 0) {
-          card.stale = true;
-          card.staleChangedHunks = (card.staleChangedHunks ?? 0) + changedCount;
-          const ids = new Set(card.staleHunks ?? []);
-          for (const id of summary.changedNewIds) ids.add(id);
-          card.staleHunks = [...ids];
-        }
-      }
-      if (page.kind === "finding") {
-        const changedInPage = page.cards.some((c) => c.stale === true);
-        if (changedInPage) {
-          page.needsRecheck = true;
-          page.recheckStatus = "pending";
-        }
+        remapCardCitations(card, ctx);
       }
     }
 

@@ -4,7 +4,7 @@
  * Builds db, bus, stores, command runner, settings, job queue with
  * recovery, agent runner (ACP default, replay for demo/tests), session
  * manager, MCP registry with a real `ReviewReader` over `ReviewStore` +
- * worktree paths, pipeline, and the update-pass runner — then hands route
+ * worktree paths, pipeline, and the explain-pass runner — then hands route
  * modules one unified context. `serve()` uses this and nothing else.
  *
  * Unification: `ServiceContext` (core stores) + `RouteDeps` (optional M3
@@ -88,7 +88,7 @@ export interface AppContext {
   promptsDir: string;
   fixturesDir: string;
   mcpBaseUrl: string;
-  updateRunner: import("./versions/update.js").UpdateBaseRunner;
+  explainRunner: import("./versions/explain.js").ExplainBaseRunner;
 }
 
 export interface BuildAppOptions {
@@ -516,6 +516,6 @@ export function buildApp(opts: BuildAppOptions): AppContext {
     promptsDir,
     fixturesDir,
     mcpBaseUrl,
-    updateRunner: pipeline.updateRunner(),
+    explainRunner: pipeline.explainRunner(),
   };
 }
