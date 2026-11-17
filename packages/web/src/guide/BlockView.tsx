@@ -12,7 +12,7 @@ import type { Thread, Block, Page } from "@unvibe/shared";
 import { Icon } from "../components/Icon.js";
 import { InlineCode } from "../components/inlineCode.js";
 import { WorkingPlaceholder } from "../components/WorkingPlaceholder.js";
-import { revealSource } from "../source/reveal.js";
+import { revealCitationFrom } from "../source/reveal.js";
 import { useReview } from "../state/store.js";
 import { resolveBlockCitations, resolveCitation } from "./citations.js";
 import { DiagramView } from "./DiagramView.js";
@@ -346,7 +346,7 @@ export function BlockView({ block, threads, footnotes, lookupPage, cardId, onOpe
             type="button"
             data-cjump={block.threadId}
             data-cprev={block.threadId}
-            onClick={() => revealSource(block.diffRef)}
+            onClick={(e) => revealCitationFrom(e.currentTarget, block.diffRef)}
           >
             <Icon name="comment" />
             <span>

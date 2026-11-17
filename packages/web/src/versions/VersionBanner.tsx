@@ -1,21 +1,20 @@
 /**
- * Version banner (PRD §8, §4.13, §4.2): stale reads
- * "New commits · v1 → v2 (…)" plus Update; up to date after an update
- * pass reads "Updated to v2 · since v1" with the picker and range-diff
- * and no Update button (issue #367).
+ * New-commits banner (PRD §8, #413): "New commits · v1 → v2 (…)" plus
+ * range-diff plus Explain. Explain runs one agent call on click with
+ * the X chosen beside it (an earlier version, any PR commit, or the
+ * reviewer's last GitHub review); the end is always the head. There is
+ * no up-to-date state: the banner is the only new-commits signal, and
+ * the section header carries its own Explain control for re-runs.
  *
  * Counts come from `versionStatus` on the snapshot (or the refresh
- * `comparison`, normalised by the caller). The range-diff view is a plain
- * collapsible `<details>`; Update runs `POST …/update` and follows the
- * job's progress by polling `GET /api/jobs/:id` until it leaves
- * queued/running/backing-off, then asks the parent to re-fetch.
+ * `comparison`, normalised by the caller).
  */
-import { useEffect, useRef, useState } from "react";
-import type { Job, VersionComparisonSummary, VersionStatus } from "@unvibe/shared";
-import { api, friendlyError } from "../api/client.js";
-import { updateKey } from "../guide/inflight.js";
-import { SinceBaselineError, SinceBaselinePicker } from "../guide/SinceBaselinePicker.js";
+import { useState } from "react";
+import type { VersionComparisonSummary, VersionStatus } from "@unvibe/shared";
 import { useReview } from "../state/store.js";
+import { SinceBaselineError } from "./PriorReviewOffer.js";
+import { defaultExplainX, ExplainXSelect, explainXLabel, type ExplainX } from "./ExplainXSelect.js";
+import { useExplainPass } from "./useExplainPass.js";
 import { versionCountsText } from "./versionUtils.js";
 
 export interface BannerCounts {
@@ -27,15 +26,6 @@ export interface BannerCounts {
   rangeDiff: string;
   /** #179: the new version's diff is empty. */
   empty?: boolean;
-  /**
-   * Issue #367: whether an update is still available. Mirrors the
-   * service's shared `isUpdateAvailable` predicate — the Update button
-   * renders exactly when the service would accept it. False after a
-   * completed update pass, until the next refresh marks new changes.
-   */
-  stale: boolean;
-  /** Baseline label for the up-to-date state ("v1" or a short sha). */
-  sinceLabel?: string;
 }
 
 export function statusToBanner(s: VersionStatus): BannerCounts {
@@ -46,7 +36,6 @@ export function statusToBanner(s: VersionStatus): BannerCounts {
     newHunks: s.newHunks,
     removedHunks: s.removedHunks,
     rangeDiff: s.rangeDiff,
-    stale: s.stale,
     ...(s.empty ? { empty: true } : {}),
   };
 }
@@ -62,16 +51,9 @@ export function comparisonToBanner(
     newHunks: c.newHunks,
     removedHunks: c.removedHunks,
     rangeDiff: c.rangeDiff,
-    // A fresh refresh comparison always carries unprocessed changes.
-    stale: true,
     ...(c.unchangedHunks + c.changedHunks + c.newHunks === 0 ? { empty: true } : {}),
   };
 }
-
-type Phase =
-  | { name: "idle" }
-  | { name: "updating"; jobId: string; job: Job | null }
-  | { name: "failed"; message: string };
 
 export function VersionBanner({
   reviewId,
@@ -81,106 +63,32 @@ export function VersionBanner({
   reviewId: string;
   counts: BannerCounts;
   onUpdated: () => void;
-}): React.JSX.Element {
-  const [phase, setPhase] = useState<Phase>({ name: "idle" });
-  const timer = useRef<number | undefined>(undefined);
-
-  useEffect(() => () => window.clearTimeout(timer.current), []);
-  // A new stale state resets the banner (e.g. a second refresh round).
-  useEffect(() => {
-    setPhase({ name: "idle" });
-  }, [counts.toVersion, counts.rangeDiff]);
-
-  const startUpdate = async (): Promise<void> => {
-    // Disabled + busy from this synchronous state set, before the request.
-    setPhase({ name: "updating", jobId: "", job: null });
-    const key = updateKey(reviewId);
-    useReview.getState().beginInflight(key, "update");
-    const mySeq = useReview.getState().inflight[key]?.seq;
-    const mine = (): boolean => useReview.getState().inflight[key]?.seq === mySeq;
-    let jobId: string;
-    try {
-      const res = await api.update(reviewId);
-      jobId = res.jobId;
-      if (mine()) useReview.getState().attachInflightJob(key, jobId);
-    } catch (err) {
-      if (mine()) useReview.getState().clearInflight(key);
-      setPhase({ name: "failed", message: updateError(err) });
-      return;
-    }
-    setPhase({ name: "updating", jobId, job: null });
-    const finish = (): void => {
-      if (mine()) useReview.getState().clearInflight(key);
-    };
-    const poll = async (): Promise<void> => {
-      let job: Job;
-      try {
-        job = (await api.job(jobId)).job;
-      } catch {
-        timer.current = window.setTimeout(() => void poll(), 2000);
-        return;
-      }
-      if (job.state === "queued" || job.state === "running" || job.state === "backing-off") {
-        setPhase({ name: "updating", jobId, job });
-        timer.current = window.setTimeout(() => void poll(), 1000);
-        return;
-      }
-      finish();
-      if (job.state === "done") {
-        onUpdated();
-        setPhase({ name: "idle" });
-        return;
-      }
-      setPhase({ name: "failed", message: job.error ?? `The update didn't finish (${job.state}). Try again.` });
-    };
-    void poll();
-  };
-
-  const updating = phase.name === "updating" ? phase : null;
+}): React.JSX.Element | null {
+  const [x, setX] = useState<ExplainX | null>(null);
+  const snapshot = useReview((s) => s.snapshot);
+  const { phase, start } = useExplainPass(reviewId, onUpdated);
+  const explaining = phase.name === "explaining" ? phase : null;
 
   if (counts.empty) {
     return (
       <div className="dbar" data-testid="stale-banner" role="status">
         <span className="hint" data-testid="empty-diff-message">
-          No changes to review — the diff is now empty. The branch is the same as its base, so there is nothing to update.
+          No changes to review — the diff is now empty. The branch is the same as its base, so there is nothing to explain.
         </span>
       </div>
     );
   }
 
-  // Issue #367: one state model. Stale shows the new-commits headline
-  // plus Update; up to date (after an update pass) shows what version
-  // the review is at, with no Update button and no "Already up to date"
-  // label beside a button. The Update button renders exactly when the
-  // service would accept it (shared `isUpdateAvailable` predicate).
-  if (!counts.stale) {
-    return (
-      <div className="dbar" data-testid="stale-banner" data-update-state="current" role="status">
-        <span className="dbar-group dbar-group-summary">
-          <span className="hint">
-            Updated to v{counts.toVersion} · since {counts.sinceLabel ?? `v${counts.fromVersion}`}
-          </span>
-          {counts.rangeDiff.trim() !== "" ? (
-            <details>
-              <summary className="hint" style={{ cursor: "pointer", whiteSpace: "nowrap" }}>
-                range-diff
-              </summary>
-              <pre className="code" data-testid="range-diff">
-                {counts.rangeDiff}
-              </pre>
-            </details>
-          ) : null}
-        </span>
-        <span className="dbar-group">
-          <BaselinePick reviewId={reviewId} />
-        </span>
-        <SinceBaselineError />
-      </div>
-    );
-  }
+  // A no-change refresh (e.g. a content-identical rebase) names no new
+  // hunks: the banner stays hidden. Single-version reviews never reach
+  // here (no `versionStatus` yet).
+  if (counts.changedHunks + counts.newHunks + counts.removedHunks === 0) return null;
+
+  const def = snapshot ? defaultExplainX(snapshot) : null;
+  const label = explainXLabel(x ?? def ?? { version: counts.fromVersion });
 
   return (
-    <div className="dbar" data-testid="stale-banner" data-update-state="stale" role="status">
+    <div className="dbar" data-testid="stale-banner" role="status">
       <span className="dbar-group dbar-group-summary">
         <span className="hint">
           New commits · v{counts.fromVersion} → v{counts.toVersion} ({versionCountsText(counts)}{" "}
@@ -198,20 +106,20 @@ export function VersionBanner({
         ) : null}
       </span>
       {phase.name === "failed" ? <span className="hint">{phase.message}</span> : null}
-      {updating ? (
-        <span className="hint" data-testid="update-progress" aria-live="polite" role="status">
+      {explaining ? (
+        <span className="hint" data-testid="explain-progress" aria-live="polite" role="status">
           <span className="dots" aria-hidden="true">
             <i />
             <i />
             <i />
           </span>{" "}
-          Updating…
+          Explaining…
         </span>
       ) : (
         <span className="dbar-group">
-          <BaselinePick reviewId={reviewId} />
-          <button className="x" type="button" onClick={() => void startUpdate()}>
-            Update
+          <ExplainXSelect reviewId={reviewId} value={x} onChange={setX} />
+          <button className="x" type="button" onClick={() => start(x)}>
+            Explain changes since {label}
           </button>
         </span>
       )}
@@ -220,20 +128,3 @@ export function VersionBanner({
   );
 }
 
-/**
- * Baseline picker inside the stale banner (issue #351): B for the next
- * update pass. Hidden while an update runs and when the review has a
- * single version (the picker itself returns null there).
- */
-function BaselinePick({ reviewId }: { reviewId: string }): React.JSX.Element | null {
-  const review = useReview((s) => s.snapshot?.review);
-  if (!review) return null;
-  return <SinceBaselinePicker reviewId={reviewId} review={review} />;
-}
-
-function updateError(err: unknown): string {
-  const msg = err instanceof Error ? err.message : String(err);
-  if (/501/.test(msg)) return "Update isn't available in this build";
-  if (/409/.test(msg)) return "Already up to date";
-  return `Couldn't start the update: ${friendlyError(err)}`;
-}

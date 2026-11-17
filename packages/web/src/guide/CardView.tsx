@@ -16,7 +16,7 @@
  * Accept/Dismiss.
  */
 import type { CardVariant, Thread, Card, Page, Persona, Reply } from "@unvibe/shared";
-import { cardToMarkdown, displayCardTitle, isUpdateAvailable, sinceBaselineLabel, stripAddendumPrefix } from "@unvibe/shared";
+import { cardToMarkdown, displayCardTitle } from "@unvibe/shared";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { GuideBlockThreads } from "../comments/GuideThreads.js";
@@ -24,7 +24,7 @@ import { Icon } from "../components/Icon.js";
 import { toast } from "../floating/Toast.js";
 import { friendlyError } from "../api/client.js";
 import { useReview } from "../state/store.js";
-import { performAction, performFollowUp, performInsertAction, performUpdate, personaVariantKey } from "./actions.js";
+import { performAction, performFollowUp, performInsertAction, personaVariantKey } from "./actions.js";
 import { useEnabledPersonas } from "../settings/usePersonas.js";
 import { blockThreads } from "./annotations.js";
 import { BlockView } from "./BlockView.js";
@@ -37,7 +37,7 @@ import { copyContextFor, copyMarkdownText, useGithubRepo } from "./copyAsMarkdow
 import { CorrectionSuggestion } from "./expansions/CorrectionSuggestion.js";
 import { expansionsForBlock } from "./expansions/ExpansionHighlights.js";
 import { isExpansionFootnote } from "./expansions/expansionUtils.js";
-import { busyForCard, inflightLabel, updateKey } from "./inflight.js";
+import { busyForCard, inflightLabel } from "./inflight.js";
 import { Button, Card as UiCard, CardHeader } from "../ui/index.js";
 
 interface Props {
@@ -514,11 +514,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
     }
     const { ctx, findPage } = copyContextFor(snap, githubRepo);
     copyMarkdownText(
-      cardToMarkdown(
-        { title: card.title, blocks: shownBlocks, answers: card.answers, addenda: card.addenda },
-        ctx,
-        { findPage },
-      ),
+      cardToMarkdown({ title: card.title, blocks: shownBlocks, answers: card.answers }, ctx, { findPage }),
     );
   };
   // While an agent action runs for this card, the conflicting controls go
@@ -622,26 +618,6 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
         </div>
       </CardHeader>
       <VersionTabs cardId={card.id} versions={versions} active={activeEntry.id} onSelect={setActiveVersion} />
-      {/* Issue #367: the banner shows only while the service would
-          accept an update (shared predicate) — never an Update button
-          that can only fail with "already up to date". */}
-      {card.stale && isUpdateAvailable(snapshot?.versionStatus) ? (
-        <div className="stale" role="status">
-          <span>
-            {card.staleChangedHunks ?? 0} cited{" "}
-            {(card.staleChangedHunks ?? 0) === 1 ? "hunk" : "hunks"} changed
-          </span>
-          <button
-            className="x"
-            type="button"
-            disabled={!!inflight[updateKey(reviewId)]}
-            aria-busy={inflight[updateKey(reviewId)] ? true : undefined}
-            onClick={() => performUpdate(reviewId)}
-          >
-            {inflight[updateKey(reviewId)] ? "Updating…" : "Update"}
-          </button>
-        </div>
-      ) : null}
       {busy ? <Working text={busy.label} /> : null}
       {!busy && promoted?.turn.working ? <Working text={promoted.turn.working} /> : null}
       {!busy && promoted?.turn.error ? (
@@ -684,32 +660,6 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
       ) : null}
       {blocks}
       {card.answers && card.answers.length > 0 ? <SinceAnswers answers={card.answers} /> : null}
-      {(card.addenda ?? []).map((a) => (
-        <section key={a.id} className="addendum" data-addendum={a.id} aria-label={`Updated since ${sinceBaselineLabel(a.baseline)}`}>
-          <div className="addendum-h">
-            Updated since {sinceBaselineLabel(a.baseline)} · {sinceDate(a.at)}
-          </div>
-          {a.blocks.map((block, bi) => {
-            const shown =
-              bi === 0 && block.type === "paragraph"
-                ? { ...block, text: stripAddendumPrefix(block.text) }
-                : block;
-            return (
-              <BlockView
-                key={block.id}
-                block={shown}
-                threads={[]}
-                footnotes={[]}
-                lookupPage={lookupPage}
-                cardId={card.id}
-                onOpenPage={onOpenPage}
-                onFollowUp={(blockId, index) => onFollowUp(card.id, blockId, index)}
-              />
-            );
-          })}
-          {a.answers && a.answers.length > 0 ? <SinceAnswers answers={a.answers} /> : null}
-        </section>
-      ))}
       <CorrectionSuggestion reviewId={reviewId} card={card} contributions={contributions} />
     </UiCard>
   );

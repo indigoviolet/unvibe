@@ -289,7 +289,7 @@ export function resolveSinceAnswers(
 
 /**
  * True when the value looks like an agent-written feedback pointer.
- * Pure. Used by the update-pass parser before service-side resolution.
+ * Pure. Used by the explain-pass parser before service-side resolution.
  */
 export function isSinceFeedbackRef(v: unknown): v is SinceFeedbackRef {
   if (typeof v !== "object" || v === null) return false;
@@ -313,7 +313,7 @@ export function versionLabel(n: number, headSha: string, fetchedAt: number): str
 }
 
 /**
- * Render the `{{since_context}}` update-pass variable: baseline identity,
+ * Render the `{{x_context}}` explain-pass variable: the X identity,
  * the commits since B (why, from their messages), and the matched
  * feedback (review comments, threads, conversation remarks). Pure.
  */
@@ -580,49 +580,6 @@ export function buildSinceSectionCards(
       if (answers.length > 0) cardOut.answers = answers;
       return cardOut;
     });
-}
-
-/**
- * Issue #351 step 2: mark plotlines whose every assigned hunk changed
- * since B as `newSinceBaseline` (the guide run names plotlines for the
- * whole PR; the ones covering only post-B hunks are the new threads).
- * Callers pass the draft's plotlines + hunk states and the stored
- * since-hunk set. Returns the marked plotline ids. Pure.
- */
-export function markNewSincePlotlines(
-  plotlines: { id: string; newSinceBaseline?: boolean }[],
-  states: { contentHash: string; plotline?: string }[],
-  sinceHashes: Set<string>,
-): string[] {
-  if (sinceHashes.size === 0) return [];
-  const assigned = new Map<string, Set<string>>();
-  for (const s of states) {
-    if (s.plotline === undefined) continue;
-    let set = assigned.get(s.plotline);
-    if (!set) {
-      set = new Set();
-      assigned.set(s.plotline, set);
-    }
-    set.add(s.contentHash);
-  }
-  const marked: string[] = [];
-  for (const [plotline, hashes] of assigned) {
-    if (hashes.size === 0) continue;
-    let allSince = true;
-    for (const h of hashes) {
-      if (!sinceHashes.has(h)) {
-        allSince = false;
-        break;
-      }
-    }
-    if (!allSince) continue;
-    const row = plotlines.find((p) => p.id === plotline);
-    if (row && row.newSinceBaseline !== true) {
-      row.newSinceBaseline = true;
-      marked.push(plotline);
-    }
-  }
-  return marked;
 }
 
 /** Max since-hunk ids named in the reader's reviewed context. */

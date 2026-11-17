@@ -11,6 +11,7 @@
  * - Anything else toasts instead of failing silently.
  */
 import { isDocumentReview } from "@unvibe/shared";
+import { api } from "../api/client.js";
 import { toast } from "../floating/Toast.js";
 import { canonicalRevealTarget } from "../guide/citations.js";
 import { useReview } from "../state/store.js";
@@ -76,4 +77,29 @@ export function revealSource(target: string, opts?: { keepFilters?: boolean }): 
     return;
   }
   toast("Couldn't open that link");
+}
+
+/**
+ * Issue #413: a citation clicked from inside the Changes-since-X
+ * section turns the Since filter on (the section's X→head hunks) and
+ * reveals the cited hunk; every other citation keeps `revealSource`
+ * behaviour. The filter engages through the persisted `diffFilter`
+ * (the same path as the toolbar chip), so no reveal-side filter
+ * plumbing: the toolbar chip can go away later without touching this.
+ * `el` is the clicked element (or null when unknown); section
+ * membership is read off the DOM (`data-since-section`).
+ */
+export function revealCitationFrom(el: Element | null, target: string): void {
+  const snapshot = useReview.getState().snapshot;
+  const inSince = el?.closest?.("[data-since-section]") != null;
+  if (
+    inSince &&
+    snapshot?.sinceSection &&
+    (target.startsWith("diff:") || target.startsWith("h:"))
+  ) {
+    api.updateDiffFilter(snapshot.review.id, { sinceBaseline: true }).catch(() => {
+      // The reveal below still lands; the filter just doesn't stick.
+    });
+  }
+  revealSource(target);
 }

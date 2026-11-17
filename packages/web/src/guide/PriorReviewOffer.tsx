@@ -17,8 +17,23 @@ import { api, friendlyError } from "../api/client.js";
 import { toast } from "../floating/Toast.js";
 import { useReview } from "../state/store.js";
 import { Checkbox } from "../ui/index.js";
-import { SinceBaselineError } from "./SinceBaselinePicker.js";
 import { priorReviewDate, usePriorGithubReview } from "./usePriorGithubReview.js";
+
+/**
+ * Persistent commit-baseline error message. A full-width block *below*
+ * the controls row, in the warning tone — so it never squeezes beside
+ * a picker nor changes the controls row's layout. It stays until the
+ * baseline changes; every successful set/clear deletes it service-side.
+ */
+export function SinceBaselineError({ testId = "since-error" }: { testId?: string }): React.JSX.Element | null {
+  const sinceError = useReview((s) => s.snapshot?.sinceError);
+  if (!sinceError) return null;
+  return (
+    <span className="hint since-error" data-testid={testId}>
+      {sinceError}
+    </span>
+  );
+}
 
 function offerText(prior: PriorGithubReview): string {
   const when = priorReviewDate(prior.submittedAt);

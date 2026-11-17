@@ -21,8 +21,8 @@ import {
   askKey,
   conceptKey,
   explainKey,
+  explainRunKey,
   followupKey,
-  updateKey,
 } from "./inflight.js";
 import { NO_AGENT_COPY } from "./expansions/expansionUtils.js";
 import { clearQuestionHighlights } from "./question.js";
@@ -538,24 +538,24 @@ export function performFollowUp(
   });
 }
 
-/** Stale-card Update button (PRD §8): runs the service update pass. */
-export function performUpdate(reviewId: string): void {
-  const key = updateKey(reviewId);
+/** Banner / section Explain button (#413): runs the explain-since-X pass. */
+export function performExplain(reviewId: string, body?: { version: number } | { sha: string }): void {
+  const key = explainRunKey(reviewId);
   useReview.getState().beginInflight(key, "update");
   const mySeq = useReview.getState().inflight[key]?.seq;
   const mine = (): boolean => useReview.getState().inflight[key]?.seq === mySeq;
   api
-    .update(reviewId)
+    .explain(reviewId, body)
     .then((res) => {
       if (!mine()) return;
       if (res.jobId) useReview.getState().attachInflightJob(key, res.jobId);
       else useReview.getState().clearInflight(key);
-      // The update pass clears staleness when it lands; the entry follows
+      // The section lands when the pass finishes; the entry follows
       // its job and the TTL is the backstop.
       void waitForInflightGone(key, INFLIGHT_TTL_MS);
     })
     .catch((err: unknown) => {
       if (mine()) useReview.getState().clearInflight(key);
-      toast(`Couldn't update: ${friendlyError(err)}`);
+      toast(`Couldn't explain: ${friendlyError(err)}`);
     });
 }

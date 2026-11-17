@@ -1079,7 +1079,7 @@ export type JobKind =
   | "examples"
   | "diagram"
   | "go-deeper"
-  | "update-pass"
+  | "explain-pass"
   | "summarize"
   | "plotline-assign"
   | "consolidate"

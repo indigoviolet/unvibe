@@ -42,7 +42,7 @@ export function inflightLabel(kind: InFlightKind): string {
     case "persona":
       return "Persona is writing…";
     case "update":
-      return "Updating…";
+      return "Explaining changes…";
   }
 }
 
@@ -63,7 +63,7 @@ export function jobLabel(kind: JobKind): string {
       return inflightLabel("concept");
     case "persona":
       return inflightLabel("persona");
-    case "update-pass":
+    case "explain-pass":
       return inflightLabel("update");
     default:
       return "Working…";
@@ -200,9 +200,9 @@ export function blockIdsMatch(entryBid: string, hostBlockId: string): boolean {
 
 // --- entry keys -----------------------------------------------------------
 
-/** Stale-card Update / banner Update for a review. */
-export function updateKey(reviewId: string): string {
-  return `update:${reviewId}`;
+/** Banner / section Explain run for a review (not a text Explain). */
+export function explainRunKey(reviewId: string): string {
+  return `explain-run:${reviewId}`;
 }
 
 function anchorSuffix(anchor: ActionAnchor): string {

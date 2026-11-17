@@ -8,7 +8,7 @@
  */
 import { Fragment, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { Card, Page, Plotline } from "@unvibe/shared";
-import { DEFAULT_GUIDE_TITLE, isDefaultGuideTitle, PLOTLINE_OTHER_ID, sinceBaselineLabel } from "@unvibe/shared";
+import { DEFAULT_GUIDE_TITLE, isDefaultGuideTitle, PLOTLINE_OTHER_ID } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { useIsReadOnlyVersion } from "../comments/readOnly.js";
 import { ErrorBoundary, InlineFallback } from "../components/ErrorBoundary.js";
@@ -19,7 +19,7 @@ import { revealSource } from "../source/reveal.js";
 import { performFollowUp } from "./actions.js";
 import { CardView } from "./CardView.js";
 import { contentsModel, plotlineReviewedState } from "./guideUtils.js";
-import { SinceSection } from "./SinceSection.js";
+import { ExplainControlSlot, SinceSection } from "./SinceSection.js";
 import { Badge, Card as UiCard, ListRow } from "../ui/index.js";
 import { InlineCode, stripCodeSpans } from "../components/inlineCode.js";
 import { inflightLabel } from "./inflight.js";
@@ -31,27 +31,6 @@ interface Props {
   lookupPage: (pageId: string) => Page | undefined;
   onOpenPage: (pageId: string | null) => void;
   onJumpToCard: (cardId: string) => void;
-}
-
-/** Finding recheck status line (PRD §8): set by refresh / the update pass. */
-function RecheckStatus({ page }: { page: Page }) {
-  if (page.kind !== "finding") return null;
-  const { needsRecheck, recheckStatus, recheckNote } = page;
-  if (!needsRecheck && !recheckStatus) return null;
-  const text =
-    recheckStatus === "still-applies"
-      ? "Rechecked · still applies"
-      : recheckStatus === "resolved"
-        ? "Rechecked · resolved"
-        : recheckStatus === "changed"
-          ? "Rechecked · changed"
-          : "Cited code changed · not rechecked yet";
-  return (
-    <div className="meta" data-recheck={recheckStatus ?? "pending"}>
-      <span>{text}</span>
-      {recheckNote ? <span>{recheckNote}</span> : null}
-    </div>
-  );
 }
 
 /** Display form of a page title: the default shows as "Guide". */
@@ -108,9 +87,6 @@ function PlotlineReviewedBox({
  */
 function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
   const snapshot = useReview((s) => s.snapshot);
-  // Issue #351: the baseline label (`v1` or a short sha) the
-  // `+N`/new markers are relative to. Never the letter "B".
-  const sinceLabel = snapshot?.sinceBaseline ? sinceBaselineLabel(snapshot.sinceBaseline) : null;
   // Issue #343: older versions are view-only — the checkbox disables
   // with the usual tooltip, like the diff's other read-only controls.
   const readOnly = useIsReadOnlyVersion();
@@ -171,24 +147,6 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
   // countOf never filters them), so shares sum to the total.
   const totalHunks = files.reduce((n, f) => n + f.hunks.length, 0);
   const otherCount = countOf(undefined);
-  // Issue #351: new-side `h:` IDs in the delta, for the per-row
-  // `+N since B` markers.
-  const sinceIds = (() => {
-    const since = snapshot?.sinceHunks;
-    if (!since) return null;
-    return new Set([...since.added, ...since.changed]);
-  })();
-  const sinceCountOf = (plotId: string | undefined): number => {
-    if (!sinceIds) return 0;
-    let n = 0;
-    for (const f of files) {
-      for (const h of f.hunks) {
-        if (!sinceIds.has(`h:${f.fileKey}:${h.contentHash}`)) continue;
-        if ((states.get(h.contentHash)?.plotline ?? PLOTLINE_OTHER_ID) === (plotId ?? PLOTLINE_OTHER_ID)) n += 1;
-      }
-    }
-    return n;
-  };
   const plotlineOf = (id: string | undefined): Plotline | undefined =>
     id === undefined ? undefined : plotlines.find((p) => p.id === id);
   const nameOf = (id: string | undefined): string | undefined => {
@@ -226,8 +184,6 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
         count: countOf(p.id),
         reviewed: reviewedOf(p.id),
         ref: firstRefOf(p.id),
-        sinceN: sinceCountOf(p.id),
-        sinceNew: p.newSinceBaseline === true,
       };
     }),
     ...(otherCount > 0
@@ -242,8 +198,6 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
             count: otherCount,
             reviewed: reviewedOf(undefined),
             ref: firstRefOf(undefined),
-            sinceN: sinceCountOf(undefined),
-            sinceNew: false,
           },
         ]
       : []),
@@ -353,16 +307,6 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
                     <Badge tone="outline">
                       {totalHunks === 0 ? "no hunks" : `${r.count}/${totalHunks}`}
                     </Badge>
-                    {sinceLabel !== null && r.sinceN > 0 && !r.sinceNew ? (
-                      <Badge tone="outline" data-since-n={r.id}>
-                        +{r.sinceN} since {sinceLabel}
-                      </Badge>
-                    ) : null}
-                    {sinceLabel !== null && r.sinceNew ? (
-                      <Badge tone="outline" data-since-new={r.id}>
-                        new since {sinceLabel}
-                      </Badge>
-                    ) : null}
                     <PlotlineReviewedBox
                       checked={plotChecked}
                       partial={plotPartial}
@@ -484,9 +428,11 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
         <h1 className="title">{rootTitle}</h1>
       </div>
       {isFinding && page.summary ? <div className="meta">{page.summary}</div> : null}
-      <RecheckStatus page={page} />
       {page.kind === "root" && review ? (
-        <SinceSection reviewId={reviewId} review={review} renderCard={(card) => renderCard(card, 0)} />
+        <>
+          <ExplainControlSlot reviewId={reviewId} />
+          <SinceSection reviewId={reviewId} review={review} renderCard={(card) => renderCard(card, 0)} />
+        </>
       ) : null}
       {conceptWorking ? (
         <div className="working" role="status">

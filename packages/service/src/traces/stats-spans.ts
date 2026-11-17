@@ -19,7 +19,7 @@ import type { Job, ReviewSnapshot } from "@unvibe/shared";
 
 export const JOB_KINDS = new Set([
   "reader", "critic", "hunk-pass", "concept", "ask", "slower", "examples",
-  "diagram", "go-deeper", "update-pass", "summarize",
+  "diagram", "go-deeper", "explain-pass", "summarize",
   "plotline-assign", "consolidate", "persona",
 ]);
 export const JOB_STATES = new Set(["queued", "running", "backing-off", "done", "error", "cancelled"]);

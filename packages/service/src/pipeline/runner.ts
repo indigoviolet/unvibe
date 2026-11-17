@@ -66,7 +66,6 @@ import {
   computeSinceHunks,
   diffFilesAtCommit,
   formatReaderReviewedContext,
-  markNewSincePlotlines,
   normalizeAgentSinceCards,
   unfetchableCommitMessage,
 } from "../versions/since.js";
@@ -2449,14 +2448,6 @@ export class Pipeline {
             };
           }
         }
-      }
-      // A plotline covering only post-B hunks is a new thread since B.
-      if (draft.sinceBaseline?.kind === "commit" && draft.sinceHunks) {
-        const sinceSet = new Set([...draft.sinceHunks.added, ...draft.sinceHunks.changed]);
-        const sinceHashes = new Set(
-          [...sinceSet].map((hid) => hid.slice(hid.lastIndexOf(":") + 1)),
-        );
-        markNewSincePlotlines(draft.plotlines ?? [], draft.hunkStates, sinceHashes);
       }
       this.markFirstCard(draft);
       const seq = draft.logTail.reduce((m, e) => Math.max(m, e.seq), 0) + 1;
