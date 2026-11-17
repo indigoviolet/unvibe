@@ -12,8 +12,7 @@
  */
 import type { Block, Citation } from "../entities.js";
 import type { ReviewSnapshot } from "../api.js";
-import type { CardAddendum, SinceFeedbackLink } from "../versions.js";
-import { sinceBaselineLabel, stripAddendumPrefix } from "../versions.js";
+import type { SinceFeedbackLink } from "../versions.js";
 import { parseId } from "../ids.js";
 import { githubFileUrl } from "../repos.js";
 import { displayCardTitle } from "./titles.js";
@@ -275,17 +274,6 @@ export interface BlockMarkdownOptions {
   guide?: boolean;
   /** Page lookup for finding-link blocks (title/confidence/summary). */
   findPage?: (pageId: string) => CopyMarkdownPage | null;
-  /**
-   * Addendum date rendering. Defaults to the card's own rule (`day Mon`,
-   * the same rule as the Since section header); tests pass a stub.
-   */
-  formatDate?: (at: number) => string;
-}
-
-/** The card header's date rule (`day Mon`, e.g. `4 Nov`). */
-export function formatAddendumDate(at: number): string {
-  const d = new Date(at);
-  return `${d.getDate()} ${d.toLocaleString("en-US", { month: "short" })}`;
 }
 
 /** One block → Markdown lines (without the blank-line joins). */
@@ -410,41 +398,25 @@ export function blocksToMarkdown(
 
 /**
  * A card as shown → Markdown: the display title as a `##` heading plus
- * its blocks, then the card's Since answers line and each dated "Updated
- * since" addendum (issue #377: copy = what's shown). `title` is the
- * stored title (null when the reply carried none); the shared fallback
- * renders from `blocks` then, the same string the card header shows.
- * Addendum bodies render with the same echo-prefix strip the card applies.
+ * its blocks, then the card's Since answers line (issue #377: copy =
+ * what's shown). `title` is the stored title (null when the reply
+ * carried none); the shared fallback renders from `blocks` then, the
+ * same string the card header shows.
  */
 export function cardToMarkdown(
   card: {
     title: string | null;
     blocks: Block[];
     answers?: SinceFeedbackLink[];
-    addenda?: CardAddendum[];
   },
   ctx: CopyMarkdownContext,
   opts: BlockMarkdownOptions = {},
 ): string {
   const title = displayCardTitle(card.title, card.blocks);
-  const formatDate = opts.formatDate ?? formatAddendumDate;
   const parts: string[] = [];
   const body = blocksToMarkdown(card.blocks, ctx, opts);
   if (body) parts.push(body.replace(/\n$/, ""));
   if (card.answers?.length) parts.push(answersToMarkdown(card.answers));
-  for (const addendum of card.addenda ?? []) {
-    const head = `### Updated since ${sinceBaselineLabel(addendum.baseline)} · ${formatDate(addendum.at)}`;
-    const shown = addendum.blocks.map((block, i) =>
-      i === 0 && block.type === "paragraph"
-        ? { ...block, text: stripAddendumPrefix(block.text) }
-        : block,
-    );
-    const abody = blocksToMarkdown(shown, ctx, opts);
-    const aparts = [head];
-    if (abody) aparts.push(abody.replace(/\n$/, ""));
-    if (addendum.answers?.length) aparts.push(answersToMarkdown(addendum.answers));
-    parts.push(aparts.join("\n\n"));
-  }
   return parts.length > 0 ? `## ${title}\n\n${parts.join("\n\n")}\n` : `## ${title}\n`;
 }
 
@@ -461,7 +433,7 @@ export interface GuideCardInput {
  * Citations render exactly as #377's card copy does
  * (permalinks on PR reviews, `path:lines` otherwise); diagrams become
  * placeholders; code blocks, expansions, comments, threads, finding
- * pages, the plotlines list and "Updated since…" addenda are left out.
+ * pages, the plotlines list and the Changes-since-X section are left out.
  * Cards with no prose left after filtering render no heading. Callers
  * pass only main cards (pending cards skipped, collapsed cards kept).
  * Pure.
