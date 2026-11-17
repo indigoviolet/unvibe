@@ -210,7 +210,8 @@ test.describe("L9 settings CRUD", () => {
     // add/remove fails on the name. Contract: PROMPT_TEMPLATE_NAMES in
     // packages/shared/src/prompts.ts. #349 removed the two
     // second-opinion templates and added persona_card (16 + 1 = 17);
-    // concept_stub was removed with the stub job (#216).
+    // concept_stub was removed with the stub job (#216); update_pass
+    // became explain_pass in #413.
     const expectedTemplates = [
       "instructions",
       "reader",
@@ -225,7 +226,7 @@ test.describe("L9 settings CRUD", () => {
       "examples",
       "diagram",
       "go_deeper",
-      "update_pass",
+      "explain_pass",
       "consolidate",
       "persona_card",
     ];
