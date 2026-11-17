@@ -178,6 +178,16 @@ test.describe("L7 since-B update (j351 step 1)", () => {
     await expect(since.locator('[id^="C-since-"]')).toHaveCount(0);
     await since.getByRole("button", { name: /Expand changes since v1/ }).click();
     await expect(since.locator('[id^="C-since-"]')).toHaveCount(1);
+    // Issue #411: every Since card, expanded, shows body text — never a
+    // title with only an Answers line and no body.
+    const sinceCount = await since.locator('[id^="C-since-"]').count();
+    expect(sinceCount).toBeGreaterThan(0);
+    for (let i = 0; i < sinceCount; i++) {
+      const body = since.locator('[id^="C-since-"]').nth(i).locator("p.prose").first();
+      await expect(body).toBeVisible();
+      expect((((await body.textContent()) ?? "").trim().length)).toBeGreaterThan(0);
+    }
+    await expect(since.locator('[id^="C-since-"]').first()).toContainText(/Alpha now returns 111/);
 
     // The card addendum: old text unchanged, addendum appended.
     const central = page.locator("#page #C-problem");
