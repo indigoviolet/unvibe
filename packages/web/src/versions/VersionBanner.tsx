@@ -1,19 +1,16 @@
 /**
  * New-commits banner (PRD §8, #413): "New commits · v1 → v2 (…)" plus
- * range-diff plus Explain. Explain runs one agent call on click with
- * the X chosen beside it (an earlier version, any PR commit, or the
- * reviewer's last GitHub review); the end is always the head. There is
- * no up-to-date state: the banner is the only new-commits signal, and
- * the section header carries its own Explain control for re-runs.
+ * range-diff plus a plain Explain button. X is fixed to the version the
+ * new commits came after — the X picker lives only in the guide (the
+ * section header, or the guide-top control when no section exists), so
+ * only one picker is ever on screen. Explain runs one agent call on
+ * click; the end is always the head. There is no up-to-date state.
  *
  * Counts come from `versionStatus` on the snapshot (or the refresh
  * `comparison`, normalised by the caller).
  */
-import { useState } from "react";
 import type { VersionComparisonSummary, VersionStatus } from "@unvibe/shared";
-import { useReview } from "../state/store.js";
 import { SinceBaselineError } from "../guide/PriorReviewOffer.js";
-import { defaultExplainX, ExplainXSelect, explainXLabel, type ExplainX } from "../guide/ExplainXSelect.js";
 import { useExplainPass } from "../guide/useExplainPass.js";
 import { versionCountsText } from "./versionUtils.js";
 
@@ -64,8 +61,6 @@ export function VersionBanner({
   counts: BannerCounts;
   onUpdated: () => void;
 }): React.JSX.Element | null {
-  const [x, setX] = useState<ExplainX | null>(null);
-  const snapshot = useReview((s) => s.snapshot);
   const { phase, start } = useExplainPass(reviewId, onUpdated);
   const explaining = phase.name === "explaining" ? phase : null;
 
@@ -84,8 +79,7 @@ export function VersionBanner({
   // here (no `versionStatus` yet).
   if (counts.changedHunks + counts.newHunks + counts.removedHunks === 0) return null;
 
-  const def = snapshot ? defaultExplainX(snapshot) : null;
-  const label = explainXLabel(x ?? def ?? { version: counts.fromVersion });
+  // X is fixed: the version the new commits came after.
 
   return (
     <div className="dbar" data-testid="stale-banner" role="status">
@@ -105,7 +99,6 @@ export function VersionBanner({
           </details>
         ) : null}
       </span>
-      {phase.name === "failed" ? <span className="hint" data-testid="explain-error">{phase.message}</span> : null}
       {explaining ? (
         <span className="hint" data-testid="explain-progress" aria-live="polite" role="status">
           <span className="dots" aria-hidden="true">
@@ -113,16 +106,20 @@ export function VersionBanner({
             <i />
             <i />
           </span>{" "}
-          Explaining…
+          Explaining changes since v{counts.fromVersion}…
         </span>
       ) : (
         <span className="dbar-group">
-          <ExplainXSelect reviewId={reviewId} value={x} onChange={setX} />
-          <button className="x" type="button" onClick={() => start(x)}>
-            Explain changes since {label}
+          <button className="x" type="button" onClick={() => start({ version: counts.fromVersion })}>
+            Explain changes since v{counts.fromVersion}
           </button>
         </span>
       )}
+      {phase.name === "failed" ? (
+        <span className="hint explain-error" role="alert" data-testid="explain-error">
+          {phase.message}
+        </span>
+      ) : null}
       <SinceBaselineError />
     </div>
   );

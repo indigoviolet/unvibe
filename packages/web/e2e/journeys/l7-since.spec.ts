@@ -166,9 +166,10 @@ test.describe("L7 explain-since (was j351 step 1)", () => {
     const banner = page.locator('[data-testid="stale-banner"]');
     await expect(banner).toContainText(/New commits · v1 → v2/, { timeout: 60_000 });
     await expect(banner).toContainText(/1 changed/);
-    // No Update anywhere in the banner: Explain with the default X.
+    // No Update and no picker in the banner: one plain button, X fixed
+    // to the version the new commits came after.
     await expect(banner.getByRole("button", { name: "Update", exact: true })).toHaveCount(0);
-    await expect(banner.locator('[data-testid="explain-pick"]')).toContainText("Since v1 (default)");
+    await expect(banner.getByTestId("explain-pick")).toHaveCount(0);
     await expect(banner.getByRole("button", { name: "Explain changes since v1" })).toBeVisible();
     // Unchanged hunks keep reviewed state through the refresh.
     await expect(page.locator(appFile).locator(".revc")).toContainText("1/2", { timeout: 30_000 });
@@ -176,10 +177,12 @@ test.describe("L7 explain-since (was j351 step 1)", () => {
     await banner.getByRole("button", { name: "Explain changes since v1" }).click();
     await waitForExplainPass(svc, reviewId);
 
-    // The Changes-since-X section, expanded with its cards.
+    // The Changes-since-X section, expanded with its cards. Only one
+    // X picker on screen: the section header's (the banner has none).
     const since = page.locator('[data-testid="since-section"]');
     await expect(since).toBeVisible({ timeout: 30_000 });
-    await expect(since).toContainText(/Since v1 → v2/);
+    await expect(since).toContainText(/Changes since v1 → v2/);
+    await expect(page.getByTestId("explain-pick")).toHaveCount(1);
     await expect(since.getByRole("button", { name: /Collapse changes since v1/ })).toBeVisible();
     // Collapse it, then expand it again: the cards come and go.
     await since.getByRole("button", { name: /Collapse changes since v1/ }).click();
@@ -226,7 +229,7 @@ test.describe("L7 explain-since (was j351 step 1)", () => {
     await expect(since.getByRole("button", { name: `Explain changes since ${baseShort}` })).toBeVisible({ timeout: 15_000 });
     await since.getByRole("button", { name: `Explain changes since ${baseShort}` }).click();
     await waitForExplainPass(svc, reviewId);
-    await expect(since).toContainText(new RegExp(`Since ${baseShort} → v2`), { timeout: 30_000 });
+    await expect(since).toContainText(new RegExp(`Changes since ${baseShort} → v2`), { timeout: 30_000 });
     await expect(since.locator('[id^="C-since-"]')).toHaveCount(1);
     // The banner keeps offering Explain after the run.
     await expect(banner.getByRole("button", { name: /Explain changes since/ })).toBeVisible();
@@ -413,7 +416,7 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
     await waitForExplainPass(svc!, reviewId);
     // The section names the last-review commit as X.
     const since = page.locator('[data-testid="since-section"]');
-    await expect(since).toContainText(new RegExp(`Since ${c1short} → v1`), { timeout: 30_000 });
+    await expect(since).toContainText(new RegExp(`Changes since ${c1short} → v1`), { timeout: 30_000 });
     await expect(since.locator('[id^="C-since-"]')).toHaveCount(1);
     // The guide-side entry is replaced by the section header control.
     await expect(page.getByTestId("explain-control")).toHaveCount(0);
@@ -499,7 +502,7 @@ test.describe("L7 explain banner; no stale anywhere", () => {
     // Explain: the section lands, the banner keeps offering, nothing stale.
     await banner.getByRole("button", { name: "Explain changes since v1" }).click();
     await waitForExplainPass(svc, reviewId);
-    await expect(page.locator('[data-testid="since-section"]')).toContainText(/Since v1 → v2/, { timeout: 60_000 });
+    await expect(page.locator('[data-testid="since-section"]')).toContainText(/Changes since v1 → v2/, { timeout: 60_000 });
     await expect(banner).toContainText(/New commits · v1 → v2/);
     await expect(banner.getByRole("button", { name: /Explain changes since/ })).toBeVisible();
 

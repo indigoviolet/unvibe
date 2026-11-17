@@ -4075,7 +4075,7 @@ test.describe("since-B tour (#351)", () => {
       await expect(since.locator('[id^="C-since-"]')).toHaveCount(0);
       await stepChecks(page, "since-collapsed");
       await page.mouse.move(20, 20);
-      await shot(page, "since-collapsed", suffix, "Since v1 → v2");
+      await shot(page, "since-collapsed", suffix, "Changes since v1 → v2");
       await since.getByRole("button", { name: /Expand changes since v1/ }).click();
       await expect(since.locator('[id^="C-since-"]')).toHaveCount(2);
 
@@ -4240,10 +4240,10 @@ test.describe("since-commit tour (#351 step 2)", () => {
       // 1. The Since section names the short sha, not a version.
       const since = page.locator('[data-testid="since-section"]');
       await expect(since).toBeVisible({ timeout: 30_000 });
-      await expect(since).toContainText(new RegExp(`Since ${short352} → v2`));
+      await expect(since).toContainText(new RegExp(`Changes since ${short352} → v2`));
       await stepChecks(page, "since-commit-section");
       await page.mouse.move(20, 20);
-      await shot(page, "since-commit-section", suffix, `Since ${short352}`);
+      await shot(page, "since-commit-section", suffix, `Changes since ${short352}`);
 
       // 2. The diff filter chip, reading the section's X.
       await page.locator('#right [role="tab"]').getByText("Diff").click();
@@ -4575,13 +4575,10 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       const offer = page.getByTestId("prior-review-offer");
       await expect(offer).toBeVisible({ timeout: 60_000 });
       await expect(offer).toContainText(`You reviewed this at ${goneShort}`);
-      // The guide-side Explain pick is untouched by the error below
-      // the offer: same trigger width with and without the message
-      // (±2px).
-      const bannerTrigger = page.getByTestId("explain-pick").getByRole("combobox");
-      await expect(bannerTrigger).toBeVisible({ timeout: 60_000 });
-      const wBefore = (await bannerTrigger.boundingBox())?.width ?? -1;
-      expect(wBefore).toBeGreaterThan(0);
+      // The banner carries no picker: the only Explain entry on this
+      // page is the plain banner button.
+      await expect(page.getByTestId("explain-pick")).toHaveCount(0);
+      await expect(page.locator('[data-testid="stale-banner"]')).toContainText(/Explain changes since v1/);
       await page.getByTestId("prior-review-checkbox").click();
       // The failure leaves a persistent inline message under the
       // offer until the baseline changes — and no toast for this case.
@@ -4596,8 +4593,6 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       expect(errBox?.y ?? -1).toBeGreaterThanOrEqual(
         (labelBox?.y ?? 999) + (labelBox?.height ?? 0) - 1,
       );
-      const wAfter = (await bannerTrigger.boundingBox())?.width ?? -1;
-      expect(Math.abs(wAfter - wBefore)).toBeLessThanOrEqual(2);
       await page.mouse.move(20, 20);
       await shot(page, "since-unfetchable", suffix, `Couldn't find commit ${goneShort}`);
     });
@@ -4610,7 +4605,7 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       await page.goto(`${svcO.origin}/review/${revGone}?token=${svcO.token}`);
       const since = page.locator('[data-testid="since-section"]');
       await expect(since).toBeVisible({ timeout: 60_000 });
-      await expect(since).toContainText(new RegExp(`Since ${c1short} → v2`));
+      await expect(since).toContainText(new RegExp(`Changes since ${c1short} → v2`));
       const pick = since.locator('[data-testid="explain-pick"]');
       await pick.scrollIntoViewIfNeeded();
       // Layout checks run before the popup opens: the open popup

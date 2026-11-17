@@ -52,13 +52,19 @@ function ExplainControl({ reviewId }: { reviewId: string }) {
     );
   }
   return (
-    <span className="dbar-group">
-      <ExplainXSelect reviewId={reviewId} value={x} onChange={setX} />
-      <button className="x" type="button" onClick={() => start(x)}>
-        Explain changes since {label}
-      </button>
-      {phase.name === "failed" ? <span className="hint" data-testid="explain-error">{phase.message}</span> : null}
-    </span>
+    <>
+      <span className="dbar-group">
+        <ExplainXSelect reviewId={reviewId} value={x} onChange={setX} />
+        <button className="x" type="button" onClick={() => start(x)}>
+          Explain changes since {label}
+        </button>
+      </span>
+      {phase.name === "failed" ? (
+        <span className="hint explain-error" role="alert" data-testid="explain-error">
+          {phase.message}
+        </span>
+      ) : null}
+    </>
   );
 }
 
@@ -119,7 +125,7 @@ export function SinceSection({
           onClick={() => setOpen((v) => !v)}
         >
           <Icon name={open ? "down" : "right"} />
-          Since {label} → v{since.headVersion} · {sinceDate(since.at)}
+          Changes since {label} → v{since.headVersion} · {sinceDate(since.at)}
         </Button>
         <span className="sp" />
         <ExplainControl reviewId={reviewId} />

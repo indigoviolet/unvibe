@@ -116,7 +116,7 @@ test.describe("tour update banners", () => {
       if (Date.now() > jobDeadline) throw new Error("explain-pass job never finished");
       await new Promise((r) => setTimeout(r, 500));
     }
-    await expect(page.locator('[data-testid="since-section"]')).toContainText(/Since v1 → v2/, { timeout: 60_000 });
+    await expect(page.locator('[data-testid="since-section"]')).toContainText(/Changes since v1 → v2/, { timeout: 60_000 });
     await page.screenshot({ path: path.join(SHOTS, "367", "explained-banner-1440-light.png") });
   });
 });
