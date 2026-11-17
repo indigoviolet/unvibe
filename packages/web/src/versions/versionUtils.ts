@@ -123,8 +123,8 @@ export function formatRetryIn(nextRetryAt: number | undefined, now = Date.now())
 
 /**
  * Job list reduction from WS events (PRD §4.14 "live through the WebSocket
- * `job` events"): `job` events upsert by id (new jobs appended, so an
- * update-pass job enqueued after the snapshot loaded still appears);
+ * `job` events"): `job` events upsert by id (new jobs appended, so an explain-pass job
+ * enqueued after the snapshot loaded still appears);
  * every other event leaves the list alone. Pure so settings tests can
  * drive it without a socket.
  */
