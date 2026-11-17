@@ -139,7 +139,7 @@ describe("since-B step 2: pure context builders", () => {
     expect(sinceBaselineLabel({ kind: "version", version: 2 })).toBe("v2");
   });
 
-  it("buildSinceSectionCards uniquifies ids and drops unknown answers", () => {
+  it("buildSinceSectionCards uniquifies ids and drops unknown answers (issue #411: the kept card carries a body)", () => {
     const snap = {
       review: { currentVersion: 1 },
       pages: [{ id: "p", kind: "root", title: "G", cards: [{ id: "since-1" }] }],
@@ -152,7 +152,7 @@ describe("since-B step 2: pure context builders", () => {
         collapsed: false,
         revision: 1,
         undoStack: [],
-        blocks: [],
+        blocks: [{ type: "paragraph", id: "b-since-1", text: "Alpha reworked.", citations: [] }],
         answerRefs: [
           { kind: "comment", id: "7" },
           { kind: "comment", id: "999" },

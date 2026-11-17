@@ -37,7 +37,11 @@ B is v1 · aaa1111 · 3 Nov; head is v2 · bbb2222 · 4 Nov. Explain only the 1 
    or conversation id, or the full commit sha). Title each card with
    the change alone — never repeat the baseline ("since vN" or
    "since <sha>"): the section header already says it. Keep each card to
-   its own thread; don't restate the old guide.
+   its own thread; don't restate the old guide. Return the Since-B cards
+   only in the trailing JSON block's `sinceSection.cards` — each with its
+   `id`, `title`, `blocks` (the card body: what changed and why, cited
+   into the new hunks) and `answers`. The prose above carries no Since-B
+   cards: prose `##` cards are discarded, leaving a title with no body.
 2. **Append addenda, don't rewrite cards.** Where a change affects an
    existing card, write an "Updated since B" addendum for the end of
    that card: dated, explaining what changed relative to what the card
@@ -45,7 +49,8 @@ B is v1 · aaa1111 · 3 Nov; head is v2 · bbb2222 · 4 Nov. Explain only the 1 
    with the explanation itself — never with "Updated since …" (the
    dated header above it already says that). Never edit the card's
    text. Rewrite a card's prose only when it is now plainly wrong —
-   prefer the addendum.
+   prefer the addendum. Return each addendum in the trailing block's
+   `addenda` — its `cardId` plus its `blocks` and `answers`.
 3. **Recheck findings.** Each finding still applies, is resolved, or has
    changed. Say which, with the new evidence. Resolved findings stay
    visible, marked resolved.
@@ -69,4 +74,6 @@ B is v1 · aaa1111 · 3 Nov; head is v2 · bbb2222 · 4 Nov. Explain only the 1 
 - Anchor remapping (positions) is done for you; content changes are
   yours to interpret.
 - Output revised cards, finding verdicts, and hunk summaries in that
-  order, then the trailing JSON block.
+  order, then the trailing JSON block. The Since-B cards and addenda
+  travel only in that block (`sinceSection.cards` entries carry `blocks`;
+  `addenda` entries carry `blocks`) — never as `##` prose cards.

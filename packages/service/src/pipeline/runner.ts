@@ -2438,12 +2438,16 @@ export class Pipeline {
       ) {
         const normalized = normalizeAgentSinceCards({ cards: applied.sinceSection.cards });
         if (normalized && normalized.length > 0) {
-          draft.sinceSection = {
-            baseline: readerBaseline,
-            headVersion: draft.review.currentVersion,
-            at: Date.now(),
-            cards: buildSinceSectionCards(draft, normalized),
-          };
+          // Issue #411: bodyless model cards fail in the shared builder.
+          const cards = buildSinceSectionCards(draft, normalized);
+          if (cards.length > 0) {
+            draft.sinceSection = {
+              baseline: readerBaseline,
+              headVersion: draft.review.currentVersion,
+              at: Date.now(),
+              cards,
+            };
+          }
         }
       }
       // A plotline covering only post-B hunks is a new thread since B.

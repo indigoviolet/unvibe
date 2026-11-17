@@ -4541,3 +4541,46 @@ one-variant union today).
   chips), `test/expansion-block-ids.test.ts` (unconsumed follow-up
   survives with a restamped colliding reply ID; undo restores). Full
   gates not yet run.
+
+## Addendum: #411 — Since cards show no body after an update pass (branch `fix/since-card-bodies`)
+
+- **Cause (prompt, not render or apply):** `prompts/update_pass.md`
+  told the model to "Write the Since-B cards" as prose `##` cards with
+  an `answers` list, but never named the trailing-JSON shape —
+  contrast `prompts/reader.md`, which shows `"sinceSection": {"cards":
+  [{"id", "title", "blocks", "answers"}]}`. `JsonBlockReplyParser`
+  reads Since cards only from the trailing JSON, and
+  `buildSinceSectionCards` stores `blocks: []` when `blocks` is
+  missing; `CardView` then renders the title plus `<SinceAnswers>`
+  with zero body blocks — exactly the reported title + "Answers:
+  …" line under an expanded chevron. Evidence: the symptom matches
+  `blocks: []` + resolved answers; prose `##` cards in an update
+  reply are discarded (the parser reads only the fenced block).
+- **Prompt fix (root):** task 1 now returns the cards only in the
+  trailing block's `sinceSection.cards` (`id`, `title`, `blocks`,
+  `answers`), task 2 returns addenda in `addenda` (`cardId`,
+  `blocks`, `answers`), and the Rules line states both travel only in
+  that block, never as prose cards. `test/goldens/update_pass.md`
+  re-rendered (only that golden changed).
+- **Failed-card rule:** a model Since card with no body blocks is
+  dropped in `buildSinceSectionCards` — shared by the update pass and
+  the reader no-review path, like a blockless finding in
+  `criticApplyAll` — and both callers store the section only when
+  built cards remain. No new mechanism, no new surface.
+- **Excerpt trimming:** `excerpt` (`since.ts`, service-side,
+  cap 160/200 as before) cuts at the last sentence boundary (`.`,
+  `!`, `?` + space/end) within the limit, else the last word
+  boundary, with `…` and no trailing space; short text passes
+  through. Recordings need no fix: the `update-pass.md` fixture card
+  carries one body block and the addendum one block.
+- **Stored shape:** unchanged (cards still carry `blocks`/`answers`),
+  so no `DATA_FORMAT` change. Existing reviews with stored title-only
+  cards need a re-run of the update pass to gain bodies (a reset also
+  works but is not required); new passes store bodies.
+- Evidence: service `test/versions-since-411.test.ts` (bodyless cards
+  dropped incl. the all-bodyless empty build, sentence/word/space
+  trimming, boundary-cut commit excerpt through `resolveSinceAnswers`),
+  updated `test/versions-since-commit.test.ts` (kept card now carries
+  a body), journey `e2e/journeys/l7-since.spec.ts` (every expanded
+  Since card shows non-empty `p.prose` body text), tour scene `sinceB`
+  at 1440 light. Full gates not yet run.

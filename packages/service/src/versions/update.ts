@@ -489,9 +489,13 @@ export async function applyUpdateResult(
     }
     // The Since-B section is replaced whole on every pass, never revised.
     // Step 2: card storage is shared with the guide run (`since.ts`).
+    // Issue #411: bodyless model cards fail in the shared builder, so
+    // the section is stored only when built cards remain.
     if (result.sinceSection && result.sinceSection.cards.length > 0) {
       const cards = buildSinceSectionCards(draft, result.sinceSection.cards as SinceCardDraftWithRefs[]);
-      draft.sinceSection = { baseline: baselineV, headVersion: toVersion, at: now, cards };
+      if (cards.length > 0) {
+        draft.sinceSection = { baseline: baselineV, headVersion: toVersion, at: now, cards };
+      }
     }
     // New plotline threads first, so assignments below can target them.
     // Unknown assignment targets stay "other" (never invented ids).
