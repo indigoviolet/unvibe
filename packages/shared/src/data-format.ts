@@ -32,8 +32,12 @@
  * - 9: reviews record which Guide persona wrote them (#393):
  *   `Review` gains required `guidePersonaId` (no fallback); stored
  *   reviews without it need a reset.
+ * - 10: explain-since-X (#413): addenda are gone (`Card` loses
+ *   `stale`/`staleChangedHunks`/`staleHunks`/`addenda`, pages lose
+ *   `needsRecheck`/`recheckStatus`/`recheckNote`, `VersionStatus` loses
+ *   `stale`); stored reviews with since/addendum data need a reset.
  */
-export const DATA_FORMAT = 9;
+export const DATA_FORMAT = 10;
 
 /** Stored format of a data dir: `null` when no stamp is present. */
 export type DataFormatState = "none" | "match" | "mismatch";

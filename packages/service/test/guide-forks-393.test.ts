@@ -36,7 +36,7 @@ import {
   withGuideStyleForReview,
 } from "../src/prompts/personas.js";
 import { loadTemplatesDirSync } from "../src/prompts/index.js";
-import { renderUpdatePrompt } from "../src/versions/update.js";
+import { renderExplainPrompt } from "../src/versions/explain.js";
 
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_PROMPTS = path.resolve(TEST_DIR, "..", "..", "..", "prompts");
@@ -52,7 +52,7 @@ function makeBasePrompts(): string {
   writeFileSync(path.join(dir, "instructions.md"), `---\nrole: system\ntier: main\nvariables: [access_policy]\n---\n\nBase instructions. {{access_policy}}\n`);
   writeFileSync(path.join(dir, "reader.md"), tpl("# Reader task\n\nSource: {{source}}\n", ["source"]));
   writeFileSync(path.join(dir, "depth.md"), tpl("# Depth\n\nCard: {{card}}\n", ["card"]));
-  writeFileSync(path.join(dir, "update_pass.md"), tpl("# Update\n\nHunks: {{changed_hunks}}\n", ["changed_hunks"]));
+  writeFileSync(path.join(dir, "explain_pass.md"), tpl("# Explain\n\nHunks: {{x_hunks}}\n", ["x_hunks"]));
   return dir;
 }
 
@@ -60,7 +60,7 @@ function makeBasePrompts(): string {
 function makePipelinePrompts(): { dir: string; forkFiles: string[] } {
   const dir = mkdtempSync(path.join(os.tmpdir(), "unvibe-fork-pipe-"));
   cpSync(REPO_PROMPTS, dir, { recursive: true });
-  const forked = ["reader", "slower", "instructions", "hunk_pass", "update_pass"];
+  const forked = ["reader", "slower", "instructions", "hunk_pass", "explain_pass"];
   const { copied } = copyPersonaFork(dir, "tutor", forked);
   expect(copied.sort()).toEqual([...forked].sort());
   const sentinel: Record<string, string> = {
@@ -68,7 +68,7 @@ function makePipelinePrompts(): { dir: string; forkFiles: string[] } {
     slower: "FORK-SLOWER-SENTINEL",
     instructions: "FORK-INSTRUCTIONS-SENTINEL",
     hunk_pass: "FORK-HUNK-SENTINEL",
-    update_pass: "FORK-UPDATE-SENTINEL",
+    explain_pass: "FORK-EXPLAIN-SENTINEL",
   };
   for (const name of forked) {
     const file = path.join(dir, "personas", "tutor", `${name}.md`);
@@ -155,8 +155,8 @@ describe("fork library (overlay, capability, manifest, drift)", () => {
       copyPersonaFork(dir, "tutor", ["reader"]);
       expect(forkDrift(dir, "tutor")).toEqual([]);
       // A fork file the helper never recorded counts as drifted too.
-      writeFileSync(path.join(dir, "personas", "tutor", "update_pass.md"), tpl("forked\n"));
-      expect(forkDrift(dir, "tutor")).toEqual(["update_pass.md"]);
+      writeFileSync(path.join(dir, "personas", "tutor", "explain_pass.md"), tpl("forked\n"));
+      expect(forkDrift(dir, "tutor")).toEqual(["explain_pass.md"]);
       // No fork at all means no warning.
       expect(forkDrift(dir, "nobody")).toEqual([]);
     } finally {
@@ -215,19 +215,19 @@ describe("fork library (overlay, capability, manifest, drift)", () => {
     expect(withGuideStyleForReview("reader", prompt, "  ", true)).toBe(prompt);
   });
 
-  it("renders the update pass from the fork when present", () => {
+  it("renders the explain pass from the fork when present", () => {
     const dir = makeBasePrompts();
     try {
-      const vars = { changed_hunks: "h", stale_cards: "s", findings: "f" };
-      expect(renderUpdatePrompt(dir, vars, "tutor")).toContain("Hunks: h");
-      copyPersonaFork(dir, "tutor", ["update_pass"]);
-      const forkFile = path.join(dir, "personas", "tutor", "update_pass.md");
-      writeFileSync(forkFile, `${readFileSync(forkFile, "utf8")}\nFORK-UPDATE-SENTINEL\n`);
-      const rendered = renderUpdatePrompt(dir, vars, "tutor");
-      expect(rendered).toContain("FORK-UPDATE-SENTINEL");
+      const vars = { x_hunks: "h", x_context: "x" };
+      expect(renderExplainPrompt(dir, vars, "tutor")).toContain("Hunks: h");
+      copyPersonaFork(dir, "tutor", ["explain_pass"]);
+      const forkFile = path.join(dir, "personas", "tutor", "explain_pass.md");
+      writeFileSync(forkFile, `${readFileSync(forkFile, "utf8")}\nFORK-EXPLAIN-SENTINEL\n`);
+      const rendered = renderExplainPrompt(dir, vars, "tutor");
+      expect(rendered).toContain("FORK-EXPLAIN-SENTINEL");
       expect(rendered).toContain("Hunks: h");
       // The built-in Guide keeps the shared template.
-      expect(renderUpdatePrompt(dir, vars, GUIDE_PERSONA_ID)).not.toContain("FORK-UPDATE-SENTINEL");
+      expect(renderExplainPrompt(dir, vars, GUIDE_PERSONA_ID)).not.toContain("FORK-EXPLAIN-SENTINEL");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

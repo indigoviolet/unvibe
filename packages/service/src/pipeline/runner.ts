@@ -66,7 +66,6 @@ import {
   computeSinceHunks,
   diffFilesAtCommit,
   formatReaderReviewedContext,
-  markNewSincePlotlines,
   normalizeAgentSinceCards,
   unfetchableCommitMessage,
 } from "../versions/since.js";
@@ -1936,7 +1935,7 @@ export class Pipeline {
     const requestedKeys = requestedReaderFields(readerTemplateBody);
     // Issue #351 step 2: when the reviewer already reviewed this PR on
     // GitHub up to a commit B (accepted before this run), the reader is
-    // told so and writes the Since-B section in this same run — one run,
+    // told so and writes the Changes-since-X section in this same run — one run,
     // not two. Otherwise the variable sends it down the normal path.
     // The baseline may have been picked while the review was still
     // opening (no head diff to compare then): fill the missing hunk set
@@ -1977,7 +1976,7 @@ export class Pipeline {
       }
     }
     const reviewed_context = formatReaderReviewedContext(readerSnapshot, readerSnapshot.sinceHunks);
-    // Whether this run writes a Since-B section (for the repair message).
+    // Whether this run writes a Changes-since-X section (for the repair message).
     const wantsReaderSinceSection = readerSnapshot.sinceBaseline?.kind === "commit";
     let prompt = renderTemplate(lib.get("reader")!, {
       source,
@@ -2119,12 +2118,12 @@ export class Pipeline {
                 finalData = repaired.data as ReplyData;
               } else {
                 // Name only what the prompt requested (see above). The
-                // Since-B section only when this run had a commit baseline.
+                // Changes-since-X section only when this run had a commit baseline.
                 const missing = [
                   ...(requestedKeys.includes("plotlines") ? ["plotlines"] : []),
                   ...(requestedKeys.includes("glossary") ? ["glossary"] : []),
                   ...(requestedKeys.includes("pendingCards") ? ["go-deeper directions"] : []),
-                  ...(wantsReaderSinceSection ? ["Since-B section"] : []),
+                  ...(wantsReaderSinceSection ? ["Changes-since-X section"] : []),
                 ];
                 degradedReason =
                   "The reader's trailing data block did not parse and the repair reply did not parse either, " +
@@ -2427,7 +2426,7 @@ export class Pipeline {
         state.plotline = pid;
       }
       // Issue #351 step 2: the no-review-yet path — the reader wrote the
-      // Since-B section in this same run. Stored only when the run had a
+      // Changes-since-X section in this same run. Stored only when the run had a
       // commit baseline (a stray section without one is dropped, never
       // stored), with resolved feedback links like the update pass.
       const readerBaseline = draft.sinceBaseline;
@@ -2449,14 +2448,6 @@ export class Pipeline {
             };
           }
         }
-      }
-      // A plotline covering only post-B hunks is a new thread since B.
-      if (draft.sinceBaseline?.kind === "commit" && draft.sinceHunks) {
-        const sinceSet = new Set([...draft.sinceHunks.added, ...draft.sinceHunks.changed]);
-        const sinceHashes = new Set(
-          [...sinceSet].map((hid) => hid.slice(hid.lastIndexOf(":") + 1)),
-        );
-        markNewSincePlotlines(draft.plotlines ?? [], draft.hunkStates, sinceHashes);
       }
       this.markFirstCard(draft);
       const seq = draft.logTail.reduce((m, e) => Math.max(m, e.seq), 0) + 1;
@@ -3522,8 +3513,8 @@ export class Pipeline {
     }
   }
 
-  updateRunner(): {
-    runUpdatePrompt: (
+  explainRunner(): {
+    runExplainPrompt: (
       prompt: string,
       opts: {
         reviewId: string;
@@ -3541,12 +3532,12 @@ export class Pipeline {
     ) => Promise<string>;
   } {
     return {
-      // The versions module renders `update_pass.md` already and encloses
-      // this call in the single `update-pass` job. Run directly in that
-      // job — enqueuing a second update-pass job here deadlocked on the
+      // The versions module renders `explain_pass.md` already and encloses
+      // this call in the single `explain-pass` job. Run directly in that
+      // job — enqueuing a second explain-pass job here deadlocked on the
       // enclosing job's dedupe key (issue #194: RUNNING forever, no
       // token counts). Retryable errors retry the turn in place.
-      runUpdatePrompt: async (prompt, opts) => {
+      runExplainPrompt: async (prompt, opts) => {
         for (let attempt = 0; ; attempt++) {
           try {
             const base = await this.ensureBase(opts.reviewId);

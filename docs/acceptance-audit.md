@@ -1408,14 +1408,14 @@ needed (that deviation is closed, not added).
 - Hunk state kept by hash / cleared+regen+note-kept — met (test (b)).
 - Code comments moved vs outdated (+snippet + new-code link) — met
   (tests (b)(c)(e)).
-- Cards stale badge + Update; findings rechecked; pinned code re-pinned;
-  threads' change lists — met (`versions/citations.ts`, `update.ts`,
-  `versions-update.test.ts`; #52: pins in files the new diff does not touch
+- Cards carry no stale flags and findings carry no recheck state (#413); pinned code is found again by content;
+  threads' change lists — met (`versions/citations.ts`, `versions/explain.ts`,
+  `versions-explain.test.ts`; #52: pins in files the new diff does not touch
   are decided by content at the new head — unchanged kept, moved remapped,
   gone/missing/binary/large/unreadable flagged — `versions/refresh.ts`,
   `versions-refresh.test.ts` (h)–(m)).
-- Manual update only (fetch/compare free on open/refresh; pass on Update)
-  — met (`routes/reviews.ts` refresh vs update; update pass jobs).
+- Manual explain only (fetch/compare free on open/refresh; one agent call on Explain click)
+  — met (`routes/reviews.ts` refresh vs explain; explain-pass jobs).
 - Table row “Pinned code / Thread in progress” — met
   (`secondopinion/excerpts.ts` re-pin; `sharedctx/threads.ts` change lists).
 
@@ -1432,8 +1432,8 @@ needed (that deviation is closed, not added).
   names only real tools (`get_hunk`, `search_review`, `resolve`,
   `get_code`); `buildHunkSummaries`/`buildHiddenHunksSection` obey the
   same cap; reader, base, second-opinion, prompt preview and debug page
-  all build from the one ladder call; the update pass caps
-  `changed_hunks`. Under the budgets every builder is byte-identical to
+  all build from the one ladder call; the explain pass caps
+  `x_hunks`. Under the budgets every builder is byte-identical to
   before (`prompt-goldens.test.ts` unchanged). Follow-up: the cap holds
   for the assembled base message, not per section — `buildBasePack`
   gives hunk summaries only what is left of the cap after L1+L1b+L2
@@ -1583,8 +1583,8 @@ needed (that deviation is closed, not added).
    thread replies still show the raw D2 source (`<pre class="d2">`, no
    on-demand render — storing thread replies as blocks would be a
    storage change, deliberately not built).
-7. Update pass (changed/new hunks only) — met (`versions/update.ts`,
-   `enqueueUpdatePass`, `versions-update.test.ts`).
+7. Explain-since-X pass (X→head hunks only) — met (`versions/explain.ts`,
+   `enqueueExplainPass`, `versions-explain.test.ts`).
 
 ## §12 Models and concurrency — all met (audit-10)
 
@@ -1924,8 +1924,8 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
   issue #32).
 - M4 comments/submit — met (threads ×3, Comments menu + Outbox drafts,
   suggested comments, author-gated description edit, one-review submit).
-- M5 versions — met (refresh mapping, stale/outdated UI, hash-preserved
-  hunk state, update pass, rebase-no-change test (a)).
+- M5 versions — met (refresh mapping, new-commits banner, hash-preserved
+  hunk state, explain-since-X pass, rebase-no-change test (a)).
 - M6 second opinion + settings — met (blind/check, models/prompt-
   templates/limits settings page; jobs + expanded prompts + usage on the
   per-review debug page, issue #32; isolation e2e on the real prompt).
@@ -2719,7 +2719,7 @@ hunk coverage) is reported for a separate issue, not fixed here.
   Retry (re-ingest) and Remove work as for #92's failed state, and the
   start page shows the message with a "no changes" tag. A refresh that
   empties the diff records `versionStatus.empty`, shows the same message
-  in the banner and diff (no Update offered), and the update pass refuses
+  in the banner and diff (no Explain offered), and the explain route refuses
   with 409 so no agent time is spent. Evidence:
   `test/reviews-empty-diff.test.ts`, `GuideLoading.test.tsx` (EmptyOpen),
   `e2e/journeys/j18-empty-diff.spec.ts`.
@@ -4584,3 +4584,65 @@ one-variant union today).
   a body), journey `e2e/journeys/l7-since.spec.ts` (every expanded
   Since card shows non-empty `p.prose` body text), tour scene `sinceB`
   at 1440 light. Full gates not yet run.
+
+## Addendum: #413 — Explain changes since X replaces Update/addenda (branch `feat/413-explain-changes-since`)
+
+Owner-approved redesign around one goal: explaining a commit range
+("what changed since X, and why"). The deferred baseline picker, the
+Update button, addenda, and every stale marker are gone.
+
+- **One action, any time:** "Explain changes since [X]" where X is an
+  earlier version, any PR commit, or the reviewer's last GitHub review
+  (end always the head). The banner ("New commits · vN → vM") offers
+  it after new commits; the guide side (`ExplainControlSlot` when no
+  section exists, the section header once it does) offers it otherwise.
+  Choosing X never stores or runs — one agent call, only on click
+  (`POST /api/reviews/:id/explain {version}|{sha}|{}`, 202 +
+  `explain-pass` job; 400 on a bad X, 502 on an unfetchable commit,
+  409 only while loading/failed or on an empty diff).
+- **The result** is a self-contained, collapsible Changes-since-X
+  section at the guide root (`SinceSection.tsx`): cards grouped by
+  change (one card may span commits; a commit may split across
+  cards), every card with a body and claims cited into the X→head
+  hunks, feedback-only Answers (commit-only lines hidden in
+  `SinceAnswers.tsx`). The header always names X; a re-run with a
+  different X replaces the section whole (`applyExplainResult`).
+- **The old guide is untouched:** no addenda (`Card.addenda` and
+  `stripAddendumPrefix` removed), no revised cards, no finding
+  rechecks, no new findings, no hunk summaries, no plotline placement,
+  no re-pinning, no stale clearing. The requested X wins over the
+  agent's echo (`enqueueExplainPass`); commit answers still resolve
+  and store (the UI hides them).
+- **No stale markers anywhere** (owner answer 1): no banner stale
+  state, no card "N cited hunks changed" badges or card Update
+  button, no findings `needsRecheck`/`recheckStatus`, and refresh
+  sets none of them (`staleChangedHunks`/`staleHunks` gone from
+  `Card`, `stale` gone from `VersionStatus`). Hunk-level
+  `reviewed`/`needsSummary`/diff "changed since reviewed" mechanics
+  are unchanged. Citations are still remapped on refresh.
+- **Since filter kept, now section-backed** (owner answer 3): the
+  diff chip reads the section's cited X→head hunks
+  (`sinceSectionHunkIds`, shared by chip label/count and the
+  reveal), shows only when a section exists, and names the section's
+  X. A section citation turns the filter on and reveals the hunk
+  (`revealCitationFrom`, DOM-scoped via `data-since-section`,
+  through the persisted `diffFilter` — the toolbar chip can go away
+  later without touching the reveal). Plotline `+N`/`new since`
+  markers are dropped (`Plotline.newSinceBaseline` and
+  `markNewSincePlotlines` removed).
+- **Pre-guide offer kept** (`PriorReviewOffer.tsx`): the checkbox
+  records X before the guide run; the reader writes guide + section
+  in the one run (`formatReaderReviewedContext`,
+  `buildSinceSectionCards`); no extra call.
+- **Data format 9 → 10:** stored reviews with addenda/stale data
+  need a reset (export Outbox drafts first).
+- Evidence: service `versions-explain.test.ts` (route + job +
+  section replacement + parser), rewritten `versions-since-b` /
+  `versions-since-commit` / `versions-refresh` / `huge-pr-107` /
+  `guide-forks-393` / copy-markdown / replay-match specs, journey
+  `e2e/journeys/l7-since.spec.ts` (version/commit/last-review X →
+  Explain → section with bodies, grouped cards, header naming X;
+  re-run replacement; citation → range diff; old guide unchanged;
+  banner offering "Explain changes since v1"), tour banner +
+  section frames at 1440 light, regenerated prompt goldens
+  (`explain_pass.md`). Fake runner only. Full gates not yet run.

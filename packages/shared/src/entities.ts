@@ -225,15 +225,6 @@ export interface Page {
   /** Finding-only: one-line summary shown on the finding-ref card. */
   summary?: string;
   cards: Card[];
-  /**
-   * M5 (PRD §8): finding pages whose cited hunks changed are flagged for
-   * recheck. `recheckStatus` is set by the update pass
-   * (`still-applies` | `resolved` | `changed`); `pending` means refresh
-   * flagged it but the update pass has not run yet.
-   */
-  needsRecheck?: boolean;
-  recheckStatus?: "pending" | "still-applies" | "resolved" | "changed";
-  recheckNote?: string;
 }
 
 /**
@@ -341,22 +332,9 @@ export interface Card extends ContentBody {
    */
   why?: string;
   /**
-   * M5 (PRD §8): true when one or more cited hunks changed. `staleHunks`
-   * lists the affected new-side `h:` IDs; `staleChangedHunks` is the count
-   * the UI shows ("2 cited hunks changed") beside the Update button.
-   */
-  stale?: boolean;
-  staleChangedHunks?: number;
-  staleHunks?: string[];
-  /**
-   * Issue #351: dated "Updated since B" blocks appended by the update
-   * pass, in write order. The card's own blocks stay unchanged.
-   */
-  addenda?: import("./versions.js").CardAddendum[];
-  /**
-   * Issue #351: resolved feedback links ("Answers: … ↗") stored by the
-   * update pass on Since-B cards. The agent writes `{ kind, id }`
-   * pointers; the service resolves them and drops unknown ids.
+   * Issue #351/#413: resolved feedback links ("Answers: … ↗") stored
+   * on Changes-since-X cards. The agent writes `{ kind, id }` pointers;
+   * the service resolves them and drops unknown ids.
    */
   answers?: import("./versions.js").SinceFeedbackLink[];
 }
@@ -1101,7 +1079,7 @@ export type JobKind =
   | "examples"
   | "diagram"
   | "go-deeper"
-  | "update-pass"
+  | "explain-pass"
   | "summarize"
   | "plotline-assign"
   | "consolidate"

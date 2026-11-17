@@ -594,9 +594,9 @@ interface ReviewSnapshotBase {
     errors?: Partial<Record<PipelineStage, string>>;
   };
   /**
-   * M5 (PRD §8): review-level staleness for the "New commits · Update"
-   * banner. Present once a refresh has created version n+1; cleared by a
-   * successful update pass. Absent on fresh reviews.
+   * M5 (PRD §8): review-level version info for the "New commits ·
+   * vN → vM" banner. Present once a refresh has created version n+1.
+   * Absent on fresh reviews.
    */
   versionStatus?: import("./versions.js").VersionStatus;
   /**
@@ -621,28 +621,29 @@ interface ReviewSnapshotBase {
   /**
    * Issue #351: read-only cache of PR conversation (issue-comment)
    * remarks, refreshed with the existing-comments ingest on PR reviews
-   * (best effort). The update pass matches them to the delta by time.
+   * (best effort). The explain pass matches them to the delta by time.
    */
   prConversation?: PrConversationRemark[];
   /**
-   * Issue #351: baseline B of "focus since B" — an earlier version (the
-   * version last opened by default; the picker may set any earlier one)
-   * or any commit sha (a PR commit, or the `commit_id` of the reviewer's
-   * own latest GitHub review — the no-review-yet path, step 2). The next
-   * update pass explains from it; a fresh guide run does too when it is
-   * set before the reader runs.
+   * Issue #351: baseline X of "explain changes since X" — an earlier
+   * version (the version last opened by default) or any commit sha (a
+   * PR commit, or the `commit_id` of the reviewer's own latest GitHub
+   * review — the no-review-yet path, kept in #413). The stored baseline
+   * drives the Since diff filter and plotline markers (on hold in #413)
+   * and defaults the X an Explain run explains from.
    */
   sinceBaseline?: import("./versions.js").SinceBaseline;
   /**
-   * Issue #351: new-side `h:` IDs changed or added since B, by
-   * hunk-content comparison (rebase-proof). Drives the Since-B diff
-   * filter and the plotline `+N since B` markers.
+   * Issue #351: new-side `h:` IDs changed or added since X, by
+   * hunk-content comparison (rebase-proof). Drives the Since diff
+   * filter, the plotline `+N since X` markers, and the citation reveal.
    */
   sinceHunks?: import("./versions.js").SinceHunks;
   /**
-   * Issue #351: the dated Since-B section at the top of the guide,
-   * written by the last update pass — or by the guide run itself on the
-   * no-review-yet path (replaced, never revised in place).
+   * Issue #351: the Changes-since-X section at the top of the guide,
+   * written by the last Explain run — or by the guide run itself on the
+   * no-review-yet path (replaced whole on re-run, never revised in
+   * place).
    */
   sinceSection?: import("./versions.js").SinceSection;
   /**
@@ -882,23 +883,25 @@ export interface RefreshResponse {
 }
 
 /**
- * M5: `POST /api/reviews/:id/update` response — the enqueued update-pass
- * job. The pass runs only when the user clicks Update; it sees only the
- * changed and new hunks (PRD §8).
+ * M5: `POST /api/reviews/:id/explain` response — the enqueued
+ * explain-since-X job. Explain runs only when the user clicks it, with
+ * an X they chose (earlier version, commit, or last GitHub review);
+ * the end is always the head. It writes the Changes-since-X section
+ * and leaves the old guide untouched (PRD §8).
  */
-export interface UpdateReviewResponse {
+export interface ExplainReviewResponse {
   jobId: string;
   /** New version the pass updates to (current version at enqueue time). */
   toVersion: number;
 }
 
 /**
- * Issue #351: `POST /api/reviews/:id/since-baseline` — pick the baseline
- * B the next update pass (or the still-pending guide run) explains from:
- * any earlier version, or any commit sha (a PR commit, or the
- * `commit_id` of the reviewer's own latest GitHub review). "Since" is
- * hunk-content comparison against the head diff, never git ancestry, so
- * a rebased or force-pushed B works the same.
+ * Issue #351: `POST /api/reviews/:id/since-baseline` — record the X the
+ * next Explain (or the still-pending guide run) explains from: any
+ * earlier version, or any commit sha (a PR commit, or the `commit_id`
+ * of the reviewer's own latest GitHub review). "Since" is hunk-content
+ * comparison against the head diff, never git ancestry, so a rebased or
+ * force-pushed X works the same. Setting it never starts an agent run.
  */
 export type SetSinceBaselineRequest =
   | {

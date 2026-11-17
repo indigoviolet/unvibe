@@ -4,7 +4,7 @@
  * that card's shown depth. Citations render exactly as #377's card copy
  * (permalinks on PR reviews, `path:lines` otherwise); diagrams become
  * placeholders; code blocks, code fences inside list items, finding and
- * comment links, follow-ups, answers and addenda are left out; the
+ * comment links, follow-ups and answers are left out; the
  * output never contains `[[…]]` tokens. Card copy (#377) is unchanged —
  * the last test guards its output here too.
  */

@@ -22,7 +22,7 @@ export const PROMPT_TEMPLATE_NAMES = [
   "examples",
   "diagram",
   "go_deeper",
-  "update_pass",
+  "explain_pass",
   "consolidate",
   "persona_card",
 ] as const;

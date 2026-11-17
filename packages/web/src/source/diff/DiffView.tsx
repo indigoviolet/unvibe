@@ -60,6 +60,7 @@ import {
 } from "./diffLogic.js";
 import { useGithubThreads } from "../../comments/GithubThreads.js";
 import { useLineSlots, type LineSlots } from "./lineSlots.js";
+import { sinceSectionHunkIds } from "../../guide/citations.js";
 import {
   observeDiffPinned,
   onRevealSource,
@@ -392,24 +393,17 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
     [states],
   );
   const plotActive = plotFilter.plotline !== undefined;
-  // Issue #351: the Since-B filter shows only hunks changed or added
-  // since the baseline (snapshot `sinceHunks`, by content comparison).
+  // Issue #413: the Since filter shows only the X→head hunks behind
+  // the current Changes-since-X section (whatever X the section was
+  // written from). With no section the chip doesn't show. The hunk set
+  // is the section's cited set — every claim in the section is cited
+  // into its X→head hunks — never the stored baseline pick.
   const sinceActive = plotFilter.sinceBaseline === true;
+  const sinceChipLabel = snapshot?.sinceSection ? sinceBaselineLabel(snapshot.sinceSection.baseline) : "";
   const sinceIds = useMemo(() => {
-    if (!sinceActive) return undefined;
-    const ids = new Set<string>();
-    for (const f of snapshot?.files ?? []) {
-      for (const h of f.hunks) {
-        const id = hunkVisibleId(f.fileKey, h.contentHash);
-        if (
-          snapshot?.sinceHunks?.added.includes(id) === true ||
-          snapshot?.sinceHunks?.changed.includes(id) === true
-        ) {
-          ids.add(id);
-        }
-      }
-    }
-    return ids;
+    if (!sinceActive || !snapshot) return undefined;
+    const ids = sinceSectionHunkIds(snapshot);
+    return ids && ids.size > 0 ? ids : new Set<string>();
   }, [sinceActive, snapshot]);
   // Issue #351: hunks the Since-B filter hides (hunk-granular, unlike the
   // file-granular `hiddenHunks` behind the plotline chip).
@@ -570,8 +564,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
     return Math.max(0, progress.total - shown);
   }, [visible, progress.total]);
 
-  const plotlines: Plotline[] = useMemo(() => snapshot?.plotlines ?? [], [snapshot?.plotlines]);
-  const plotlineNames = useMemo(() => new Map(plotlines.map((p) => [p.id, p.name])), [plotlines]);
+  const plotlines: Plotline[] = useMemo(() => snapshot?.plotlines ?? [], [snapshot?.plotlines]);  const plotlineNames = useMemo(() => new Map(plotlines.map((p) => [p.id, p.name])), [plotlines]);
 
   const doReveal = useCallback(
     (target: RevealTarget, keepFilters = false) => {
@@ -839,25 +832,13 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
   // Tooltip is the action only (#225); Fold all only folds (#376).
   const foldTip = "Fold the code";
 
-  // Update banner: the local refresh result wins; otherwise the snapshot's
-  // own `versionStatus` (set when a refresh created a newer version).
-  // Hidden while viewing an older version. Issue #367: the banner stays
-  // mounted after an update pass (now reading "Updated to vN"), so the
-  // baseline label rides along for the up-to-date state.
+  // New-commits banner: the local refresh result wins; otherwise the
+  // snapshot's own `versionStatus` (set when a refresh created a newer
+  // version). Hidden while viewing an older version.
   const rawCounts: BannerCounts | null = readOnly
     ? null
     : (banner ?? (snapshot.versionStatus ? statusToBanner(snapshot.versionStatus) : null));
-  const bannerCounts: BannerCounts | null =
-    rawCounts === null
-      ? null
-      : {
-          ...rawCounts,
-          sinceLabel:
-            rawCounts.sinceLabel ??
-            (snapshot.sinceBaseline !== undefined
-              ? sinceBaselineLabel(snapshot.sinceBaseline)
-              : `v${rawCounts.fromVersion}`),
-        };
+  const bannerCounts: BannerCounts | null = rawCounts;
 
   return (
     <div>
@@ -878,18 +859,18 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
             </button>
           </span>
         ) : null}
-        {snapshot.sinceHunks !== undefined && snapshot.sinceBaseline !== undefined && !readOnly ? (
+        {(snapshot.sinceSection?.cards.length ?? 0) > 0 && !readOnly ? (
           <Button
             variant="secondary"
             size="sm"
             type="button"
             aria-pressed={sinceActive}
             data-filterchip="since"
-            data-tip={sinceActive ? "Show all hunks" : `Show only hunks changed since ${sinceBaselineLabel(snapshot.sinceBaseline)}`}
-            aria-label={sinceActive ? "Show all hunks" : `Show only hunks changed since ${sinceBaselineLabel(snapshot.sinceBaseline)}`}
+            data-tip={sinceActive ? "Show all hunks" : `Show only hunks changed since ${sinceChipLabel}`}
+            aria-label={sinceActive ? "Show all hunks" : `Show only hunks changed since ${sinceChipLabel}`}
             onClick={toggleSinceBaseline}
           >
-            Since {sinceBaselineLabel(snapshot.sinceBaseline)}
+            Since {sinceChipLabel}
             {sinceActive ? ` · ${sinceHidden} hidden` : ""}
           </Button>
         ) : null}

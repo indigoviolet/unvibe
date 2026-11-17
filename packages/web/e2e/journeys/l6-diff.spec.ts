@@ -1104,10 +1104,7 @@ test.describe("L6 demo diff work", () => {
             .prepare("SELECT rev, snapshot FROM review_snapshots WHERE review_id = ?")
             .get(namesReview) as { rev: number; snapshot: string };
           const snap = JSON.parse(row.snapshot) as {
-            files: { fileKey: string; hunks: { contentHash: string }[] }[];
             plotlines: { id: string; name: string; description: string; buildsOn?: string }[];
-            sinceBaseline?: unknown;
-            sinceHunks?: unknown;
           };
           const first = snap.plotlines.find((p) => p.id === "obs-fold-unfolding") ?? snap.plotlines[0];
           if (!first) throw new Error("replay snapshot has no plotlines to rename");
@@ -1119,12 +1116,6 @@ test.describe("L6 demo diff work", () => {
             description: "Proves the retry path backs off.",
             buildsOn: first.id,
           });
-          const hunkIds: string[] = [];
-          for (const f of snap.files ?? []) {
-            for (const h of f.hunks ?? []) hunkIds.push(`h:${f.fileKey}:${h.contentHash}`);
-          }
-          snap.sinceBaseline = { kind: "version", version: 1 };
-          snap.sinceHunks = { added: [], changed: hunkIds.slice(0, 2) };
           db.prepare("UPDATE review_snapshots SET rev = ?, snapshot = ? WHERE review_id = ?").run(
             row.rev + 1,
             JSON.stringify(snap),
@@ -1685,10 +1676,7 @@ test.describe("L6 demo diff work", () => {
       await expect.soft(buildsOn).toHaveAttribute("data-tip", `Show only ${J353_STRIPPED_NAME}`);
       await expect.soft(buildsOn.locator(".ui-badge")).toHaveText(J353_STRIPPED_NAME);
 
-      // The Since marker counts the two fabricated changed hunks. (Badge
-      // drops extra props, so there is no data hook — assert the text in
-      // the first row instead.)
-      await expect.soft(box.locator("li").first().getByText("+2 since v1")).toBeVisible();
+      // No since markers: plotline rows show counts only (#413).
 
       // Hunk header chips carry the full plain name in text and tooltip,
       // and ellipsize on one line instead of wrapping the header.

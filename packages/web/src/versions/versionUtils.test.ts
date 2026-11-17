@@ -15,7 +15,7 @@ import {
   pooledTokens,
   reduceJobs,
   splitLayers,
-  staleHeadline,
+  newCommitsHeadline,
   versionCountsText,
 } from "./versionUtils.js";
 
@@ -148,8 +148,7 @@ describe("version copy", () => {
       "1 changed · 2 new · 0 removed",
     );
     expect(
-      staleHeadline({
-        stale: true,
+      newCommitsHeadline({
         fromVersion: 1,
         toVersion: 2,
         unchangedHunks: 7,

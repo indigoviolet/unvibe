@@ -25,7 +25,7 @@ import {
   isRewriteKind,
   jobLabel,
   liveJobForTarget,
-  updateKey,
+  explainRunKey,
 } from "./inflight.js";
 import type { InFlightAction } from "../state/store.js";
 
@@ -73,7 +73,7 @@ describe("inflight labels", () => {
   test("job kinds map to the same labels, unknown kinds to Working…", () => {
     expect(jobLabel("slower")).toBe("Rewriting…");
     expect(jobLabel("go-deeper")).toBe("Writing…");
-    expect(jobLabel("update-pass")).toBe("Updating…");
+    expect(jobLabel("explain-pass")).toBe("Explaining changes…");
     expect(jobLabel("reader")).toBe("Working…");
     expect(jobLabel("hunk-pass")).toBe("Working…");
   });
@@ -135,11 +135,11 @@ describe("entry keys", () => {
     expect(inflightForBlock({}, "c1", "b1")).toBeUndefined();
   });
 
-  test("follow-up, concept and update keys", () => {
+  test("follow-up, concept and explain-run keys", () => {
     expect(followupKey("c1", "b1", 0)).toBe("followup:c1:b1:0");
     expect(followupKey("c1", "b1", 0)).not.toBe(followupKey("c1", "b1", 1));
     expect(conceptKey("obs-fold")).toBe("concept:obs-fold");
-    expect(updateKey("demo")).toBe("update:demo");
+    expect(explainRunKey("demo")).toBe("explain-run:demo");
   });
 
   test("follow-up entries match by anchor block, bare or qualified", () => {

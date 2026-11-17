@@ -34,10 +34,10 @@ const KIND_HINTS: { re: RegExp; kind: string }[] = [
   // Base pack (SessionManager.getBase): the pipeline prefixes it with an
   // explicit "reply with exactly `ready`" instruction; answer "ready" (M3).
   { re: /reply with exactly\s+`?ready`?/i, kind: "base" },
-  // Issue #351: the update pass is titled `# Update pass`. First, because
-  // the prompt also names the critic and hunks below, which would match
-  // their own hints before the update-pass recording existed.
-  { re: /^# update pass/im, kind: "update-pass" },
+  // Issue #413: the explain pass is titled `# Explain pass`. First,
+  // because the prompt also names hunks below, which would match their
+  // own hint before the explain-pass recording existed.
+  { re: /^# explain pass/im, kind: "explain-pass" },
   { re: /\breader\b|guided review|central change/i, kind: "reader" },
   { re: /\bcritic\b|agent finding/i, kind: "critic" },
   { re: /concept[-_ ]page|concept:\s*[\w-]+/i, kind: "concept-page" },

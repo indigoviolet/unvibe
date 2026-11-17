@@ -329,7 +329,7 @@ const REPO_PROMPTS_DIR = path.join(REPO_ROOT, "prompts");
 const FORK_SCRIPT = path.join(REPO_ROOT, "scripts", "persona-fork.mjs");
 
 /** Forked templates a fixture Tutor persona owns (issue #393). */
-export const TUTOR_FORK_TEMPLATES = ["reader", "slower", "instructions", "hunk_pass", "update_pass"] as const;
+export const TUTOR_FORK_TEMPLATES = ["reader", "slower", "instructions", "hunk_pass", "explain_pass"] as const;
 
 /** Sentinel appended to each fixture fork file (asserted in prompts, never a variable). */
 export const TUTOR_SENTINEL: Record<(typeof TUTOR_FORK_TEMPLATES)[number], string> = {
@@ -337,7 +337,7 @@ export const TUTOR_SENTINEL: Record<(typeof TUTOR_FORK_TEMPLATES)[number], strin
   slower: "FORK-SLOWER-SENTINEL",
   instructions: "FORK-INSTRUCTIONS-SENTINEL",
   hunk_pass: "FORK-HUNK-SENTINEL",
-  update_pass: "FORK-UPDATE-SENTINEL",
+  explain_pass: "FORK-EXPLAIN-SENTINEL",
 };
 
 export const TUTOR_LENS = "TUTOR-LENS-SENTINEL: explain like a patient tutor, one mechanism at a time.";

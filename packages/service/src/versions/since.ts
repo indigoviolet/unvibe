@@ -1,5 +1,5 @@
 /**
- * Since-B baseline computation (issue #351 step 1).
+ * Changes-since-X baseline computation (issue #351 step 1).
  *
  * "Since B" is computed by hunk-content comparison between the stored
  * version diffs (the existing §8 `compareHunks`), never git ancestry —
@@ -289,7 +289,7 @@ export function resolveSinceAnswers(
 
 /**
  * True when the value looks like an agent-written feedback pointer.
- * Pure. Used by the update-pass parser before service-side resolution.
+ * Pure. Used by the explain-pass parser before service-side resolution.
  */
 export function isSinceFeedbackRef(v: unknown): v is SinceFeedbackRef {
   if (typeof v !== "object" || v === null) return false;
@@ -313,7 +313,7 @@ export function versionLabel(n: number, headSha: string, fetchedAt: number): str
 }
 
 /**
- * Render the `{{since_context}}` update-pass variable: baseline identity,
+ * Render the `{{x_context}}` explain-pass variable: the X identity,
  * the commits since B (why, from their messages), and the matched
  * feedback (review comments, threads, conversation remarks). Pure.
  */
@@ -536,7 +536,7 @@ export function normalizeAgentSinceCards(v: unknown): SinceCardDraftWithRefs[] |
 }
 
 /**
- * Issue #351 step 2: store the agent-written Since-B cards — fresh
+ * Issue #351 step 2: store the agent-written Changes-since-X cards — fresh
  * unique ids, resolved feedback links (unknown ids dropped at once),
  * canonical card shape. Shared by the update pass and the guide run so
  * both store the same shape. Pure over the snapshot (read-only).
@@ -582,49 +582,6 @@ export function buildSinceSectionCards(
     });
 }
 
-/**
- * Issue #351 step 2: mark plotlines whose every assigned hunk changed
- * since B as `newSinceBaseline` (the guide run names plotlines for the
- * whole PR; the ones covering only post-B hunks are the new threads).
- * Callers pass the draft's plotlines + hunk states and the stored
- * since-hunk set. Returns the marked plotline ids. Pure.
- */
-export function markNewSincePlotlines(
-  plotlines: { id: string; newSinceBaseline?: boolean }[],
-  states: { contentHash: string; plotline?: string }[],
-  sinceHashes: Set<string>,
-): string[] {
-  if (sinceHashes.size === 0) return [];
-  const assigned = new Map<string, Set<string>>();
-  for (const s of states) {
-    if (s.plotline === undefined) continue;
-    let set = assigned.get(s.plotline);
-    if (!set) {
-      set = new Set();
-      assigned.set(s.plotline, set);
-    }
-    set.add(s.contentHash);
-  }
-  const marked: string[] = [];
-  for (const [plotline, hashes] of assigned) {
-    if (hashes.size === 0) continue;
-    let allSince = true;
-    for (const h of hashes) {
-      if (!sinceHashes.has(h)) {
-        allSince = false;
-        break;
-      }
-    }
-    if (!allSince) continue;
-    const row = plotlines.find((p) => p.id === plotline);
-    if (row && row.newSinceBaseline !== true) {
-      row.newSinceBaseline = true;
-      marked.push(plotline);
-    }
-  }
-  return marked;
-}
-
 /** Max since-hunk ids named in the reader's reviewed context. */
 export const READER_SINCE_HUNK_CAP = 200;
 
@@ -633,34 +590,34 @@ export const READER_SINCE_HUNK_CAP = 200;
  * When the reviewer already reviewed this PR on GitHub up to a commit B
  * (accepted before the guide run), the reader is told so, is shown the
  * since-hunk ids to cite and the feedback the delta may answer, and
- * writes the normal guide plus the Since-B section in the same run.
+ * writes the normal guide plus the Changes-since-X section in the same run.
  * Otherwise a one-liner sending it down the normal whole-PR path. Pure.
  */
 export function formatReaderReviewedContext(snapshot: ReviewSnapshot, since?: SinceHunks): string {
   const baseline = snapshot.sinceBaseline;
   if (!baseline || baseline.kind !== "commit" || !isCommitSha(baseline.sha)) {
-    return "(No prior-review baseline: explain the whole change; write no Since-B section.)";
+    return "(No prior-review baseline: explain the whole change; write no Changes-since-X section.)";
   }
   const lines: string[] = [];
   lines.push("## Reviewed up to B");
   lines.push(
     `The reviewer has already reviewed this PR on GitHub up to commit ${baselineIdentity(snapshot, baseline)} ` +
       `(their latest GitHub review). ` +
-      `Write the normal guide for the whole PR, then add the Since-B section below.`,
+      `Write the normal guide for the whole PR, then add the Changes-since-X section below.`,
   );
   lines.push("");
-  lines.push("## Since hunks (cite these in the Since-B cards)");
+  lines.push("## Since hunks (cite these in the Changes-since-X cards)");
   if (since === undefined) {
     lines.push(
       "(the since-hunk comparison is unavailable — B could not be diffed: " +
-        "write the normal guide and no Since-B section)",
+        "write the normal guide and no Changes-since-X section)",
     );
   } else {
     const ids = [...since.changed, ...since.added];
     const kept = ids.slice(0, READER_SINCE_HUNK_CAP);
     const omitted = ids.length - kept.length;
     if (kept.length === 0) {
-      lines.push("(no hunks changed since B — B is the head or its content matches the head: write no Since-B section)");
+      lines.push("(no hunks changed since B — B is the head or its content matches the head: write no Changes-since-X section)");
     } else {
       lines.push(kept.join(", "));
       if (omitted > 0) lines.push(`(+${omitted} more since hunks, all in the diff above)`);
@@ -668,7 +625,7 @@ export function formatReaderReviewedContext(snapshot: ReviewSnapshot, since?: Si
   }
   lines.push("");
   lines.push("## Feedback the delta since B may answer");
-  lines.push("Each item's bracketed id goes in the `answers` list of the Since-B card that answers it.");
+  lines.push("Each item's bracketed id goes in the `answers` list of the Changes-since-X card that answers it.");
   const fb = matchSinceFeedback(snapshot, since ?? { added: [], changed: [] });
   const remarks: string[] = [];
   for (const m of fb.comments) {

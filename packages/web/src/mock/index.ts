@@ -58,7 +58,7 @@ import type {
   UpdateDiffFilterRequest,
   UpdateHunkRequest,
   UpdatePendingSwitch,
-  UpdateReviewResponse,
+  ExplainReviewResponse,
   UpdateStatusResponse,
   UpdateSwitchResponse,
   Version,
@@ -1359,7 +1359,6 @@ function staleVersionStatus(): VersionStatus {
   const changed = tconn?.hunks[2];
   const oldId = changed ? `h:${tconn.fileKey}:${changed.contentHash}` : "h:unknown:old";
   return {
-    stale: true,
     fromVersion: 1,
     toVersion: 2,
     unchangedHunks: 7,
@@ -2914,10 +2913,10 @@ export const mockApi = {
     return { review: MOCK_REVIEW, newVersion: false };
   },
 
-  update: async (id: string): Promise<UpdateReviewResponse> => {
+  explain: async (id: string): Promise<ExplainReviewResponse> => {
     await wait(100);
-    const jobId = `mock-update-${id}`;
-    trackMockJob(jobId, "update-pass");
+    const jobId = `mock-explain-${id}`;
+    trackMockJob(jobId, "explain-pass");
     window.setTimeout(() => settleMockJob(jobId), 800);
     return { jobId, toVersion: isStaleReview(id) ? 2 : 1 };
   },

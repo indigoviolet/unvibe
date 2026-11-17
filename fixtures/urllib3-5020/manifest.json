@@ -15,8 +15,8 @@
       "file": "critic.md"
     },
     {
-      "kind": "update-pass",
-      "file": "update-pass.md"
+      "kind": "explain-pass",
+      "file": "explain-pass.md"
     },
     {
       "kind": "concept-page",

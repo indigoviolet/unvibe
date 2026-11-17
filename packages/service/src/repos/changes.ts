@@ -21,6 +21,7 @@ import {
   decodeChangesCursor,
   displayedReviewDecision,
   encodeChangesCursor,
+  hasNewCommits,
   normalizeChangesAuthor,
   normalizeChangesLimit,
   prStateFromGh,
@@ -440,7 +441,10 @@ function reviewMarksFor(db: DatabaseSync, repoId: string): ReviewMarks {
     let stale = false;
     if (row.snapshot) {
       try {
-        stale = (JSON.parse(row.snapshot) as { versionStatus?: { stale?: boolean } }).versionStatus?.stale ?? false;
+        // Issue #413: unreviewed new commits (hunk changes), never a flag.
+        stale = hasNewCommits(
+          (JSON.parse(row.snapshot) as { versionStatus?: import("@unvibe/shared").VersionStatus }).versionStatus,
+        );
       } catch {
         // Unreadable snapshot: not stale as far as we know.
       }

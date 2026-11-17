@@ -369,13 +369,13 @@ export async function createApp(token: string, opts: CreateAppOptions = {}): Pro
   }));
 
   // Routes take (ctx, deps) where both are the unified context; explicit
-  // test overrides (jobs, baseRunner, ...) win. The update pass defaults to
-  // the pipeline's UpdateBaseRunner; M5 tests inject `baseRunner` directly.
+  // test overrides (jobs, baseRunner, ...) win. The explain pass defaults to
+  // the pipeline's ExplainBaseRunner; tests inject `baseRunner` directly.
   const routeDeps = {
     ...ctx,
     ...opts,
     serviceVersion: SERVICE_VERSION,
-    ...(opts.baseRunner ? {} : { baseRunner: ctx.updateRunner }),
+    ...(opts.baseRunner ? {} : { baseRunner: ctx.explainRunner }),
   };
   // The Debug switch takes effect at boot: recording starts only when
   // the setting is already on (the settings PUT path flips it live).

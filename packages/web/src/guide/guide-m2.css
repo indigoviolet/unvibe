@@ -81,7 +81,7 @@ section.since {
 #page .since-cards > div > .ui-card {
   margin: 0;
 }
-/* Visible feedback links under a Since-B card or addendum. */
+/* Visible feedback links under a Since card. */
 .since-answers {
   margin-top: 6px;
   font-size: 12.5px;
@@ -101,20 +101,6 @@ section.since {
   align-items: center;
   gap: 6px;
   cursor: pointer;
-}
-
-/* Dated addendum block at the end of an affected card (issue #351). */
-.addendum {
-  margin: 10px 0 4px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: var(--sunk);
-}
-.addendum-h {
-  font-size: 12.5px;
-  font-weight: var(--weight-semibold);
-  color: var(--text-secondary);
-  margin-bottom: 4px;
 }
 
 /* Narrow panes (PRD §4.1): the card control row wraps instead of clipping. */

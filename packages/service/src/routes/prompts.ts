@@ -14,7 +14,7 @@
  *
  * Expansion rules (documented for the settings UI):
  * - Base templates (reader, base_pack, critic, hunk_pass, concept_*,
- *   update_pass, consolidate, persona_card) expand against real review
+ *   explain_pass, consolidate, persona_card) expand against real review
  *   data: source blurb, diff section (with the same budget fallback the
  *   pipeline uses), pinned code, guide, concepts, hunk summaries, the log.
  * - Turn templates (explain, ask, slower, examples, diagram,
@@ -404,11 +404,10 @@ const PH = {
   message: "(the reader's message is attached when the action runs)",
   card: "(no card selected)",
   direction: "(no placeholder selected)",
-  changedHunks: "(no newer version — the update pass lists changed hunks here)",
-  staleCards: "(guide is current — affected cards are listed here after a refresh)",
-  // Issue #351: same fallback `buildUpdateVariables` uses when there is
-  // no baseline yet — the preview is placeholder-based by design.
-  sinceContext: "(no baseline yet)",
+  xHunks: "(no hunks yet — the explain pass lists the X→head hunks here)",
+  // Issue #351/#413: same fallback `buildExplainVariables` uses when X
+  // is the head — the preview is placeholder-based by design.
+  xContext: "(no baseline yet)",
   citedCode: "(cited excerpts are attached when the action runs)",
   topic: "(select a card or finding)",
   mentions: "(mentions resolve when the action runs)",
@@ -472,10 +471,6 @@ export function expandAll(lib: TemplateLibrary, snapshot: PromptReviewSnapshot, 
     : PH.topic;
   const contributionLines = formatContributionLines(snapshot.contributions ?? []);
   const contributionsText = contributionLines !== "" ? contributionLines : PH.contributions;
-
-  const findingsText = snapshot.findings
-    .map((f) => `### ${f.title} (${f.confidence}) [[page:${f.pageId}]]\n\n${f.summary}\n`)
-    .join("\n");
 
   const baseSpans = (cached: boolean): Span[] => [
     { layer: "L0", label: "instructions", text: l0, cached },
@@ -559,11 +554,9 @@ export function expandAll(lib: TemplateLibrary, snapshot: PromptReviewSnapshot, 
   forked("examples", { card: cardText });
   forked("diagram", { card: cardText });
   forked("go_deeper", { direction: PH.direction, glossary: glossaryForPreview });
-  forked("update_pass", {
-    changed_hunks: PH.changedHunks,
-    stale_cards: PH.staleCards,
-    findings: findingsText === "" ? "(no findings)" : findingsText,
-    since_context: PH.sinceContext,
+  forked("explain_pass", {
+    x_hunks: PH.xHunks,
+    x_context: PH.xContext,
   });
 
   push("hunk_pass", [

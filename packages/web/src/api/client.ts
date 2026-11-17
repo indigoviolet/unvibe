@@ -70,7 +70,7 @@ import type {
   UpdateFileRequest,
   UpdateHunkRequest,
   UpdateViewRequest,
-  UpdateReviewResponse,
+  ExplainReviewResponse,
   UpdateStatusResponse,
   UpdateSwitchRequest,
   UpdateSwitchResponse,
@@ -372,8 +372,10 @@ const realApi = {
   refresh: (id: string): Promise<RefreshResponse> => post(`/api/reviews/${encodeURIComponent(id)}/refresh`),
   /** Re-enqueue the pipeline stages that never finished (guide error-state Retry). */
   resume: (id: string): Promise<ResumeReviewResponse> => post(`/api/reviews/${encodeURIComponent(id)}/resume`),
-  update: (id: string): Promise<UpdateReviewResponse> => post(`/api/reviews/${encodeURIComponent(id)}/update`),
-  /** Issue #351: pick the baseline B (earlier version or commit sha) the next update explains from. */
+  /** Issue #413: explain changes since X (earlier version or commit sha). */
+  explain: (id: string, body?: SetSinceBaselineRequest): Promise<ExplainReviewResponse> =>
+    post(`/api/reviews/${encodeURIComponent(id)}/explain`, body ?? {}),
+  /** Issue #351/#413: record the X the next Explain explains from. */
   setSinceBaseline: (id: string, body: SetSinceBaselineRequest): Promise<SetSinceBaselineResponse> =>
     post(`/api/reviews/${encodeURIComponent(id)}/since-baseline`, body),
   /** Issue #351 step 2: clear a picked baseline (back to the default B). */

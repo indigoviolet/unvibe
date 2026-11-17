@@ -1,23 +1,19 @@
-/** Issue #351 review: feedback links render visibly; the addendum prefix strips defensively. */
+/** Issue #351 review: feedback links render visibly; #413: commit-only lines stay hidden. */
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { SinceAnswers, stripAddendumPrefix } from "./SinceAnswers.js";
-
-describe("stripAddendumPrefix", () => {
-  it("strips the dated header echo", () => {
-    expect(stripAddendumPrefix("Updated since v1: alpha returns 111 now.")).toBe("alpha returns 111 now.");
-    expect(stripAddendumPrefix("Updated since v12 · 4 Nov — the value changed.")).toBe("the value changed.");
-    expect(stripAddendumPrefix("updated since v2 - done.")).toBe("done.");
-  });
-  it("leaves other prose alone", () => {
-    expect(stripAddendumPrefix("Alpha returns 111 now.")).toBe("Alpha returns 111 now.");
-    expect(stripAddendumPrefix("Not updated since anything.")).toBe("Not updated since anything.");
-  });
-});
+import { SinceAnswers } from "./SinceAnswers.js";
 
 describe("SinceAnswers", () => {
   it("renders nothing without answers", () => {
     const { container } = render(<SinceAnswers answers={[]} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+  it("renders nothing for commit-only answers", () => {
+    const { container } = render(
+      <SinceAnswers
+        answers={[{ kind: "commit", label: "abc1234 rework alpha", excerpt: "The reviewer asked for 11." }]}
+      />,
+    );
     expect(container).toBeEmptyDOMElement();
   });
   it("links remote remarks out and threads to the page", () => {
@@ -35,6 +31,6 @@ describe("SinceAnswers", () => {
     expect(remote).toHaveAttribute("href", "https://example.test/pr/1#c7");
     expect(remote.textContent).toContain("↗");
     expect(screen.getByRole("link", { name: /Agreed, fix alpha/ })).toHaveAttribute("href", "#t-1");
-    expect(screen.getByText(/The reviewer asked for 11/)).toBeVisible();
+    expect(screen.queryByText(/The reviewer asked for 11/)).toBeNull();
   });
 });
