@@ -32,7 +32,6 @@ import { linkCardBlocks } from "./glossary.js";
 import { ThreadMarginOverlay } from "../comments/ThreadMarginOverlay.js";
 import { useIsReadOnlyVersion } from "../comments/readOnly.js";
 import { SinceAnswers } from "./SinceAnswers.js";
-import { sinceDate } from "./SinceSection.js";
 import { copyContextFor, copyMarkdownText, useGithubRepo } from "./copyAsMarkdown.js";
 import { CorrectionSuggestion } from "./expansions/CorrectionSuggestion.js";
 import { expansionsForBlock } from "./expansions/ExpansionHighlights.js";

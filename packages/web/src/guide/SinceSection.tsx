@@ -8,7 +8,7 @@
  * different X. A re-run replaces this section whole.
  */
 import { useState, type ReactNode } from "react";
-import type { Card, Review } from "@unvibe/shared";
+import type { Card } from "@unvibe/shared";
 import { hasNewCommits, sinceBaselineLabel } from "@unvibe/shared";
 import { Icon } from "../components/Icon.js";
 import { api } from "../api/client.js";
@@ -91,11 +91,9 @@ export function ExplainControlSlot({ reviewId }: { reviewId: string }) {
 
 export function SinceSection({
   reviewId,
-  review,
   renderCard,
 }: {
   reviewId: string;
-  review: Review;
   renderCard: (card: Card) => ReactNode;
 }) {
   const snapshot = useReview((s) => s.snapshot);

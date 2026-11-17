@@ -431,7 +431,7 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
       {page.kind === "root" && review ? (
         <>
           <ExplainControlSlot reviewId={reviewId} />
-          <SinceSection reviewId={reviewId} review={review} renderCard={(card) => renderCard(card, 0)} />
+          <SinceSection reviewId={reviewId} renderCard={(card) => renderCard(card, 0)} />
         </>
       ) : null}
       {conceptWorking ? (
