@@ -348,8 +348,10 @@ export function enqueueExplainPass(
         ctx.endTurn();
       }
       const result = deps.parser.parseReply(reply);
-      if (result.baseline === undefined) result.baseline = baseline;
-      if (result.sinceHunks === undefined) result.sinceHunks = since;
+      // The run explains the X the reviewer chose: the prompt names
+      // it, so the request wins over whatever the reply echoes.
+      result.baseline = baseline;
+      result.sinceHunks = since;
       await applyExplainResult(deps.reviews, opts.reviewId, result);
     },
   });

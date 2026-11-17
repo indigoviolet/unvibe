@@ -401,17 +401,29 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
     expect((s.jobs ?? []).some((j) => j.kind === "explain-pass")).toBe(false);
   });
 
-  test("the Since filter reads the section's X label", async ({ page }) => {
+  test("Explain from the last GitHub review writes the section; the Since filter reads its X", async ({ page }) => {
     test.setTimeout(180_000);
     await page.goto(`${svc!.origin}/review/${reviewId}?token=${svc!.token}`);
     await expect(page.locator("#page .doc")).toBeVisible({ timeout: 60_000 });
+    // No section yet and no new commits: the guide side offers Explain
+    // with the stored last-review commit as the default X.
+    const slot = page.getByTestId("explain-control");
+    await expect(slot).toContainText(`Explain changes since ${c1short}`, { timeout: 30_000 });
+    await slot.getByRole("button", { name: `Explain changes since ${c1short}` }).click();
+    await waitForExplainPass(svc!, reviewId);
+    // The section names the last-review commit as X.
+    const since = page.locator('[data-testid="since-section"]');
+    await expect(since).toContainText(new RegExp(`Since ${c1short} → v1`), { timeout: 30_000 });
+    await expect(since.locator('[id^="C-since-"]')).toHaveCount(1);
+    // The guide-side entry is replaced by the section header control.
+    await expect(page.getByTestId("explain-control")).toHaveCount(0);
+    // The Since filter chip reads the section's X.
     await page.locator('#right [role="tab"]').getByText("Diff").click();
     await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
     const chip = page.locator('[data-filterchip="since"]');
     await expect(chip).toContainText(`Since ${c1short}`, { timeout: 30_000 });
     await expect(chip).toHaveAttribute("aria-label", `Show only hunks changed since ${c1short}`);
     await chip.click();
-    await expect(chip).toContainText("hidden", { timeout: 30_000 });
     await expect(chip).toHaveAttribute("aria-pressed", "true");
   });
 
@@ -605,7 +617,7 @@ test.describe("L7 refresh with new commits", () => {
     await options.last().click();
     await expect(banner).toBeVisible();
     await banner.getByRole("button", { name: /Explain changes since/ }).click();
-    await expect(banner.getByTestId("explain-error")).toContainText("isn't available in this build", { timeout: 30_000 });
+    await expect(banner.getByTestId("explain-error")).toContainText("no agent configured", { timeout: 30_000 });
   });
 
   test("#112 a code citation outside the diff is re-anchored after refresh", async ({ page }) => {
