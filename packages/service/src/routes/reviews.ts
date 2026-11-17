@@ -32,8 +32,8 @@ import type {
   ReviewSnapshot,
   SetSinceBaselineResponse,
   ExplainReviewResponse,
-  type SinceBaseline,
-  type SinceHunks,
+  SinceBaseline,
+  SinceHunks,
   Version,
 } from "@unvibe/shared";
 import { DEFAULT_REVIEW_VIEW_PREFS, GUIDE_PERSONA_ID, ingestStatusOf, isCommitSha, isDocumentReview, isReadySnapshot, parseDocumentMarkdown, summarizeComparison } from "@unvibe/shared";
@@ -1233,7 +1233,7 @@ export async function registerReviews(
     }
     void req;
     try {
-      const resolved = await resolveExplainBaseline(ctx, id, snapshot, body);
+      const resolved = await resolveExplainBaseline(id, snapshot, body);
       const job = enqueueExplainPass(
         {
           jobs: deps.jobs,

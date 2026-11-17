@@ -15,7 +15,7 @@ import {
   pooledTokens,
   reduceJobs,
   splitLayers,
-  staleHeadline,
+  newCommitsHeadline,
   versionCountsText,
 } from "./versionUtils.js";
 

@@ -395,7 +395,6 @@ export async function refreshReview(
   const isEmpty = newFiles.every((f) => f.hunks.length === 0 && !f.isBinary);
   const versionStatus: VersionStatus = {
     fromVersion: oldVersion.n,
-    fromVersion: oldVersion.n,
     toVersion: version.n,
     unchangedHunks: summary.unchangedHunks,
     changedHunks: summary.changedHunks,

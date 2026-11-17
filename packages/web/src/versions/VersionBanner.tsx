@@ -105,7 +105,7 @@ export function VersionBanner({
           </details>
         ) : null}
       </span>
-      {phase.name === "failed" ? <span className="hint">{phase.message}</span> : null}
+      {phase.name === "failed" ? <span className="hint" data-testid="explain-error">{phase.message}</span> : null}
       {explaining ? (
         <span className="hint" data-testid="explain-progress" aria-live="polite" role="status">
           <span className="dots" aria-hidden="true">

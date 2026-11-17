@@ -57,7 +57,7 @@ function ExplainControl({ reviewId }: { reviewId: string }) {
       <button className="x" type="button" onClick={() => start(x)}>
         Explain changes since {label}
       </button>
-      {phase.name === "failed" ? <span className="hint">{phase.message}</span> : null}
+      {phase.name === "failed" ? <span className="hint" data-testid="explain-error">{phase.message}</span> : null}
     </span>
   );
 }

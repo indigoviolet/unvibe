@@ -98,6 +98,7 @@ function fakeReply(snap: ReviewSnapshot): string {
         ] as unknown as import("@unvibe/shared").SinceFeedbackLink[],
       }],
     },
+  };
   return `Explained the delta.\n\n\`\`\`json\n${JSON.stringify(result)}\n\`\`\`\n`;
 }
 
@@ -267,8 +268,8 @@ describe("since-B step 1", () => {
       expect(card.blocks[0].type).toBe("paragraph");
       if (card.blocks[0].type !== "paragraph") throw new Error("unexpected block");
       expect(card.blocks[0].text).toBe("old prose");
-      expect(card.addenda).toBeUndefined();
-      // The Since-B card's pointers resolve; unknown id 999 is dropped.
+      expect("addenda" in card).toBe(false);
+      // The Changes-since-X card's pointers resolve; unknown id 999 is dropped.
       expect(sc.answers).toHaveLength(4);
       const byKind = Object.fromEntries(sc.answers!.map((a) => [a.kind, a]));
       expect(byKind["comment"].label).toContain("@reviewer on a.py:");

@@ -8,6 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { ReviewSnapshot } from "@unvibe/shared";
+import { hasNewCommits } from "@unvibe/shared";
 import { FakeAgentRunner } from "../src/agent/fake.js";
 import { RealCommandRunner } from "../src/exec/index.js";
 import { StaticModelCatalog } from "../src/settings/index.js";
@@ -225,9 +226,10 @@ describe("review routes", () => {
       expect(moved.json()).toMatchObject({ newVersion: true });
 
       // M5 creates version 2 (#92: rev counts the async ingest mutates too).
+      // #413: versions record hunk changes, never a stale flag.
       const snap = await app.inject({ method: "GET", url: `/api/reviews/${id}`, headers: authed });
       expect((snap.json() as ReviewSnapshot).version.n).toBe(2);
-      expect((snap.json() as ReviewSnapshot).versionStatus?.stale).toBe(true);
+      expect(hasNewCommits((snap.json() as ReviewSnapshot).versionStatus)).toBe(true);
 
       // The old version stays viewable.
       const old = await app.inject({ method: "GET", url: `/api/reviews/${id}?version=1`, headers: authed });
