@@ -925,8 +925,10 @@ test.describe("L7 version settings and update system", () => {
     await expect(icon).toBeVisible();
     await expect(icon).toHaveAttribute("title", "Update available: v0.0.2");
     await expect(icon).toHaveAttribute("href", "/settings?tab=version");
-    // #250: the update icon is a gift (rect box + lid), not chevrons.
-    await expect(icon.locator("svg rect")).toHaveCount(1);
+    // #250: the update icon is a gift, not chevrons. #407 draws it from
+    // Tabler (all paths, no rect), so check the icon's identity instead
+    // of its drawing.
+    await expect(icon.locator("svg.tabler-icon-gift")).toHaveCount(1);
   });
 
   test("up to date: no icon", async ({ page }) => {
