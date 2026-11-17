@@ -2,14 +2,12 @@
  * Tour: system (package D frames for the on-demand visual tour).
  *
  * On-demand only (`mise run visual-tour`): the system states the owner
- * reviews as frames — the stale/updated update banners with the #368
- * header chip, the document review bar across themes, the extension
- * button + confirm + conversation header + side panel, and the static
- * demo guide/explain/install/outbox/settings states. Behaviour for all
- * of these lives in `e2e/journeys/l7-since.spec.ts` (update banners),
- * `l11-documents.spec.ts` (document bar, side panel), `l12-extension`
- * (button flows) and `l13-static-demo.spec.ts`; this file keeps just
- * enough asserts to prove each framed state.
+ * reviews as frames — the new-commits banner with the #368 header
+ * chip, the document review bar across themes, the extension button +
+ * confirm + conversation header + side panel, and the static demo
+ * guide/explain/install/outbox/settings states. Behaviour for the
+ * banner lives in `e2e/journeys/l7-since.spec.ts`; this file keeps
+ * just enough asserts to prove each framed state.
  *
  * Slim set: 1440px light Default plus the `tour-matrix.ts` named keeps;
  * the full matrix runs with `UNVIBE_TOUR_MATRIX=full`.
@@ -85,7 +83,7 @@ test.describe("tour update banners", () => {
     rmSync(dataDir, { recursive: true, force: true });
   });
 
-  test("stale and updated banners with the header chip", async ({ page }) => {
+  test("new-commits banner with the header chip; Explain replaces the section", async ({ page }) => {
     test.setTimeout(240_000);
     if (!svc) throw new Error("no service");
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -104,22 +102,22 @@ test.describe("tour update banners", () => {
     await page.locator("#reviewbar").getByRole("button", { name: "Refresh", exact: true }).click();
 
     const banner = page.locator('[data-testid="stale-banner"]');
-    await expect(banner).toHaveAttribute("data-update-state", "stale", { timeout: 60_000 });
+    await expect(banner).toContainText(/New commits · v1 → v2/, { timeout: 60_000 });
     await page.screenshot({ path: path.join(SHOTS, "367", "stale-banner-1440-light.png") });
     await page.locator(appFile).locator(".dhunk").first().screenshot({ path: path.join(SHOTS, "367", "hunk-header-chip-1440-light.png") });
 
-    await banner.getByRole("button", { name: "Update", exact: true }).click();
+    await banner.getByRole("button", { name: /Explain changes since v1/ }).click();
     const jobDeadline = Date.now() + 90_000;
     for (;;) {
       const res = await apiJson(svc, "GET", `/api/jobs?review=${reviewId}`);
       const jobs = (res.json as { jobs: { kind: string; state: string }[] }).jobs ?? [];
-      const updateJob = jobs.find((j) => j.kind === "update-pass");
-      if (updateJob && updateJob.state !== "running" && updateJob.state !== "queued") break;
-      if (Date.now() > jobDeadline) throw new Error("update-pass job never finished");
+      const explainJob = jobs.find((j) => j.kind === "explain-pass");
+      if (explainJob && explainJob.state !== "running" && explainJob.state !== "queued") break;
+      if (Date.now() > jobDeadline) throw new Error("explain-pass job never finished");
       await new Promise((r) => setTimeout(r, 500));
     }
-    await expect(banner).toHaveAttribute("data-update-state", "current", { timeout: 60_000 });
-    await page.screenshot({ path: path.join(SHOTS, "367", "updated-banner-1440-light.png") });
+    await expect(page.locator('[data-testid="since-section"]')).toContainText(/Since v1 → v2/, { timeout: 60_000 });
+    await page.screenshot({ path: path.join(SHOTS, "367", "explained-banner-1440-light.png") });
   });
 });
 

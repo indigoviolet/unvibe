@@ -60,7 +60,7 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
 3. **Inspect the code.** Use the diff beside the guide: filter files, hide uninteresting hunks, fold, summarize, mark reviewed.
 4. **Get a second opinion** on a card or an agent finding.
 5. **Comment and submit.** Mark comments in the Outbox, edit the drafts, then submit one GitHub review (PR reviews) or copy the Outbox Markdown export (any review). If it's your PR, the description edit goes in the same submit.
-6. **Come back after new commits.** See what changed, click Update, and continue.
+6. **Come back after new commits.** Explain changes since X, and continue.
 
 ---
 
@@ -100,8 +100,8 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
   branch review of the same branch are different). Rows that already
   have a review say so, and clicking one opens it rather than starting
   a new review. When the source has new commits, the existing review
-  opens with the refresh it already offers ("new commits · Update").
-- **reviews you've opened before**, with their stale state ("new commits · Update"),
+  opens with the refresh it already offers ("new commits · Explain changes since vN").
+- **reviews you've opened before**, with their new-commits state ("new commits · Explain changes since vN"),
   ordered by recent activity, unfiltered by the recency filter, outside
   the block.
 - PR rows show the head branch, a relative update time and the diff size
@@ -241,7 +241,7 @@ Every page card has the same controls. Explanation cards (§4.7) carry the same 
 - **Header:** "Hunk i of n · lines a–b · in <function> · +x −y", with the raw `@@` line on hover. It stays pinned under the file header while its hunk scrolls.
 - **Actions:** a leading fold chevron, then Summarize (agent) and a Mark reviewed checkbox.
 - **Hunk card:** the agent summary, with Delete from the card. It exists regardless of folding. **Folding only hides code**; the header chevron is the single unfold control.
-- **Summaries are content cards:** an idle summary is plain text with no icons and no controls — selecting in it offers Explain, Ask…, Comment and GitHub like any other agent text, and clicking the text opens it. The first interaction (an action on selected text, or opening the summary) turns it into a single real conversation card on the hunk at the hunk's level with no extra wrapper, created from the stored summary text with no agent call, and it stays a card: reply box and per-answer controls included. A Comment attaches to the hunk's first changed line and never activates the summary. The idle summary is the card's collapsed state: deleting the card removes the stored summary too, leaving the hunk with no summary (Summarize or Fold all can make a new one; the update pass does not bring it back unless the hunk changed). Opening a hunk card as a page keeps the summary text with a link to the page; the summary's actions then open that page instead of starting a second card.
+- **Summaries are content cards:** an idle summary is plain text with no icons and no controls — selecting in it offers Explain, Ask…, Comment and GitHub like any other agent text, and clicking the text opens it. The first interaction (an action on selected text, or opening the summary) turns it into a single real conversation card on the hunk at the hunk's level with no extra wrapper, created from the stored summary text with no agent call, and it stays a card: reply box and per-answer controls included. A Comment attaches to the hunk's first changed line and never activates the summary. The idle summary is the card's collapsed state: deleting the card removes the stored summary too, leaving the hunk with no summary (Summarize or Fold all can make a new one; Explain never touches summaries). Opening a hunk card as a page keeps the summary text with a link to the page; the summary's actions then open that page instead of starting a second card.
 - **Mark reviewed** greys the hunk and folds its code.
 
 **Hide uninteresting**
@@ -266,7 +266,7 @@ Every page card has the same controls. Explanation cards (§4.7) carry the same 
 - **Syntax highlighting:** code rows are syntax-coloured after first paint (plain text first, so paint never waits); colours follow the app theme and never change copy-paste. Languages without a shipped grammar stay plain. `?nohl=1` disables it.
 - **Pinned rows (sideways):** hunk headers, hunk cards, line comments and explanation cards are pinned to the pane width, so their controls never scroll out of view. Hidden-hunk rows, folded placeholders, cards and comment threads scroll vertically under the pinned file and hunk headers; they never pin.
 
-**New commits:** a "New commits on this branch · Update" banner. Stale and outdated markers follow §8.
+**New commits:** a "New commits on this branch · Explain changes since vN" banner. Outdated markers follow §8.
 
 ### 4.14 Settings page
 - **Models:** one picker per role: main, small, and second opinion. Each lists the provider and the models its ACP adapter offers. A role never explicitly saved takes a live default picked from what the adapters offer, ranked by tier (opus | sol > sonnet | terra > haiku | luna, newest version offered within a tier, never Fable or Astra); second opinion comes from the provider main is not using, and stays unset with one provider. Saved picks always win; defaults are never written into settings. Each role also has an effort control with the thinking levels its adapter offers, Default first (leave the adapter's own setting alone); when the model changes and the saved effort is not offered, it falls back to Default. The small role stays at the adapter default unless changed — its jobs run many times per review.
@@ -422,14 +422,14 @@ ann:<id>#r<n>                               one reply in that thread (stable per
 |---|---|---|
 | Hunk state | Kept; found again by hash | Reviewed is cleared, the summary regenerated, the note kept and marked "code changed since" |
 | Comment or annotation on code | Moved by matching content | Marked **outdated**: the original snippet is shown, with a link to the new code |
-| Card | Citations remapped | Stale badge ("2 cited hunks changed") and an **Update** button |
-| Finding | Remapped | Rechecked: still applies, resolved, or changed |
-| Pinned code | Found again by content | Pinned again by the update pass |
+| Card | Citations remapped; no stale badges, no card Update button |
+| Finding | Remapped; never rechecked (no pending state) |
+| Pinned code | Found again by content |
 | Thread in progress | Its change list notes moved anchors | Its change list includes the changed code; a large change offers a move to the new base |
 
-**Updates are manual.**
+**Explaining is manual.**
 1. Fetching and comparing happen whenever the review is opened, or when the user clicks refresh. They cost no agent time.
-2. The **update pass** runs only when the user clicks Update. It uses a fork of a new base and sees only the changed and new hunks. It revises stale cards, rechecks findings, writes findings for new code, and summarizes changed hunks.
+2. **Explain changes since X** runs only when the user clicks Explain, with an X they chose (an earlier version, any PR commit, or their last GitHub review); the end is always the head. It uses a fork of a new base and sees only the X→head hunks. It writes the Changes-since-X section at the top of the guide and leaves the old guide untouched.
 
 Uncommitted local edits can be treated as an extra version.
 
@@ -538,7 +538,7 @@ A new base is built when any of these happens:
    - a **critic** (main model): findings with evidence, an assessment, a confidence level, and drafted suggested comments on diff lines;
 5. **Hunk pass** (small model, no fork): at most N summaries per review version (the "Hunk summaries written automatically" setting, Settings → Limits, default 50, 0 for none), picked source first, then tests, config, docs — never generated files, never hunks hidden at the review's hide level — plus the uninteresting classification with a one-line reason. Guide-cited hunks without summaries get priority within the same N once the reader lands; no extra jobs beyond N without asking. The rest summarise on demand. The diff header shows "Summaries for X of Y hunks · Summarize more", which queues the next N in the same order.
 6. **On demand:** slower rewrites, "Go deeper" cards, explanations, examples, diagrams, answers, full concept pages, second opinions.
-7. **Update pass** (§8).
+7. **Explain-since-X pass** (§8).
 
 ---
 
@@ -578,7 +578,7 @@ A new base is built when any of these happens:
 | `ask_turn` | Follow-ups on a live or loaded session | `{{followup}}` (own reply ID + thread ID; a chip adds its quote, item ID and offsets), `{{changed_hunks}}`, `{{message}}` |
 | `slower`, `examples`, `diagram` | Card controls | `{{card}}` |
 | `go_deeper` | Placeholder cards | `{{direction}}` |
-| `update_pass` | Update | `{{changed_hunks}}`, `{{stale_cards}}`, `{{findings}}` |
+| `explain_pass` | Explain changes since X | `{{x_hunks}}`, `{{x_context}}` (baseline X, commits since X, matched feedback) |
 | `consolidate` | Small model | `{{contributions}}` |
 | `second_opinion_blind`, `second_opinion_check` | Second opinion | `{{topic}}` or `{{claim}}`, `{{cited_code}}` |
 
@@ -617,7 +617,7 @@ POST /api/reviews/:id/retry              re-run a failed ingest
 POST /api/reviews/:id/redo               re-do the guide: delete + create in one call (new id, answers the loading snapshot); optional { personaId } re-does with a guide-capable persona and records it, absent re-does with the default guide persona (Settings)
 GET  /api/prompt-forks                   fork status per persona (guide-capable, drifted files)
 POST /api/reviews/:id/refresh            fetch and compare (no agent; 409 while loading/failed)
-POST /api/reviews/:id/update             run the update pass (409 while loading/failed)
+POST /api/reviews/:id/explain            explain changes since X: { version } | { sha } | {} (one agent call; replaces the Changes-since-X section, old guide untouched; 409 while loading/failed/empty diff)
 POST /api/reviews/:id/actions            { kind: explain|ask|note|reply|retry|slower|examples|diagram|undo|
                                             collapse|generate|second_opinion|promote|close|delete|followup|concept, … } (409 while loading/failed)
 PATCH /api/reviews/:id/hunks/:hash       { folded?, reviewed?, summary? } ; POST …/summarize (409 while loading/failed)
@@ -688,7 +688,7 @@ after the ingest. Start-page PR rows show `#N` when the branch is unknown
 | M2 | Reader and guide | Reader, base and critic run. The guide shows cards with checked citations and hover previews. Findings appear as pages. Concept pages are written when a link is opened. Hunk pass summaries, and Hide uninteresting with reasons. |
 | M3 | Interaction | Explain, Ask and Comment on the guide, description and diff. Help-me-understand rewrites, examples and diagrams on demand, and undo. Explanation cards close into links; Open as page. Contents. The log, change lists and contributions; the per-review shared-context debug page. |
 | M4 | Comments and submit | Threads in all three places, the Comments menu with Outbox drafts and Markdown export, agent-suggested comments, description editing (author, open PR), and Submit review posting one review. |
-| M5 | Versions | Refresh, the version mapping, a stale and outdated UI, preservation of hunk state by hash, and the update pass. A rebase without conflicts shows no changes. |
+| M5 | Versions | Refresh, the version mapping, a new-commits banner, preservation of hunk state by hash, and the explain-since-X pass. A rebase without conflicts shows no changes. |
 | M6 | Second opinion and settings | Second opinion (blind or check). The settings page with models, prompt templates and limits; the per-review debug page with jobs, the expanded prompt text, and usage. |
 
 ## 18. Testing and evaluation
