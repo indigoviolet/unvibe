@@ -20,6 +20,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium, expect, test, type BrowserContext } from "@playwright/test";
 import { cpuThrottleFromEnv } from "../cpu-throttle.js";
+import { pageHeaderFixtureHtml } from "../extension-pageheader-fixture.js";
 import { checkLayout } from "../layout-check.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { tourCombos } from "../tour-matrix.js";
@@ -402,6 +403,33 @@ test.describe("tour extension frames", () => {
       rmSync(profileDir, { recursive: true, force: true });
     }
   });
+
+  // #410: the button in the new PR Overview PageHeader, light and dark.
+  for (const scheme of ["light", "dark"] as const) {
+    test(`overview page header frame (${scheme})`, async () => {
+      test.setTimeout(240_000);
+      const profileDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tourext410-profile-"));
+      const ctx = await launchWithExtension(profileDir);
+      try {
+        await ctx.route("https://github.com/**", async (route) => {
+          await route.fulfill({ status: 200, contentType: "text/html", body: pageHeaderFixtureHtml(OWNER, NAME, PR_NUMBER) });
+        });
+        const page = await ctx.newPage();
+        await cpuThrottleFromEnv(page);
+        if (scheme === "dark") await page.emulateMedia({ colorScheme: "dark" });
+        await page.goto(`${PR_URL}?overview=true`);
+        await expect(
+          page.locator('[data-component="PH_Actions"] #unvibe-review-button'),
+        ).toBeVisible({ timeout: 30_000 });
+        await page.locator('[data-component="PageHeader"]').screenshot({
+          path: path.join(SHOTS, `extension-410-pageheader-${scheme}.png`),
+        });
+      } finally {
+        await ctx.close().catch(() => {});
+        rmSync(profileDir, { recursive: true, force: true });
+      }
+    });
+  }
 
   test("side panel frame", async () => {
     test.setTimeout(240_000);

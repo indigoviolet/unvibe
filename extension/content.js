@@ -1,6 +1,7 @@
 /**
  * Unvibe content script (#322 part 1, #333): adds a "Review in Unvibe"
- * button to every GitHub PR tab, including the Conversation header.
+ * button to every GitHub PR tab, including the Conversation header and
+ * the PageHeader of the new PR Overview layout (#410).
  * It never talks to the service and never sees the
  * token — it asks the background worker whether a review exists and asks
  * it to start (or open) the review; the worker calls the service itself
@@ -67,6 +68,10 @@
       ".gh-header-show",
       // Current Conversation header (#333).
       '[data-testid="pr-conversation-header-actions"]',
+      // New PR Overview layout (#410): a Primer PageHeader whose
+      // right-hand action group is PH_Actions. Scoped to the PageHeader
+      // so it can only match the page header, never a dialog's.
+      '[data-component="PageHeader"] [data-component="PH_Actions"]',
     ];
     for (const sel of selectors) {
       const el = document.querySelector(sel);

@@ -29,6 +29,11 @@ button#unvibe-review-button.unvibe-review-btn:focus-visible {
   outline: 2px solid var(--focus-outlineColor, #0969da);
   outline-offset: 2px;
 }
+/* #410: the PageHeader action group is a flex row with its own gap;
+   the button's margin would double it. */
+[data-component="PH_Actions"] > button#unvibe-review-button.unvibe-review-btn {
+  margin-left: 0;
+}
 #unvibe-review-button .unvibe-review-icon {
   width: 16px;
   height: 16px;
