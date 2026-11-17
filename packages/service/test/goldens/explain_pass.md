@@ -1,79 +1,50 @@
-# Update pass: explain the delta since B, and append
+# Explain pass: what changed since X, and why
 
-New commits landed on the branch. The baseline B is named in ##
-Baseline below — usually the version the reviewer last opened, sometimes
-a commit they picked (or already reviewed on GitHub). The head has moved
-since. Your job is to **explain what changed between B and the head and
-append that explanation** — not to rewrite the guide. No background
-work, no extra sessions: one reply, then the trailing JSON block.
+New commits landed on the branch, or the reviewer picked an X to hear
+about. The baseline X is named in ## Baseline below — an earlier
+version, a commit they picked, or the commit of their own last GitHub
+review. The end is always the current head. Your job is to **explain
+what changed between X and the head and why** — one reply, then the
+trailing JSON block. No background work, no extra sessions. You change
+nothing else: the old guide stays exactly as it is.
 
 ## Baseline
 
-B is v1 · aaa1111 · 3 Nov; head is v2 · bbb2222 · 4 Nov. Explain only the 1 changed + 0 new hunks since B.
+B is v1 · aaa1111 · 3 Nov; head is v2 · bbb2222 · 4 Nov. Explain only the 1 changed + 0 new hunks since X.
 
-## Changed and new hunks (B to head)
+## Changed and new hunks (X to head)
 
 ### [[h:conn:h111]] reflowed: +1 −1
 
-## Stale cards
-
-### The central change [[card:c-central]] (2 cited hunks changed)
-
-## Findings to recheck
-
-### Folds that end in a bare LF are not unfolded (medium) [[page:f-lf]] — still applies
-
 ## Tasks
 
-1. **Write the Since-B cards.** One card per thread of the delta: what
+1. **Write the Changes-since-X cards.** Group the delta into threads
+   of work — group by change, not by commit: one card may cover several
+   commits, and one commit may split across cards. Each card says what
    changed and how, **why** (from the commits' messages above), and
    **what feedback caused each change** — the review comment, thread or
-   conversation remark it answers, where one exists above. Say what the
-   change means for the earlier guide, and cite every claim into the new
-   hunks (`[[h:fileKey:hash]]` or `[[diff:…]]`). Each card carries an
+   conversation it answers, where one exists above. Say what the change
+   means for the earlier guide, and cite every claim into the new hunks
+   (`[[h:fileKey:hash]]` or `[[diff:…]]`). Each card carries an
    `answers` list with the bracketed ids of the feedback it answers
-   (`[{ "kind": "comment", "id": "7" }]`: kind is `comment`, `thread`,
-   `conversation` or `commit`; the id is the bracketed comment, thread
-   or conversation id, or the full commit sha). Title each card with
-   the change alone — never repeat the baseline ("since vN" or
-   "since <sha>"): the section header already says it. Keep each card to
-   its own thread; don't restate the old guide. Return the Since-B cards
-   only in the trailing JSON block's `sinceSection.cards` — each with its
-   `id`, `title`, `blocks` (the card body: what changed and why, cited
-   into the new hunks) and `answers`. The prose above carries no Since-B
-   cards: prose `##` cards are discarded, leaving a title with no body.
-2. **Append addenda, don't rewrite cards.** Where a change affects an
-   existing card, write an "Updated since B" addendum for the end of
-   that card: dated, explaining what changed relative to what the card
-   says, with its own `answers` list in the same shape. Start the body
-   with the explanation itself — never with "Updated since …" (the
-   dated header above it already says that). Never edit the card's
-   text. Rewrite a card's prose only when it is now plainly wrong —
-   prefer the addendum. Return each addendum in the trailing block's
-   `addenda` — its `cardId` plus its `blocks` and `answers`.
-3. **Recheck findings.** Each finding still applies, is resolved, or has
-   changed. Say which, with the new evidence. Resolved findings stay
-   visible, marked resolved.
-4. **New findings for new code.** The critic's rules apply: separate
-   pages, evidence with citations, confidence, a suggested comment.
-5. **Summarise changed hunks.** One line each, what the hunk does now.
-6. **Place the new hunks.** Say which existing plotline each new hunk
-   joins (by content, not position). A genuinely new thread of work
-   becomes a new plotline. Name only hunks listed above.
-7. **Pin again.** Pin excerpts the new cards need with `pin_context`,
-   and say which old pins no longer apply.
-8. **Confirm every other stale card.** For every stale card listed
-   above that you neither revised nor annotated, list its ID under
-   `unaffectedCards` in the trailing JSON block; that confirms you
-   checked it and found it unaffected by the delta.
+   (`[{ "kind": "comment", "id": "7" }]`: kind is `comment`, `thread`
+   or `conversation`; the id is the bracketed comment, thread or
+   conversation id). List a commit in `answers` only when no comment,
+   thread or conversation applies — Answers is for feedback, and the UI
+   hides commit-only Answers lines. Title each card with the change
+   alone — never repeat the baseline ("since vN" or "since <sha>"): the
+   section header already says it. Keep each card to its own thread;
+   don't restate the old guide. Return the cards only in the trailing
+   JSON block's `sinceSection.cards` — each with its `id`, `title`,
+   `blocks` (the card body: what changed and why, cited into the new
+   hunks) and `answers`. Every card needs a real body: cards without
+   `blocks` are dropped. The prose above carries no cards: prose `##`
+   cards are discarded, leaving a title with no body.
+2. **Confirm the range.** A rebase without content changes needs
+   nothing: confirm that in one line and stop.
 
 ## Rules
 
-- A rebase without content changes needs nothing: confirm that in one
-  line and stop.
-- Anchor remapping (positions) is done for you; content changes are
-  yours to interpret.
-- Output revised cards, finding verdicts, and hunk summaries in that
-  order, then the trailing JSON block. The Since-B cards and addenda
-  travel only in that block (`sinceSection.cards` entries carry `blocks`;
-  `addenda` entries carry `blocks`) — never as `##` prose cards.
+- Output the explanation in prose first, then the trailing JSON block.
+  The cards travel only in that block (`sinceSection.cards` entries
+  carry `blocks`) — never as `##` prose cards.
