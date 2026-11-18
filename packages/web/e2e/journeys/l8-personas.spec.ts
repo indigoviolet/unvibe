@@ -467,7 +467,9 @@ test.describe("L8 persona runs on cards", () => {
       // One icon button (no stepper, no pips) on the persona tab: the
       // press rewrites the variant, never the Guide version.
       const variantTextBefore = await card.locator(".prose, .lst").first().innerText();
+      // Issue #418: the button opens the menu; Simplify is today's press.
       await card.getByRole("button", { name: "Help me understand" }).click();
+      await page.locator('[data-understand-menu-list="central"]').getByRole("menuitem", { name: "Simplify" }).click();
       const deadline = Date.now() + 90_000;
       for (;;) {
         const variants = await centralVariants(s, reviewId);
@@ -634,7 +636,9 @@ test.describe("L8 persona runs on cards", () => {
       }
       const card = page.locator("#C-central");
       const guideTextBefore = await card.locator(".prose, .lst").first().innerText();
+      // Issue #418: the button opens the menu; Simplify is today's press.
       await card.getByRole("button", { name: "Help me understand" }).click();
+      await page.locator('[data-understand-menu-list="central"]').getByRole("menuitem", { name: "Simplify" }).click();
       await expect
         .soft.poll(
           async () => card.locator(".prose, .lst").first().innerText(),
