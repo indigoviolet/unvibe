@@ -14,7 +14,7 @@ import { Icon } from "../components/Icon.js";
 import { useReview } from "../state/store.js";
 import { Button } from "../ui/index.js";
 import { SinceBaselineError } from "./PriorReviewOffer.js";
-import { defaultExplainX, ExplainXSelect, explainXLabel, type ExplainX } from "./ExplainXSelect.js";
+import { defaultExplainX, entriesHave, ExplainXSelect, explainXLabel, useExplainEntries, type ExplainX } from "./ExplainXSelect.js";
 import { useExplainPass } from "./useExplainPass.js";
 
 export function sinceDate(at: number): string {
@@ -25,19 +25,33 @@ export function sinceDate(at: number): string {
 }
 
 /**
- * Explain control for the guide side (#413): the X selector plus the
- * button, used both in the section header (re-run from a different X)
- * and, via `ExplainControl`, when no section exists yet.
+ * Explain control for the guide side (#413): one row of the X picker
+ * and the "Explain changes" button. The X shows in one place only —
+ * the picker (or, in the section header, the header text) — never
+ * repeated on the button. A default X is preselected in the picker as
+ * a real choice; with nothing armed the button is disabled and its
+ * tooltip says why.
  */
-function ExplainControl({ reviewId }: { reviewId: string }) {
+function ExplainControl({
+  reviewId,
+  placeholder,
+  preselectDefault,
+}: {
+  reviewId: string;
+  placeholder: string;
+  /** First run only: the section header already names its X. */
+  preselectDefault: boolean;
+}) {
+  // The first-run row says what the button does; in the section header
+  // the picker already reads "Explain from another point…", so the
+  // button is just "Explain" (never the same words twice on screen).
+  const action = preselectDefault ? "Explain changes" : "Explain";
   const [x, setX] = useState<ExplainX | null>(null);
   const snapshot = useReview((s) => s.snapshot);
+  const entries = useExplainEntries(reviewId);
   const { phase, start } = useExplainPass(reviewId, () => {});
   const def = snapshot ? defaultExplainX(snapshot) : null;
-  // The default never names the head (no paid call on an empty range):
-  // with no earlier X the button stays disabled until the reviewer
-  // picks a commit or review.
-  const armed = x ?? def;
+  const armed = x ?? (preselectDefault && def && entriesHave(entries, def) ? def : null);
   const label = armed ? explainXLabel(armed) : null;
   if (phase.name === "explaining") {
     return (
@@ -51,19 +65,22 @@ function ExplainControl({ reviewId }: { reviewId: string }) {
       </span>
     );
   }
+  const why = "Pick a version, commit or review to explain from";
   return (
     <>
-      <span className="dbar-group">
-        <ExplainXSelect reviewId={reviewId} value={x} onChange={setX} />
-        {armed ? (
-          <button className="x" type="button" onClick={() => start(armed)}>
-            Explain changes since {label}
-          </button>
-        ) : (
-          <button className="x" type="button" disabled title="Pick a version, commit or review to explain since">
-            Pick what to explain since
-          </button>
-        )}
+      <span className="explain-row">
+        <ExplainXSelect reviewId={reviewId} value={armed} onChange={setX} placeholder={placeholder} />
+        <Button
+          variant="primary"
+          type="button"
+          data-testid="explain-button"
+          disabled={!armed}
+          data-tip={armed ? undefined : why}
+          title={armed ? undefined : why}
+          onClick={() => armed && start(armed)}
+        >
+          {action}
+        </Button>
       </span>
       {phase.name === "failed" ? (
         <span className="hint explain-error" role="alert" data-testid="explain-error">
@@ -71,7 +88,7 @@ function ExplainControl({ reviewId }: { reviewId: string }) {
         </span>
       ) : null}
       {phase.name === "empty" ? (
-        <span className="hint" role="status" data-testid="explain-empty">
+        <span className="hint explain-note" role="status" data-testid="explain-empty">
           No changes to explain since {label}
         </span>
       ) : null}
@@ -83,23 +100,24 @@ function ExplainControl({ reviewId }: { reviewId: string }) {
  * The persistent guide-side Explain entry (#413: Explain is offered any
  * time, not only after new commits). Renders when no Changes-since-X
  * section exists yet — the section header carries the control once it
- * does. Hidden while the review is still opening (no commits or
- * versions to choose X from render no selector anyway).
+ * does — and only when there is something earlier to explain from (an
+ * earlier version, a non-head commit or a prior GitHub review).
  */
 export function ExplainControlSlot({ reviewId }: { reviewId: string }) {
   const snapshot = useReview((s) => s.snapshot);
+  const entries = useExplainEntries(reviewId);
   if (!snapshot) return null;
   if ((snapshot.sinceSection?.cards.length ?? 0) > 0) return null;
-  // The new-commits banner (Source pane) already offers Explain with
-  // its own control; the guide side stays quiet then so the offer
-  // reads as one. Otherwise the guide carries the entry point.
+  // The new-commits banner (Source pane) already offers Explain; the
+  // guide side stays quiet then so the offer reads as one.
   if (hasNewCommits(snapshot.versionStatus)) return null;
+  // Nothing earlier than the head: no row at all, never a picker with
+  // nothing valid in it.
+  if (entries.length === 0) return null;
   return (
     <section className="since" aria-label="Explain changes" data-testid="explain-control">
       <div className="since-h">
-        <span className="hint">Explain what changed, and why:</span>
-        <span className="sp" />
-        <ExplainControl reviewId={reviewId} />
+        <ExplainControl reviewId={reviewId} placeholder="Explain changes since…" preselectDefault />
       </div>
       <SinceBaselineError />
     </section>
@@ -139,7 +157,7 @@ export function SinceSection({
           Changes since {label} → v{since.headVersion} · {sinceDate(since.at)}
         </Button>
         <span className="sp" />
-        <ExplainControl reviewId={reviewId} />
+        <ExplainControl reviewId={reviewId} placeholder="Explain from another point…" preselectDefault={false} />
       </div>
       <SinceBaselineError />
       {open ? (

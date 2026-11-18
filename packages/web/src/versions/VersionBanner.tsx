@@ -9,6 +9,7 @@
  * Counts come from `versionStatus` on the snapshot (or the refresh
  * `comparison`, normalised by the caller).
  */
+import { Button } from "../ui/index.js";
 import type { VersionComparisonSummary, VersionStatus } from "@unvibe/shared";
 import { SinceBaselineError } from "../guide/PriorReviewOffer.js";
 import { useExplainPass } from "../guide/useExplainPass.js";
@@ -110,9 +111,18 @@ export function VersionBanner({
         </span>
       ) : (
         <span className="dbar-group">
-          <button className="x" type="button" onClick={() => start({ version: counts.fromVersion })}>
-            Explain changes since v{counts.fromVersion}
-          </button>
+          {/* #413: the banner text already names v{from}; the button
+              doesn't repeat it. */}
+          <Button
+            variant="primary"
+            size="sm"
+            type="button"
+            data-testid="explain-button"
+            data-tip={`Explain changes since v${counts.fromVersion}`}
+            onClick={() => start({ version: counts.fromVersion })}
+          >
+            Explain changes
+          </Button>
         </span>
       )}
       {phase.name === "failed" ? (
