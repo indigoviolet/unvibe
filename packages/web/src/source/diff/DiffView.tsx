@@ -421,6 +421,10 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
     }
     return n;
   }, [sinceIds, snapshot]);
+  // #413: the Since chip's tooltip and accessible name carry the X.
+  const sinceTip = sinceActive
+    ? `Changed since ${sinceChipLabel} (${sinceHidden} hidden): show all hunks`
+    : `Changed since ${sinceChipLabel}: show only these hunks`;
   const visible = useMemo(
     () =>
       snapshot
@@ -876,12 +880,13 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
             type="button"
             aria-pressed={sinceActive}
             data-filterchip="since"
-            data-tip={sinceActive ? "Show all hunks" : `Show only hunks changed since ${sinceChipLabel}`}
-            aria-label={sinceActive ? "Show all hunks" : `Show only hunks changed since ${sinceChipLabel}`}
+            // #413: a short label keeps the toolbar on one row; the X and
+            // the hidden count live in the tooltip and accessible name.
+            data-tip={sinceTip}
+            aria-label={sinceTip}
             onClick={toggleSinceBaseline}
           >
-            Since {sinceChipLabel}
-            {sinceActive ? ` · ${sinceHidden} hidden` : ""}
+            Since
           </Button>
         ) : null}
         <Button

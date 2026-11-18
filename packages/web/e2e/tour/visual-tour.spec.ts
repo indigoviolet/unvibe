@@ -4097,8 +4097,8 @@ test.describe("since-B tour (#351)", () => {
         await sinceChip.click();
         await expect(sinceChip).toHaveAttribute("aria-pressed", "false");
       }
-      await page.locator("#right").getByRole("button", { name: "Show only hunks changed since v1" }).click();
-      await expect(sinceChip).toContainText("Since v1 ·", { timeout: 30_000 });
+      await page.locator("#right").getByRole("button", { name: "Changed since v1: show only these hunks" }).click();
+      await expect(sinceChip).toHaveAttribute("aria-pressed", "true", { timeout: 30_000 });
       await stepChecks(page, "since-filter");
       await page.mouse.move(20, 20);
       await shot(page, "since-filter", suffix, "Since v1");
@@ -4253,7 +4253,7 @@ test.describe("since-commit tour (#351 step 2)", () => {
         await chip.click();
         await expect(chip).toHaveAttribute("aria-pressed", "false");
       }
-      await expect(chip).toContainText(`Since ${short352}`, { timeout: 30_000 });
+      await expect(chip).toHaveAttribute("aria-label", `Changed since ${short352}: show only these hunks`, { timeout: 30_000 });
       await stepChecks(page, "since-commit-filter");
       await page.mouse.move(20, 20);
       await shot(page, "since-commit-filter", suffix, `Since ${short352}`);
