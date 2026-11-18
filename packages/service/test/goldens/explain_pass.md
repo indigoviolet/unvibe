@@ -36,9 +36,12 @@ B is v1 · aaa1111 · 3 Nov; head is v2 · bbb2222 · 4 Nov. Explain only the 1 
    section header already says it. Keep each card to its own thread;
    don't restate the old guide. Return the cards only in the trailing
    JSON block's `sinceSection.cards` — each with its `id`, `title`,
-   `blocks` (the card body: what changed and why, cited into the new
-   hunks) and `answers`. Every card needs a real body: cards without
-   `blocks` are dropped. The prose above carries no cards: prose `##`
+   `blocks` and `answers`. `blocks` is the card body as a Markdown
+   string with `[[…]]` citations, e.g.
+   `"blocks": "Alpha now returns 111. [[h:conn:abc123]]"`
+   (an array of block objects works too). Every card needs a real
+   body: cards without `blocks`, or whose body parses to nothing, are
+   dropped. The prose above carries no cards: prose `##`
    cards are discarded, leaving a title with no body.
 2. **Confirm the range.** A rebase without content changes needs
    nothing: confirm that in one line and stop.

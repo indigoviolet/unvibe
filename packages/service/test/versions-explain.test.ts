@@ -209,6 +209,107 @@ describe("explain pass", () => {
     }
   });
 
+  it("a string-bodied card parses like a guide card; all-unusable fails, not 'no changes'", async () => {
+    // The live shape (#413): `blocks` as one Markdown string with
+    // `[[h:…]]` citations, not an array of block objects.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-m5s-"));
+    await git(dir, "init", "-b", "main");
+    await git(dir, "config", "user.email", "t@example.com");
+    await git(dir, "config", "user.name", "T");
+    fs.writeFileSync(path.join(dir, "a.py"), "x = 1\n");
+    await git(dir, "add", ".");
+    await git(dir, "commit", "-m", "base");
+    await git(dir, "checkout", "-b", "feature");
+    fs.writeFileSync(path.join(dir, "a.py"), "x = 1\ny = 2\n");
+    await git(dir, "commit", "-am", "change");
+
+    let calls = 0;
+    const baseRunner = {
+      runExplainPrompt: async () => {
+        calls += 1;
+        const snap = (globalThis as { __snap?: ReviewSnapshot }).__snap!;
+        const h = snap.files[0].hunks[0];
+        const hunkId = `h:${snap.files[0].fileKey}:${h.contentHash}`;
+        const body =
+          calls === 1
+            ? {
+                baseline: { kind: "version", version: 1 },
+                sinceHunks: { added: [hunkId], changed: [] },
+                sinceSection: {
+                  // One Markdown-string card plus one bodyless card.
+                  cards: [
+                    {
+                      id: "s-str",
+                      title: "Alpha reworked",
+                      blocks: `Alpha now returns 111 instead of 11. [[${hunkId}]]`,
+                      answers: [],
+                    },
+                    { id: "s-empty", title: "Nothing", blocks: [] },
+                  ],
+                },
+              }
+            : {
+                baseline: { kind: "version", version: 1 },
+                sinceHunks: { added: [hunkId], changed: [] },
+                sinceSection: { cards: [{ id: "s-dead", title: "Dead", blocks: "" }] },
+              };
+        return `Reply.\n\n\`\`\`json\n${JSON.stringify(body)}\n\`\`\`\n`;
+      },
+    };
+    const queue = new JobQueue();
+    const { app, ctx } = await createApp("tok", { runner: real, jobs: queue, baseRunner, autoPipeline: false });
+    try {
+      const added = await app.inject({ method: "POST", url: "/api/repos", headers: authed, payload: { path: dir } });
+      const repoId = (added.json() as { repos: { id: string }[] }).repos.find((r) => r.id !== "demo")!.id;
+      const created = await app.inject({ method: "POST", url: "/api/reviews", headers: authed, payload: { repoId, branch: "feature" } });
+      const id = (created.json() as ReviewSnapshot).review.id;
+      const start = Date.now();
+      while (Date.now() - start < 15000) {
+        const got = await app.inject({ method: "GET", url: `/api/reviews/${id}`, headers: authed });
+        if (got.statusCode === 200) {
+          const snap = got.json() as ReviewSnapshot;
+          if ((snap.ingest?.status ?? "ready") === "ready" && (snap.version?.n ?? 0) >= 1) break;
+        }
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      // A second version (committed after opening) makes v1 a real X.
+      fs.writeFileSync(path.join(dir, "a.py"), "x = 1\ny = 2\nz = 3\n");
+      await git(dir, "commit", "-am", "more");
+      const refreshed = await app.inject({ method: "POST", url: `/api/reviews/${id}/refresh`, headers: authed });
+      expect((refreshed.json() as { newVersion: boolean }).newVersion).toBe(true);
+      (globalThis as { __snap?: ReviewSnapshot }).__snap = ctx.reviews.getSnapshot(id) ?? undefined;
+
+      // Mixed reply: the string card stores with parsed blocks and
+      // citations; the bodyless card is dropped.
+      const enq = await app.inject({ method: "POST", url: `/api/reviews/${id}/explain`, headers: authed, payload: {} });
+      expect(enq.statusCode).toBe(202);
+      await queue.drain(5000);
+      expect(queue.get((enq.json() as { jobId: string }).jobId)!.state).toBe("done");
+      const after = ctx.reviews.getSnapshot(id)!;
+      expect(after.sinceSection?.cards).toHaveLength(1);
+      const card = after.sinceSection!.cards[0];
+      expect(card.title).toBe("Alpha reworked");
+      expect(card.blocks.length).toBeGreaterThan(0);
+      expect(card.blocks[0].type).toBe("paragraph");
+      const hunkId = `h:${after.files[0].fileKey}:${after.files[0].hunks[0].contentHash}`;
+      const cites = card.blocks.flatMap((b) => ("citations" in b ? b.citations : []));
+      expect(cites.some((c) => c.target === hunkId)).toBe(true);
+
+      // All-unusable reply: the job errors (not done + "no changes"),
+      // and the stored section is untouched.
+      const enq2 = await app.inject({ method: "POST", url: `/api/reviews/${id}/explain`, headers: authed, payload: {} });
+      expect(enq2.statusCode).toBe(202);
+      await queue.drain(5000);
+      const job2 = queue.get((enq2.json() as { jobId: string }).jobId)!;
+      expect(job2.state).toBe("error");
+      expect(job2.error ?? "").toMatch(/no usable cards/);
+      expect(ctx.reviews.getSnapshot(id)?.sinceSection?.cards).toHaveLength(1);
+    } finally {
+      await app.close();
+      delete (globalThis as { __snap?: ReviewSnapshot }).__snap;
+    }
+  });
+
   it("JsonBlockReplyParser parses the trailing block and ignores unknown fields", () => {
     const parser = new JsonBlockReplyParser();
     const ok = parser.parseReply(

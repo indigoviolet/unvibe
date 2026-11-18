@@ -24,6 +24,7 @@ import {
   fileKeyForPath,
   isCommitSha,
   isSinceBaseline,
+  parseBlocks,
   shortBaselineSha,
 } from "@unvibe/shared";
 import { compareHunks, hunkId } from "./compare.js";
@@ -530,6 +531,23 @@ export function normalizeAgentSinceCards(v: unknown): SinceCardDraftWithRefs[] |
         const refs = raw.filter(isSinceFeedbackRef).map((r) => ({ kind: r.kind, id: r.id }));
         if (refs.length > 0) (card as { answerRefs?: SinceFeedbackRef[] }).answerRefs = refs;
         delete (c as unknown as Record<string, unknown>)["answers"];
+      }
+      // Issue #413: a model may write the body as one Markdown string
+      // instead of a blocks array (the prompt names both shapes).
+      // Parse it with the shared reply parser — the same citation
+      // tokens guide cards get — so the pre-guide reader path and the
+      // explain pass share the rule. A string that parses to nothing
+      // stays bodyless and is dropped downstream like any bodyless
+      // model card (#411).
+      const blocksRaw = (c as unknown as Record<string, unknown>)["blocks"];
+      if (typeof blocksRaw === "string") {
+        const id = typeof card.id === "string" && card.id.length > 0 ? `${card.id}-` : "";
+        const parsed = parseBlocks(blocksRaw, { idPrefix: id });
+        if (parsed.length > 0) {
+          (card as unknown as Record<string, unknown>)["blocks"] = parsed;
+        } else {
+          delete (card as unknown as Record<string, unknown>)["blocks"];
+        }
       }
       return card as SinceCardDraftWithRefs;
     });
