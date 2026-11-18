@@ -44,6 +44,20 @@ describe("served icons", () => {
     expect(blocked, "icon hrefs the service would 401").toEqual([]);
   });
 
+  it("every absolute script src in web/index.html is allowlisted (loads tokenless, #416)", () => {
+    const html = fs.readFileSync(webIndex, "utf8");
+    // Plain scripts are served as-is; Vite rewrites the module entry
+    // (`type="module"`) into a hashed /assets/ file at build time.
+    const srcs = [...html.matchAll(/<script([^>]*)\ssrc="([^"]+)"/g)]
+      .filter((m) => !/type="module"/.test(m[1] ?? ""))
+      .map((m) => m[2]);
+    expect(srcs).toContain("/theme-init.js");
+    const blocked = srcs.filter(
+      (s) => s.startsWith("/") && !s.startsWith("/assets/") && !PUBLIC_STATIC_EXACT.has(s.split("?")[0]),
+    );
+    expect(blocked, "script srcs the service would 401").toEqual([]);
+  });
+
   it("keeps the shell and API gated", () => {
     for (const p of ["/", "/index.html", "/api/health"]) {
       expect(PUBLIC_STATIC_EXACT.has(p), p).toBe(false);

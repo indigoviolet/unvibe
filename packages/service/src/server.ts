@@ -122,6 +122,8 @@ export const PUBLIC_STATIC_EXACT = new Set([
   "/sw.js",
   "/start.html",
   "/start.js",
+  // #416: the before-first-paint theme boot; reads localStorage only.
+  "/theme-init.js",
   "/icon.svg",
   "/icon-32.png",
   "/icon-192.png",
