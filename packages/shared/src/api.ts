@@ -647,6 +647,13 @@ interface ReviewSnapshotBase {
    */
   sinceSection?: import("./versions.js").SinceSection;
   /**
+   * Issue #421: the head the current guide was written at (stamped
+   * when the reader lands). The new-commits banner counts and
+   * explains from this commit. Required: no fallback (a review
+   * without one needs a data reset).
+   */
+  guideHead: import("./versions.js").GuideHead;
+  /**
    * Issue #351 step 2: the last commit-baseline recompute that failed
    * (refresh with an unfetchable B keeps the previous `sinceHunks` and
    * records why here). Cleared on the next successful recompute.

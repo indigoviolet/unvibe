@@ -36,8 +36,12 @@
  *   `stale`/`staleChangedHunks`/`staleHunks`/`addenda`, pages lose
  *   `needsRecheck`/`recheckStatus`/`recheckNote`, `VersionStatus` loses
  *   `stale`); stored reviews with since/addendum data need a reset.
+ * - 11: explain toolbar (#421): `SinceSection` gains required `headSha`
+ *   (the head the section was written at) and the snapshot gains
+ *   required `guideHead` (the head the guide was written at); stored
+ *   reviews without them need a reset.
  */
-export const DATA_FORMAT = 10;
+export const DATA_FORMAT = 11;
 
 /** Stored format of a data dir: `null` when no stamp is present. */
 export type DataFormatState = "none" | "match" | "mismatch";

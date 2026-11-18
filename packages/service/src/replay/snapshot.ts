@@ -486,6 +486,8 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
       createdAt: 1760000000000,
     },
     version,
+    // Issue #421: the replayed guide describes this head.
+    guideHead: { version: 1, sha: version.headSha },
     ...(glossary.length > 0 ? { glossary } : {}),
     files,
     description: {

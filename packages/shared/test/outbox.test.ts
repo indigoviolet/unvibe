@@ -45,6 +45,8 @@ function snapshot(annotations: Thread[]): ReviewSnapshot {
   return {
     review: { id: "r1", repoId: "repo", branch: "feature", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: 0 },
     version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
+    // Issue #421: the fixture guide describes this head.
+    guideHead: { version: 1, sha: "abc" },
     files: [
       { fileKey: "fk1", path: "src/app.py", category: "source", hunks: [] },
       { fileKey: "fk2", path: "src/util.py", category: "source", hunks: [] },
