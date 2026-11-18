@@ -271,6 +271,108 @@ function asideDirs(dataDir: string): string[] {
   return readdirSync(parent).filter((e) => e.startsWith(`${path.basename(dataDir)}.bak-`));
 }
 
+/** True once no process with this pid exists (ESRCH); EPERM means alive. Never throws. */
+function pidGone(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return false;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException)?.code !== "EPERM";
+  }
+}
+
+const pollTick = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * #419: the helper's last writes (outcome, switch log) land before it
+ * clears `pending.json` and records `outcome.json`, so a readable final
+ * outcome with no pending switch means the helper is done writing — the
+ * only writer left is the replacement generation below. Bounded and
+ * best-effort: on the green path the body already asserted the outcome
+ * so this returns immediately; on a red path (helper still mid-flight)
+ * it gives up quietly after the bound instead of masking the failure.
+ */
+async function waitForHelperDone(dataDir: string, timeoutMs = 60_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      const o = JSON.parse(readFileSync(path.join(dataDir, "update", "outcome.json"), "utf8")) as {
+        status?: unknown;
+      };
+      const pending = existsSync(path.join(dataDir, "update", "pending.json"));
+      if ((o.status === "ok" || o.status === "rolled-back" || o.status === "failed") && !pending) return;
+    } catch {
+      // Not readable yet: keep polling until the bound.
+    }
+    if (Date.now() >= deadline) return;
+    await pollTick(250);
+  }
+}
+
+/**
+ * #419: reap the helper-spawned replacement generation before the data
+ * dir is removed. `POST /api/data-format/go-back` starts the detached
+ * update helper, which restarts the service as its own child in its own
+ * process group (`detached: true` + `unref`), so `svc.stop()` — a
+ * process-group signal — cannot reach it. Left running, it keeps the
+ * deleted data dir's lock and port, and its late writes recreate the
+ * dir after `cleanupReset`, tripping the e2e temp guard (#24).
+ *
+ * Best-effort with a loud warning: a process that survives SIGKILL is
+ * near-impossible, and the temp guard still fails loudly if one does —
+ * but a throw here must never mask the step's own (red-path) failure.
+ */
+async function stopReplacementService(dataDir: string): Promise<void> {
+  const deadline = Date.now() + 30_000;
+  for (;;) {
+    let pid: number | null = null;
+    try {
+      const parsed = JSON.parse(readFileSync(path.join(dataDir, "unvibe.lock"), "utf8")) as { pid?: unknown };
+      if (
+        typeof parsed.pid === "number" &&
+        Number.isInteger(parsed.pid) &&
+        parsed.pid > 0 &&
+        parsed.pid !== process.pid
+      ) {
+        pid = parsed.pid;
+      }
+    } catch {
+      pid = null;
+    }
+    // No lock (or a lock naming only us): no replacement to reap.
+    if (pid === null) return;
+    if (pidGone(pid)) return;
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch {
+      // Exited between the checks; the next read confirms.
+    }
+    const termUntil = Date.now() + 10_000;
+    for (;;) {
+      if (pidGone(pid)) return;
+      if (Date.now() >= termUntil) break;
+      await pollTick(100);
+    }
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+      // Exited between the checks; the read below confirms.
+    }
+    const killUntil = Date.now() + 10_000;
+    for (;;) {
+      if (pidGone(pid)) return;
+      if (Date.now() >= killUntil) break;
+      await pollTick(100);
+    }
+    if (Date.now() >= deadline) {
+      console.warn(`#419: replacement service (pid ${pid}) would not exit; removing ${dataDir} anyway`);
+      return;
+    }
+    // The lock changed hands (e.g. the helper rolled back onto a new
+    // generation): loop and reap the new holder too.
+  }
+}
+
 test.describe("L10 data-format notice (j311)", () => {
   test("with drafts, without drafts, and go back", async ({ page }) => {
     test.setTimeout(240_000);
@@ -454,7 +556,20 @@ test.describe("L10 data-format notice (j311)", () => {
         // unchanged — what matters is the switch happened with data intact.
         await expect.soft(page.getByTestId("data-format-notice")).toBeVisible({ timeout: 60_000 });
       } finally {
+        // #419: close the page before tearing the servers down. The UI
+        // reloads onto the restarted generation once it answers health;
+        // a reload still in flight while that generation is reaped below
+        // lands on the offline fallback page, whose meta CSP trips the
+        // network guard — and any boot request after the dir is gone
+        // (e.g. /api/readiness probing into <dataDir>/tmp/) recreates
+        // the dir and trips the temp guard (#24).
+        await page.close().catch(() => {});
         await svc.stop().catch(() => {});
+        // The go-back helper restarted the service as a detached child
+        // in its own process group, out of svc.stop()'s reach — reap it
+        // before removing the dir, or its late writes recreate the dir.
+        await waitForHelperDone(dataDir);
+        await stopReplacementService(dataDir);
         rmSync(scratchHome, { recursive: true, force: true });
         cleanupReset(dataDir);
       }
