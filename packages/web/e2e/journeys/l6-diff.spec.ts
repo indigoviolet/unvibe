@@ -213,7 +213,7 @@ test.describe("L6 diff mock shell", () => {
     await test.step("the toolbar stays on one row at a narrow pane width", async () => {
       await page.setViewportSize({ width: 900, height: 800 });
       // #241: Refresh lives in the review top bar now, not the diff toolbar.
-      await expect.soft(page.locator(".dtool").getByRole("button", { name: "Refresh" })).toHaveCount(0);
+      await expect.soft(page.locator(".dtool").getByRole("button", { name: "Pull new commits from GitHub" })).toHaveCount(0);
       const rows = await page.locator(".dtool").evaluate((el) => {
         const tops = new Set(
           [...el.children]

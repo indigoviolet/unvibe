@@ -162,7 +162,7 @@ test.describe("L7 explain-since (was j351 step 1)", () => {
     writeFileSync(path.join(repoDir, "src-app.py"), V_ALPHA2);
     await git(repoDir, "add", "src-app.py");
     await git(repoDir, "commit", "-m", "rework alpha");
-    await page.locator("#reviewbar").getByRole("button", { name: "Refresh", exact: true }).click();
+    await page.locator("#reviewbar").getByRole("button", { name: "Pull new commits from GitHub", exact: true }).click();
     const banner = page.locator('[data-testid="stale-banner"]');
     await expect(banner).toContainText(/New commits · v1 → v2/, { timeout: 60_000 });
     await expect(banner).toContainText(/1 changed/);
@@ -503,7 +503,7 @@ test.describe("L7 explain banner; no stale anywhere", () => {
     writeFileSync(path.join(repoDir, "src-app.py"), V_ALPHA2);
     await git(repoDir, "add", "src-app.py");
     await git(repoDir, "commit", "-m", "rework alpha");
-    await page.locator("#reviewbar").getByRole("button", { name: "Refresh", exact: true }).click();
+    await page.locator("#reviewbar").getByRole("button", { name: "Pull new commits from GitHub", exact: true }).click();
 
     // New-commits state: one model — "New commits · v1 → v2 (…)" plus Explain.
     const banner = page.locator('[data-testid="stale-banner"]');
@@ -597,7 +597,7 @@ test.describe("L7 refresh with new commits", () => {
     await git(repoDir, "add", "d.py");
     await git(repoDir, "commit", "--amend", "--no-edit");
 
-    await page.locator("#reviewbar").getByRole("button", { name: "Refresh", exact: true }).click();
+    await page.locator("#reviewbar").getByRole("button", { name: "Pull new commits from GitHub", exact: true }).click();
     const banner = page.locator('[data-testid="stale-banner"]');
     await expect(banner).toContainText("1 changed · 1 new · 0 removed hunks", { timeout: 60_000 });
     await banner.getByText("range-diff").click();
@@ -717,7 +717,7 @@ test.describe("L7 refresh with new commits", () => {
 
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.getByText("Uses the helper beta value.")).toBeVisible({ timeout: 60_000 });
-    await page.locator("#reviewbar").getByRole("button", { name: "Refresh", exact: true }).click();
+    await page.locator("#reviewbar").getByRole("button", { name: "Pull new commits from GitHub", exact: true }).click();
 
     // The citation now points at beta's new line under the new head.
     const deadline = Date.now() + 60_000;
@@ -949,7 +949,7 @@ test.describe("L7 refresh carry-over", () => {
     writeFileSync(path.join(repoDir, "src-app.py"), V_ALPHA2);
     await git(repoDir, "add", "src-app.py");
     await git(repoDir, "commit", "-m", "rework alpha");
-    await page.locator("#reviewbar").getByRole("button", { name: "Refresh", exact: true }).click();
+    await page.locator("#reviewbar").getByRole("button", { name: "Pull new commits from GitHub", exact: true }).click();
     await expect(page.locator('[data-testid="stale-banner"]')).toContainText(/1 changed/, { timeout: 60_000 });
 
     // Carried over: guide cards, the comment, and the unchanged reviewed state.

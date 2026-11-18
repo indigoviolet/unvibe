@@ -105,7 +105,7 @@ test.describe("tour update banners", () => {
     writeFileSync(path.join(repoDir, "src-app.py"), V1.replace("    return 1", "    return 111").replace("    return 2", "    return 22"));
     await git(repoDir, "add", "src-app.py");
     await git(repoDir, "commit", "-m", "rework alpha");
-    await page.locator("#reviewbar").getByRole("button", { name: "Refresh", exact: true }).click();
+    await page.locator("#reviewbar").getByRole("button", { name: "Pull new commits from GitHub", exact: true }).click();
 
     const banner = page.locator('[data-testid="stale-banner"]');
     await expect(banner).toContainText(/New commits · v1 → v2/, { timeout: 60_000 });

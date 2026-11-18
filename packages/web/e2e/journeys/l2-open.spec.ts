@@ -588,7 +588,7 @@ test.describe("L2 refresh that empties the diff", () => {
 
         await git(dir2, "checkout", "feature");
         await git(dir2, "reset", "--hard", "main");
-        await page.locator("#reviewbar").getByRole("button", { name: "Refresh", exact: true }).click();
+        await page.locator("#reviewbar").getByRole("button", { name: "Pull new commits from GitHub", exact: true }).click();
       });
 
       await test.step("the emptied diff names v1 and keeps Submit available", async () => {

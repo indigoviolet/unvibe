@@ -1084,7 +1084,7 @@ test.describe("L1 start page PR lists (service)", () => {
       const bar = page.locator("#reviewbar");
 
       // The refresh button: same head, new state — no new version, no banner.
-      await bar.getByRole("button", { name: "Refresh" }).click();
+      await bar.getByRole("button", { name: "Pull new commits from GitHub" }).click();
       // #245: the status icons sit INSIDE the GitHub link box, after owner/repo#N.
       const barLink = bar.locator('a[title="Open PR on GitHub"]');
       await expect.soft(barLink.getByRole("img", { name: "Merged" })).toBeVisible({ timeout: 30_000 });
@@ -1107,7 +1107,7 @@ test.describe("L1 start page PR lists (service)", () => {
         const els: Element[] = [
           pick('a[aria-label="Back to the start page"]'),
           pick('a[title="Open PR on GitHub"]'),
-          pick('button[aria-label="Refresh"]'),
+          pick('button[aria-label="Pull new commits from GitHub"]'),
           pick('a[aria-label="Debug"]'),
         ].filter((el): el is Element => el !== null);
         return els.map((el) => {
@@ -1368,7 +1368,7 @@ test.describe("L1 start page PR lists (service)", () => {
           const sels: [string, string][] = [
             ["home", 'a[aria-label="Back to the start page"]'],
             ["github", 'a[title="Open PR on GitHub"]'],
-            ["refresh", 'button[aria-label="Refresh"]'],
+            ["refresh", 'button[aria-label="Pull new commits from GitHub"]'],
             ["version", '[data-testid="version-switcher"] .ui-select'],
             ["debug", 'a[aria-label="Debug"]'],
             ["panes", ".seg"],
