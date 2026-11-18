@@ -107,7 +107,7 @@ export function formatXHunk(
 export function buildExplainVariables(
   snapshot: ReviewSnapshot,
   since: SinceHunks,
-  opts: { capTokens?: number } = {},
+  opts: { capTokens?: number; baseline?: SinceBaseline } = {},
 ): { x_hunks: string; x_context: string } {
   const ids = new Set([...since.added, ...since.changed]);
   const chunks: string[] = [];
@@ -120,7 +120,7 @@ export function buildExplainVariables(
   }
   return {
     x_hunks: capXHunks(chunks, opts.capTokens ?? DEFAULT_BASE_PROMPT_CAP_TOKENS),
-    x_context: formatSinceContext(snapshot, since),
+    x_context: formatSinceContext(snapshot, since, opts.baseline),
   };
 }
 
@@ -314,7 +314,7 @@ export function enqueueExplainPass(
       const live = deps.reviews.getSnapshot(opts.reviewId) ?? snapshot;
       const baseline = opts.baseline ?? resolveSinceBaseline(live);
       const since = opts.since ?? live.sinceHunks ?? { added: [], changed: [] };
-      const vars = buildExplainVariables(live, since);
+      const vars = buildExplainVariables(live, since, { baseline });
       // Issue #393: fork template + the review's Guide persona lens
       // (built-in: shared template, no lens — exactly as before).
       const forkGuide = deps.guidePersonaId !== undefined && deps.guidePersonaId !== GUIDE_PERSONA_ID;

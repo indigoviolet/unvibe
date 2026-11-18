@@ -156,8 +156,8 @@ export function excerpt(text: string, cap: number): string {
  * (their messages say why), and PR conversation remarks in the window.
  * Pure. Capped so the prompt variable stays small.
  */
-export function matchSinceFeedback(snapshot: ReviewSnapshot, since: SinceHunks): SinceFeedback {
-  const baseline = resolveSinceBaseline(snapshot);
+export function matchSinceFeedback(snapshot: ReviewSnapshot, since: SinceHunks, baselineArg?: SinceBaseline): SinceFeedback {
+  const baseline = baselineArg ?? resolveSinceBaseline(snapshot);
   const headVersion = snapshot.review.currentVersion;
   const bRow = baseline.kind === "version" ? versionRow(snapshot, baseline.version) : null;
   const headRow = versionRow(snapshot, headVersion);
@@ -332,8 +332,8 @@ export function baselineIdentity(snapshot: ReviewSnapshot, baseline: SinceBaseli
   return `${shortBaselineSha(baseline.sha)}${subject}`;
 }
 
-export function formatSinceContext(snapshot: ReviewSnapshot, since: SinceHunks): string {
-  const fb = matchSinceFeedback(snapshot, since);
+export function formatSinceContext(snapshot: ReviewSnapshot, since: SinceHunks, baselineArg?: SinceBaseline): string {
+  const fb = matchSinceFeedback(snapshot, since, baselineArg);
   const baseline = fb.baseline;
   const bRow = baseline.kind === "version" ? versionRow(snapshot, baseline.version) : null;
   const headRow = versionRow(snapshot, fb.headVersion);
