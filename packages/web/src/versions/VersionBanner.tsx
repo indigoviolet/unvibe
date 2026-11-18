@@ -59,7 +59,7 @@ export function VersionBanner({
 }: {
   reviewId: string;
   counts: BannerCounts;
-  onUpdated: () => void;
+  onUpdated: (stored: boolean) => void;
 }): React.JSX.Element | null {
   const { phase, start } = useExplainPass(reviewId, onUpdated);
   const explaining = phase.name === "explaining" ? phase : null;
@@ -118,6 +118,11 @@ export function VersionBanner({
       {phase.name === "failed" ? (
         <span className="hint explain-error" role="alert" data-testid="explain-error">
           {phase.message}
+        </span>
+      ) : null}
+      {phase.name === "empty" ? (
+        <span className="hint" role="status" data-testid="explain-empty">
+          No changes to explain since v{counts.fromVersion}
         </span>
       ) : null}
       <SinceBaselineError />

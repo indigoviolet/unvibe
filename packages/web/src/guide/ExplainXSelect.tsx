@@ -30,22 +30,43 @@ function parseOption(value: string): ExplainX | null {
 }
 
 /**
+ * True when X is the current head (a version at/after the current
+ * one, or the head commit): explaining from it is an empty range and
+ * the route refuses it with 409. Pure.
+ */
+export function isHeadX(snapshot: ReviewSnapshot, x: ExplainX): boolean {
+  if ("version" in x) return x.version >= snapshot.review.currentVersion;
+  const head = snapshot.version.headSha.toLowerCase();
+  const sha = x.sha.toLowerCase();
+  return sha === head || head.startsWith(sha) || sha.startsWith(head);
+}
+
+/**
  * The X an Explain run explains from when the reviewer picks nothing:
- * the stored X, else the version last opened. Pure. Mirrors the
- * service's `resolveSinceBaseline` without the commit kind (nothing is
- * stored until the reviewer records one).
+ * the stored X, else the version last opened — never the head itself
+ * (issue #413: a head default would start a paid call on an empty
+ * range). Pure. Mirrors the service's `resolveSinceBaseline`, minus
+ * the head fallback.
  */
 export function defaultExplainX(snapshot: ReviewSnapshot): ExplainX | null {
   const stored = snapshot.sinceBaseline;
-  if (stored?.kind === "version") return { version: stored.version };
-  if (stored?.kind === "commit") return { sha: stored.sha };
-  const status = snapshot.versionStatus;
-  const cur = snapshot.review.currentVersion;
-  const fallback =
-    typeof status?.fromVersion === "number" && status.fromVersion >= 1 && status.fromVersion < cur
-      ? status.fromVersion
-      : Math.max(1, cur - 1);
-  return cur > 1 ? { version: fallback } : null;
+  const raw: ExplainX | null =
+    stored?.kind === "version"
+      ? { version: stored.version }
+      : stored?.kind === "commit"
+        ? { sha: stored.sha }
+        : (() => {
+            const status = snapshot.versionStatus;
+            const cur = snapshot.review.currentVersion;
+            if (cur <= 1) return null;
+            const fallback =
+              typeof status?.fromVersion === "number" && status.fromVersion >= 1 && status.fromVersion < cur
+                ? status.fromVersion
+                : Math.max(1, cur - 1);
+            return { version: fallback };
+          })();
+  if (!raw || isHeadX(snapshot, raw)) return null;
+  return raw;
 }
 
 /** Short label for the Explain button (`v1`, `abc12345`). Pure. */

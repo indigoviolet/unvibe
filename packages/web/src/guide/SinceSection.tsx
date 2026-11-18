@@ -11,7 +11,6 @@ import { useState, type ReactNode } from "react";
 import type { Card } from "@unvibe/shared";
 import { hasNewCommits, sinceBaselineLabel } from "@unvibe/shared";
 import { Icon } from "../components/Icon.js";
-import { api } from "../api/client.js";
 import { useReview } from "../state/store.js";
 import { Button } from "../ui/index.js";
 import { SinceBaselineError } from "./PriorReviewOffer.js";
@@ -33,12 +32,13 @@ export function sinceDate(at: number): string {
 function ExplainControl({ reviewId }: { reviewId: string }) {
   const [x, setX] = useState<ExplainX | null>(null);
   const snapshot = useReview((s) => s.snapshot);
-  const setSnapshot = useReview((s) => s.setSnapshot);
-  const { phase, start } = useExplainPass(reviewId, () => {
-    void api.review(reviewId).then(setSnapshot).catch(() => {});
-  });
+  const { phase, start } = useExplainPass(reviewId, () => {});
   const def = snapshot ? defaultExplainX(snapshot) : null;
-  const label = explainXLabel(x ?? def ?? { version: 1 });
+  // The default never names the head (no paid call on an empty range):
+  // with no earlier X the button stays disabled until the reviewer
+  // picks a commit or review.
+  const armed = x ?? def;
+  const label = armed ? explainXLabel(armed) : null;
   if (phase.name === "explaining") {
     return (
       <span className="hint" data-testid="explain-progress" aria-live="polite" role="status">
@@ -47,7 +47,7 @@ function ExplainControl({ reviewId }: { reviewId: string }) {
           <i />
           <i />
         </span>{" "}
-        Explaining changes since {label}…
+        Explaining changes since {label ?? "…"}…
       </span>
     );
   }
@@ -55,13 +55,24 @@ function ExplainControl({ reviewId }: { reviewId: string }) {
     <>
       <span className="dbar-group">
         <ExplainXSelect reviewId={reviewId} value={x} onChange={setX} />
-        <button className="x" type="button" onClick={() => start(x)}>
-          Explain changes since {label}
-        </button>
+        {armed ? (
+          <button className="x" type="button" onClick={() => start(armed)}>
+            Explain changes since {label}
+          </button>
+        ) : (
+          <button className="x" type="button" disabled title="Pick a version, commit or review to explain since">
+            Pick what to explain since
+          </button>
+        )}
       </span>
       {phase.name === "failed" ? (
         <span className="hint explain-error" role="alert" data-testid="explain-error">
           {phase.message}
+        </span>
+      ) : null}
+      {phase.name === "empty" ? (
+        <span className="hint" role="status" data-testid="explain-empty">
+          No changes to explain since {label}
         </span>
       ) : null}
     </>

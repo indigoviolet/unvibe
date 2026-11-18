@@ -754,6 +754,32 @@ test.describe("L7 refresh carry-over", () => {
     rmSync(dataDir, { recursive: true, force: true });
   });
 
+  test("one-version review: no head default, Explain disabled until a pick; head X is a 409", async ({ page }) => {
+    test.setTimeout(240_000);
+    if (!svc) throw new Error("no service");
+    // A fresh review on the same repo: a single version, no section,
+    // no new commits.
+    const id2 = await createScratchReview(svc, repoDir);
+    await waitForGuideCards(svc, id2);
+    await page.goto(`${svc.origin}/review/${id2}?token=${svc.token}`);
+    await expect(page.locator("#page .doc")).toBeVisible({ timeout: 60_000 });
+    // The guide-top control names no "since v1" default: the pick asks
+    // for an X and the button stays disabled until one is picked.
+    const slot = page.getByTestId("explain-control");
+    await expect(slot).toBeVisible({ timeout: 30_000 });
+    await expect(slot.locator('[data-testid="explain-pick"]')).toContainText("Pick what to explain since");
+    await expect(slot.getByRole("button", { name: "Pick what to explain since" })).toBeDisabled();
+    await expect(slot.getByRole("button", { name: /Explain changes since/ })).toHaveCount(0);
+    // The route refuses the head in every spelling, before any spend.
+    const snap = await apiJson(svc, "GET", `/api/reviews/${id2}`);
+    const headSha = (snap.json as { version: { headSha: string } }).version.headSha;
+    for (const payload of [{}, { version: 1 }, { sha: headSha }]) {
+      const res = await apiJson(svc, "POST", `/api/reviews/${id2}/explain`, payload);
+      expect(res.status).toBe(409);
+      expect((res.json as { error: string }).error).toMatch(/Nothing to explain/);
+    }
+  });
+
   test("cards, a comment and reviewed state survive a refresh; the changed hunk reopens", async ({ page }) => {
     test.setTimeout(240_000);
     if (!svc) throw new Error("no service");

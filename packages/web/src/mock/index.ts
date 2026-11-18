@@ -1420,6 +1420,22 @@ function currentSnapshot(reviewId = "demo", version?: number): ReviewSnapshot {
     existingComments,
     plotlines: [...MOCK_PLOTLINES],
     ...(mockDiffFilter !== undefined ? { diffFilter: { ...mockDiffFilter } } : {}),
+    // The bundled demo is one version with one recorded commit: the
+    // guide-top Explain control offers it as X (#413 journey: Explain
+    // with the mock settles a job but stores no section).
+    ...(reviewId === "demo"
+      ? {
+          commits: [
+            {
+              sha: "00162b2030837429af8f2de8ef07b602d910cbbd",
+              subject: "Unfold obsolete line folding",
+              body: "",
+              files: [],
+              hunks: [],
+            },
+          ],
+        }
+      : {}),
   };
   if (stale && viewing === 2) base.versionStatus = staleVersionStatus();
   return base;
