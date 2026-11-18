@@ -194,6 +194,24 @@ export function resolveBlockCitations(
 }
 
 /**
+ * Issue #413: resolve an `h:` hunk citation to the head line range it
+ * names (`diff:<fileKey>:<start>-<end>`) so the Diff pane can reveal
+ * it — the pane only reveals `diff:` locations. Unknown file keys and
+ * gone hashes resolve to null (the caller toasts like any missing
+ * target). Pure: alias-form keys resolve like `canonicalRevealTarget`.
+ */
+export function resolveHunkTarget(snapshot: ReviewSnapshot, target: string): string | null {
+  const parsed = parseId(target);
+  if (!parsed || parsed.kind !== "h") return null;
+  const file = resolveFile(snapshot, parsed.fileKey, {});
+  const hunk = file
+    ? (snapshot.files.find((f) => f.fileKey === file.fileKey)?.hunks ?? []).find((h) => h.contentHash === parsed.contentHash)
+    : undefined;
+  if (!file || !hunk) return null;
+  return `diff:${file.fileKey}:${hunk.newStart}-${hunk.newEnd}`;
+}
+
+/**
  * Canonicalize a reveal target: map alias-form `diff:` keys to the real
  * file key so the diff pane (which renders canonical ids) highlights.
  * Non-diff targets pass through unchanged.

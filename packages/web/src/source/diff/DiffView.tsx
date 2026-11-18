@@ -60,7 +60,7 @@ import {
 } from "./diffLogic.js";
 import { useGithubThreads } from "../../comments/GithubThreads.js";
 import { useLineSlots, type LineSlots } from "./lineSlots.js";
-import { sinceSectionHunkIds } from "../../guide/citations.js";
+import { sinceSectionHunkIds, resolveHunkTarget } from "../../guide/citations.js";
 import {
   observeDiffPinned,
   onRevealSource,
@@ -634,7 +634,13 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
     if (!snapshot) return;
     const p = takePendingReveal();
     if (p) {
-      const t = parseDiffRef(p.ref);
+      // Issue #413: the pending ref may be an `h:` citation (requested
+      // while the Diff view was still mounting, so no listener heard
+      // the live dispatch — the case the section reveal hit). Resolve
+      // it against the head like the live path; unparseable refs are
+      // dropped exactly as before.
+      const resolved = p.ref.startsWith("h:") ? (resolveHunkTarget(snapshot, p.ref) ?? "") : p.ref;
+      const t = parseDiffRef(resolved);
       if (t) doReveal(t, p.keepFilters);
     }
   }, [snapshot, doReveal]);
