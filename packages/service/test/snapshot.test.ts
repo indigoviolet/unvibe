@@ -18,7 +18,8 @@ const fixturesDir = path.resolve(
 describe("snapshot build", () => {
   it("builds urllib3#5020 with zero unverified citations", () => {
     const { snapshot, counts } = buildSnapshot(fixturesDir);
-    // reader 1 + critic 1 + hunk 8 + go-deeper 4 + concept-page 4
+    // reader 1 + critic 1 + hunk 10 (8 demo + 2 scratch-app, #417)
+    // + go-deeper 4 + concept-page 4
     // + examples 4 + diagram 1 (central) + explain 8 + ask 12
     // (incl. 2 thread) + persona 2 (#349 step 2: central
     // second-opinion; #359: central Clarity) + slower 18 (3 central
@@ -31,9 +32,10 @@ describe("snapshot build", () => {
     // files outside the review). Issue #405 drops the buildup card and
     // the Teach persona: the buildup reader card, its diagram and
     // terms rewrite, and the Teach persona recording are gone.
-    // Journey-only manifest entries (the #351 update-pass reply) are not
+    // Journey-only manifest entries (the #351 update-pass reply, the
+    // #417 scratch-app reader reply) are not
     // demo content and are skipped by the builder.
-    expect(counts).toHaveLength(63);
+    expect(counts).toHaveLength(65);
     expect(snapshot.files.map((f) => [f.fileKey, f.hunks.length])).toEqual([
       ["src-urllib3-connection.py", 2],
       ["test-test_connection.py", 3],

@@ -85,6 +85,18 @@
       "file": "hunk-log-0.md"
     },
     {
+      "kind": "hunk",
+      "key": "scratch-alpha",
+      "pattern": "h:src-app\\.py:025c48900cb5b0e9",
+      "file": "hunk-scratch-alpha.md"
+    },
+    {
+      "kind": "hunk",
+      "key": "scratch-beta",
+      "pattern": "h:src-app\\.py:d05efa00b6269df8",
+      "file": "hunk-scratch-beta.md"
+    },
+    {
       "kind": "go-deeper",
       "key": "tests",
       "file": "go-deeper-tests.md"
