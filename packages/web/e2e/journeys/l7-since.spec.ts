@@ -212,7 +212,10 @@ test.describe("L7 explain-since (was j351 step 1)", () => {
     await expect(page.locator(appFile).locator(".dhunk")).toHaveCount(2);
     await since.locator('[id^="C-since-"]').first().locator(".lk").first().click();
     const chip = page.locator('[data-filterchip="since"]');
-    await expect(chip).toContainText("Since v1 ·", { timeout: 30_000 });
+    await expect(chip).toHaveAttribute("aria-pressed", "true", { timeout: 30_000 });
+    // #413: short label; the X and hidden count are in the accessible name.
+    await expect(chip).toHaveText("Since");
+    await expect(chip).toHaveAttribute("aria-label", /^Changed since v1 \(\d+ hidden\): show all hunks$/);
     await expect(page.locator(appFile).locator(".dhunk")).toHaveCount(1);
     await expect(page.locator(appFile).locator(".dhunk").first()).toContainText("return 111");
     await chip.click();
@@ -424,8 +427,8 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
     await page.locator('#right [role="tab"]').getByText("Diff").click();
     await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
     const chip = page.locator('[data-filterchip="since"]');
-    await expect(chip).toContainText(`Since ${c1short}`, { timeout: 30_000 });
-    await expect(chip).toHaveAttribute("aria-label", `Show only hunks changed since ${c1short}`);
+    await expect(chip).toHaveText("Since", { timeout: 30_000 });
+    await expect(chip).toHaveAttribute("aria-label", `Changed since ${c1short}: show only these hunks`);
     await chip.click();
     await expect(chip).toHaveAttribute("aria-pressed", "true");
   });
@@ -846,7 +849,10 @@ test.describe("L7 section citation into a folded doc hunk", () => {
     // reveals the hunk: unfolded, highlighted, no toast.
     await since.locator("#C-since-doc-1 .lk").first().click();
     const chip = page.locator('[data-filterchip="since"]');
-    await expect(chip).toContainText("Since v1 ·", { timeout: 30_000 });
+    await expect(chip).toHaveAttribute("aria-pressed", "true", { timeout: 30_000 });
+    // #413: short label; the X and hidden count are in the accessible name.
+    await expect(chip).toHaveText("Since");
+    await expect(chip).toHaveAttribute("aria-label", /^Changed since v1 \(\d+ hidden\): show all hunks$/);
     await expect(docSection.getByText("Alpha line TWO reworked.")).toBeVisible({ timeout: 30_000 });
     await expect(page.locator("#toast")).toBeHidden({ timeout: 15_000 });
   });
