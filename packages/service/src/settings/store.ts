@@ -22,7 +22,7 @@ export const DEFAULT_SETTINGS: Settings = {
   small: { provider: "claude", model: "claude-haiku-5-5", effort: "" },
   // Issue #349: persona definitions, seeded with the built-in Guide
   // (issue #379: the main agent — exactly one, fixed, owns the main
-  // provider + model), Second opinion and Clarity. After seeding each
+  // provider + model) and Second opinion. After seeding each
   // non-Guide entry is ordinary data (add, edit, delete through
   // Settings → Personas); the Guide entry stays fixed.
   personas: defaultPersonas(),

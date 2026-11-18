@@ -1521,8 +1521,8 @@ export interface Settings {
   uiTheme: UiThemeId;
   small: ModelPick;
   /**
-   * Persona definitions (issue #349): the built-in Guide, Second
-   * opinion and Clarity personas plus any custom personas. The Guide
+   * Persona definitions (issue #349): the built-in Guide and Second
+   * opinion personas plus any custom personas. The Guide
    * (issue #379) is fixed — exactly one, not deletable or
    * disableable — and owns the main provider + model (replacing
    * `settings.main`). A persona with `followMain` runs on the Guide
