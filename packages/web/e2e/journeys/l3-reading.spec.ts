@@ -2229,10 +2229,12 @@ test.describe("L3 demo guide reading", () => {
       await expect(page.getByTestId("explain-tray")).toBeHidden();
       await expect(page.locator("mark[data-explain-term]")).toHaveCount(0);
 
-      // Selecting text in another card still shows the normal toolbar.
+      // Selecting text in another card still shows the normal toolbar
+      // (plain prose — the first "obs-fold" sits inside a glossary
+      // link, which keeps the popover instead of the toolbar).
       await openUnderstandMenu("problem");
       await page.locator('[data-understand-menu-list="problem"]').getByRole("menuitem", { name: "Explain terms…" }).click();
-      await selectText(page, "#C-central", "obs-fold");
+      await selectText(page, "#C-central", "unfolds");
       await expect(page.locator("#selbar")).toBeVisible({ timeout: 15_000 });
       await expect(page.getByTestId("explain-term")).toHaveCount(0);
       await page.keyboard.press("Escape");
