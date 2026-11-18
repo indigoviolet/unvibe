@@ -83,11 +83,12 @@ test.describe("L15 top-bar visual pass", () => {
       ["button", "Refresh"],
       ["link", "Debug"],
       ["button", "Copy guide as Markdown"],
-      ["button", "Pick terms you don't understand"],
       ["button", "Collapse threads"],
     ] as const) {
       await expect(bar.getByRole(role, { name }), name).toBeVisible();
     }
+    // #418: the global "?" term mode is gone from the bar.
+    await expect(bar.getByRole("button", { name: "Pick terms you don't understand" })).toHaveCount(0);
     // None carries the boxed class, and none draws a visible border
     // (plain `.ib` keeps a transparent 1px border for sizing, like the
     // card action buttons it now matches).
