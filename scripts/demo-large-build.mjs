@@ -198,13 +198,14 @@ const main = async () => {
     const r = await api(opts.port, "PUT", "/api/settings", patch, token);
     return { ok: r.code === 200, status: r.code, detail: (r.json?.errors ?? [r.raw.slice(0, 200)]).join("; "), body: r.json };
   };
+  const get = async () => (await api(opts.port, "GET", "/api/settings", undefined, token)).json;
   const failures = [];
   let reviewId = null;
   let headSha = null;
   try {
     // Every role on pi + muse-spark (issue #309).
     try {
-      await selectLiveModel(put, DEMO_LARGE_MODEL, ["main", "small"]);
+      await selectLiveModel(put, DEMO_LARGE_MODEL, ["main", "small"], get);
     } catch (e) {
       failures.push(e instanceof Error ? e.message : String(e));
     }

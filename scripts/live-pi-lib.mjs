@@ -368,9 +368,26 @@ export function createSpendTracker(rates, capUsd) {
 }
 
 /** Settings patch putting every listed role on the selected model (effort "" = Default). */
-export function liveModelPatch({ provider, model }, roles = ["main", "small"]) {
+/**
+ * Settings patch that points `roles` at one model. "small" is a settings
+ * key; "main" is the Guide persona (issue #414: `settings.main` is gone,
+ * the Guide persona owns the main provider + model), so it rewrites only
+ * the Guide entry of `current.personas` and keeps every other persona
+ * as it is. Pure.
+ */
+export function liveModelPatch({ provider, model }, roles = ["main", "small"], current = undefined) {
   const patch = {};
-  for (const role of roles) patch[role] = { provider, model, effort: "" };
+  for (const role of roles) {
+    if (role === "main") {
+      const personas = current?.personas;
+      if (!Array.isArray(personas) || !personas.some((p) => p?.id === "guide")) {
+        throw new Error("live model: settings have no Guide persona to point at the live model");
+      }
+      patch.personas = personas.map((p) => (p.id === "guide" ? { ...p, provider, model, effort: "" } : p));
+    } else {
+      patch[role] = { provider, model, effort: "" };
+    }
+  }
   return patch;
 }
 
@@ -383,10 +400,19 @@ export function liveModelPatch({ provider, model }, roles = ["main", "small"]) {
  * Single place every live harness selects its model: PUT the pick through
  * the normal settings API (fails loudly when not offered) and return the body.
  * `putSettings` adapts the harness's HTTP helper to
- * `(patch) => ({ ok, status, detail })`.
+ * `(patch) => ({ ok, status, detail })`; `getSettings` returns the
+ * current settings body (needed for the "main" role, the Guide persona).
  */
-export async function selectLiveModel(putSettings, { provider, model }, roles = ["main", "small"]) {
-  const patch = liveModelPatch({ provider, model }, roles);
+export async function selectLiveModel(putSettings, { provider, model }, roles = ["main", "small"], getSettings = undefined) {
+  let current;
+  if (roles.includes("main")) {
+    // The Guide persona lives in the personas list: read it first (#414).
+    if (typeof getSettings !== "function") {
+      throw new Error("live model: the main role (the Guide persona) needs getSettings to read the current personas");
+    }
+    current = await getSettings();
+  }
+  const patch = liveModelPatch({ provider, model }, roles, current);
   const res = await putSettings(patch);
   if (!res.ok) {
     throw new Error(
