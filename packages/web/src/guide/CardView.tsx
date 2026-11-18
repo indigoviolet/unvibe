@@ -24,7 +24,8 @@ import { Icon } from "../components/Icon.js";
 import { toast } from "../floating/Toast.js";
 import { friendlyError } from "../api/client.js";
 import { useReview } from "../state/store.js";
-import { performAction, performFollowUp, performInsertAction, personaVariantKey } from "./actions.js";
+import { performAction, performExplainRewrite, performFollowUp, performInsertAction, personaVariantKey } from "./actions.js";
+import { clearExplainHighlights, unhighlightExplainTerm } from "./explainTerms.js";
 import { useEnabledPersonas } from "../settings/usePersonas.js";
 import { blockThreads } from "./annotations.js";
 import { BlockView } from "./BlockView.js";
@@ -131,12 +132,14 @@ function PersonaButton({
   personas,
   disabled,
   busy,
+  onBeforeRun,
 }: {
   reviewId: string;
   cardId: string;
   personas: Persona[];
   disabled?: boolean;
   busy?: boolean;
+  onBeforeRun?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ top: 0, left: 0 });
@@ -214,6 +217,7 @@ function PersonaButton({
                   data-persona-option={p.id}
                   onClick={() => {
                     setOpen(false);
+                    onBeforeRun?.();
                     runCardAction(reviewId, { kind: "persona", cardId, personaId: p.id });
                   }}
                 >
@@ -230,6 +234,197 @@ function PersonaButton({
           )
         : null}
     </>
+  );
+}
+
+/**
+ * Help-me-understand menu (issue #418). The same icon-only button as
+ * today's press (no caret); it opens a menu exactly the way
+ * PersonaButton does (same `.fmenu` portal menu). Two items:
+ * Simplify runs today's press unchanged; Explain terms… puts this card
+ * alone into term picking.
+ */
+function UnderstandButton({
+  reviewId,
+  cardId,
+  personaId,
+  disabled,
+  busy,
+}: {
+  reviewId: string;
+  cardId: string;
+  personaId?: string;
+  disabled?: boolean;
+  busy?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const btnRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent): void => {
+      const target = e.target as Node;
+      if (!btnRef.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("pointerdown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  return (
+    <>
+      <button
+        className="ib"
+        type="button"
+        ref={btnRef}
+        data-understand-menu={cardId}
+        data-tip={busy ? "Working…" : "Help me understand"}
+        aria-label={busy ? "Working…" : "Help me understand"}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-busy={busy || undefined}
+        disabled={disabled || busy}
+        onClick={() => {
+          const rect = btnRef.current?.getBoundingClientRect();
+          if (rect) {
+            const width = 240;
+            setPos({
+              top: Math.min(rect.bottom + 4, window.innerHeight - 8),
+              left: Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8)),
+            });
+          }
+          setOpen((v) => !v);
+        }}
+      >
+        {busy ? (
+          <span className="dots" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </span>
+        ) : (
+          <Icon name="slower" />
+        )}
+      </button>
+      {open
+        ? createPortal(
+            <div
+              className="fmenu"
+              role="menu"
+              ref={menuRef}
+              style={{ position: "fixed", top: pos.top, left: pos.left, width: 240 }}
+              data-understand-menu-list={cardId}
+            >
+              <button
+                type="button"
+                role="menuitem"
+                data-understand-simplify={cardId}
+                onClick={() => {
+                  setOpen(false);
+                  runCardAction(
+                    reviewId,
+                    personaId ? { kind: "slower", cardId, personaId } : { kind: "slower", cardId },
+                  );
+                }}
+              >
+                <span className="lbl">Simplify</span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                data-understand-explain={cardId}
+                onClick={() => {
+                  setOpen(false);
+                  clearExplainHighlights();
+                  useReview.getState().setExplainPickCard(cardId);
+                }}
+              >
+                <span className="lbl">Explain terms…</span>
+              </button>
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
+  );
+}
+
+/**
+ * In-card Explain-terms tray (issue #418): the picked terms as the
+ * app's existing remove chips (`.fchip` with ×, as the plotline filter
+ * chip), plus Rewrite (primary ui Button) and Cancel (quiet ui
+ * Button). No label: the controls say what they do. Escape cancels
+ * too; Rewrite and Cancel clear the highlights before anything else.
+ */
+function ExplainTermsTray({
+  reviewId,
+  cardId,
+  personaId,
+  disabled,
+}: {
+  reviewId: string;
+  cardId: string;
+  personaId?: string;
+  disabled?: boolean;
+}) {
+  const terms = useReview((s) => s.explainTerms);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") {
+        clearExplainHighlights();
+        useReview.getState().setExplainPickCard(null);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  return (
+    <div className="explain-tray" role="group" aria-label="Picked terms" data-testid="explain-tray">
+      {terms.map((t) => (
+        <span className="fchip" key={t.id} data-testid="explain-term">
+          <span className="fchip-name">{t.text}</span>
+          <button
+            type="button"
+            data-testid="explain-term-remove"
+            aria-label={`Remove "${t.text}"`}
+            onClick={() => {
+              unhighlightExplainTerm(t.id);
+              useReview.getState().removeExplainTerm(t.id);
+            }}
+          >
+            ×
+          </button>
+        </span>
+      ))}
+      <Button
+        variant="primary"
+        size="sm"
+        type="button"
+        data-testid="explain-rewrite"
+        disabled={disabled || terms.length === 0}
+        onClick={() => performExplainRewrite(reviewId, cardId, personaId)}
+      >
+        Rewrite
+      </Button>
+      <Button
+        variant="quiet"
+        size="sm"
+        type="button"
+        data-testid="explain-cancel"
+        onClick={() => {
+          clearExplainHighlights();
+          useReview.getState().setExplainPickCard(null);
+        }}
+      >
+        Cancel
+      </Button>
+    </div>
   );
 }
 
@@ -349,6 +544,8 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
   const jobs = snapshot?.jobs ?? [];
   const annotations = snapshot?.annotations ?? [];
   const inflight = useReview((s) => s.inflight);
+  // Issue #418: this card alone picks terms (tray below the toolbar).
+  const explainPicking = useReview((s) => s.explainPickCardId) === card.id;
   const contributions = snapshot?.contributions ?? [];
   // Issue #349 step 2: the card's versions (Guide + persona variants)
   // and the active tab. The tab is UI state: a persona run never yanks
@@ -516,6 +713,14 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
       cardToMarkdown({ title: card.title, blocks: shownBlocks, answers: card.answers }, ctx, { findPage }),
     );
   };
+  // Issue #418: any agent action on this card ends its picking first —
+  // the highlights are direct DOM edits that a rewrite would leave stale.
+  const stopPickingIfMine = (): void => {
+    if (useReview.getState().explainPickCardId === card.id) {
+      clearExplainHighlights();
+      useReview.getState().setExplainPickCard(null);
+    }
+  };
   // While an agent action runs for this card, the conflicting controls go
   // disabled and the clicked one shows dots in place of its icon.
   const controlsBusy = busy !== null;
@@ -553,53 +758,59 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
         <ControlButton
           icon="down"
           label="Collapse"
-          onClick={() =>
-            runCardAction(reviewId, { kind: "collapse", cardId: card.id, collapsed: true })
-          }
+          onClick={() => {
+            // Collapsing ends this card's picking (the tray lives in
+            // the expanded body).
+            if (explainPicking) {
+              clearExplainHighlights();
+              useReview.getState().setExplainPickCard(null);
+            }
+            runCardAction(reviewId, { kind: "collapse", cardId: card.id, collapsed: true });
+          }}
         />
         {title ? <h2 className="ct">{title}</h2> : null}
         {/* #274: the toolbar lives in the heading row, hover/focus-revealed. */}
         <div className="ctl">
-          <ControlButton
-            icon="slower"
-            label="Help me understand"
-            busy={slowerBusy}
+          <UnderstandButton
+            reviewId={reviewId}
+            cardId={card.id}
+            personaId={activePersonaId}
             disabled={controlsBusy}
-            onClick={() =>
-              runCardAction(
-                reviewId,
-                activePersonaId
-                  ? { kind: "slower", cardId: card.id, personaId: activePersonaId }
-                  : { kind: "slower", cardId: card.id },
-              )
-            }
+            busy={slowerBusy}
           />
           <ControlButton
             icon="bulb"
             label="Use examples"
             busy={examplesBusy}
             disabled={controlsBusy}
-            onClick={() => performInsertAction(reviewId, card.id, "examples", activePersonaId)}
+            onClick={() => {
+              stopPickingIfMine();
+              performInsertAction(reviewId, card.id, "examples", activePersonaId);
+            }}
           />
           <ControlButton
             icon="diagram"
             label="Add diagram"
             busy={diagramBusy}
             disabled={controlsBusy}
-            onClick={() => performInsertAction(reviewId, card.id, "diagram", activePersonaId)}
+            onClick={() => {
+              stopPickingIfMine();
+              performInsertAction(reviewId, card.id, "diagram", activePersonaId);
+            }}
           />
           <ControlButton
             icon="undo"
             label="Undo"
             disabled={shownUndoDepth === 0 || controlsBusy}
-            onClick={() =>
+            onClick={() => {
+              stopPickingIfMine();
               runCardAction(
                 reviewId,
                 activePersonaId
                   ? { kind: "undo", cardId: card.id, personaId: activePersonaId }
                   : { kind: "undo", cardId: card.id },
-              )
-            }
+              );
+            }}
           />
           <ControlButton
             icon="copy"
@@ -613,10 +824,19 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
             personas={personas}
             disabled={controlsBusy}
             busy={personaBusy}
+            onBeforeRun={stopPickingIfMine}
           />
         </div>
       </CardHeader>
       <VersionTabs cardId={card.id} versions={versions} active={activeEntry.id} onSelect={setActiveVersion} />
+      {explainPicking ? (
+        <ExplainTermsTray
+          reviewId={reviewId}
+          cardId={card.id}
+          personaId={activePersonaId}
+          disabled={controlsBusy}
+        />
+      ) : null}
       {busy ? <Working text={busy.label} /> : null}
       {!busy && promoted?.turn.working ? <Working text={promoted.turn.working} /> : null}
       {!busy && promoted?.turn.error ? (
@@ -649,6 +869,7 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
             data-retry-persona={activePersonaId}
             onClick={() => {
               if (activePersonaId) {
+                stopPickingIfMine();
                 runCardAction(reviewId, { kind: "persona", cardId: card.id, personaId: activePersonaId });
               }
             }}

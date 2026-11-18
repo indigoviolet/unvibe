@@ -78,9 +78,9 @@ export async function slowerAction(
 }
 
 /**
- * Issue #388: the `{{terms}}` block for the slower template — the picked
- * terms as reader context. Empty string when no terms (an ordinary #387
- * press), so that prompt renders byte-identical.
+ * Issue #418 (Explain terms): the `{{terms}}` block for the slower
+ * template — the picked terms as reader context. Empty string when no
+ * terms (an ordinary #387 press), so that prompt renders byte-identical.
  */
 function termsBlockFor(terms: string[]): string {
   if (terms.length === 0) return "";
@@ -89,9 +89,10 @@ function termsBlockFor(terms: string[]): string {
 }
 
 /**
- * Issue #388: the `{{guide}}` block for the slower template — the whole
- * guide, so terms are introduced once and used consistently across
- * cards. Empty string when absent, so an ordinary press is unaffected.
+ * Issue #418 (Explain terms): the `{{guide}}` block for the slower
+ * template — the whole guide, so terms are introduced once and used
+ * consistently across cards. Empty string when absent, so an ordinary
+ * press is unaffected.
  */
 function guideBlockFor(guideText: string): string {
   if (!guideText) return "";
@@ -119,7 +120,7 @@ async function slowerViaAgent(
   };
   const variables = {
     card: personaId ? personaVariantPromptText(snapshot, cardId, personaId) : cardPromptText(snapshot, cardId),
-    // Issue #388: the terms block splices right after the card (empty
+    // Issue #418: the terms block splices right after the card (empty
     // for an ordinary #387 press, so its prompt renders byte-identical).
     terms: termsOpts ? termsBlockFor(termsOpts.terms) : "",
     guide: termsOpts ? guideBlockFor(termsOpts.guideText) : "",

@@ -973,15 +973,12 @@ export type ReviewAction =
    * Issue #349 step 2: `personaId` selects a persona's version of a
    * page card (its own blocks/undo stack and its own session).
    * Absent means the Guide version.
+   *
+   * Issue #418 (Explain terms): `terms` carries the picked terms as
+   * reader context (one #387 press with the terms block attached).
+   * Absent means an ordinary press; the prompt renders byte-identical.
    */
-  | { kind: "slower"; cardId: string; personaId?: string }
-  /**
-   * Issue #388 (? mode): rewrite every guide card in place with the
-   * picked terms as reader context. The service fans out one ordinary
-   * `slower` press per card (same undo stack, same rules); `terms` is
-   * the picked text, Guide version only, persona variants untouched.
-   */
-  | { kind: "question-rewrite"; terms: string[] }
+  | { kind: "slower"; cardId: string; personaId?: string; terms?: string[] }
   | { kind: "examples"; cardId: string; personaId?: string }
   | { kind: "diagram"; cardId: string; personaId?: string }
   | { kind: "undo"; cardId: string; personaId?: string }
@@ -1078,12 +1075,6 @@ export interface ActionResponse {
   pageId?: string;
   /** M4: card created or targeted (slower/examples/diagram/undo/collapse/followup). */
   cardId?: string;
-  /**
-   * Issue #388 (? mode): one entry per targeted card. `jobId` is set
-   * when the card's rewrite started an agent job; absent when the card
-   * was deduplicated onto a running job or needed no job.
-   */
-  cardJobs?: { cardId: string; jobId?: string }[];
   /** M4: true when an identical active request was reused (dedupe, PRD §12). */
   deduplicated?: boolean;
   /**

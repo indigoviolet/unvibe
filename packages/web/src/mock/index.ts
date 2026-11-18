@@ -3361,22 +3361,6 @@ export const mockApi = {
       const res = mockCardControl(a as never);
       return res as ActionResponse;
     }
-    // Issue #388 (? mode, mock): Rewrite runs the slower stand-in over
-    // every written guide card, Guide version only — one undoable press
-    // each, so mock mode exercises the tray → rewrite → undo shape.
-    if (a.kind === "question-rewrite") {
-      const terms = (a as { terms?: unknown }).terms;
-      if (!Array.isArray(terms) || terms.length === 0) throw new Error("terms are required");
-      const targets = mockPages.flatMap((p) => p.cards).filter((c) => !c.pending);
-      const cardJobs: { cardId: string }[] = [];
-      for (const card of targets) {
-        mockCardControl({ kind: "slower", cardId: card.id });
-        cardJobs.push({ cardId: card.id });
-      }
-      emitPages();
-      emitAnnotations();
-      return { accepted: true, cardJobs } as ActionResponse;
-    }
     if (a.kind === "persona") {
       const cardId = (a as { cardId?: string }).cardId ?? "";
       const personaId = (a as { personaId?: string }).personaId ?? "";

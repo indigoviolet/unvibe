@@ -65,16 +65,17 @@ export interface InFlightAction {
 let inflightSeq = 0;
 
 /**
- * Issue #388 (? mode): one picked term — the selected text plus the
- * guide card it was picked from (for the tray list and the highlight).
+ * Issue #418 (Explain terms): one picked term — the selected text plus
+ * the guide card it was picked from (for the tray list and the
+ * highlight). Terms always belong to the picking card.
  */
-export interface QuestionTerm {
+export interface ExplainTerm {
   id: string;
   text: string;
   cardId: string;
 }
 
-let questionTermSeq = 0;
+let explainTermSeq = 0;
 
 /**
  * Safety cap so an in-flight entry can never spin forever (a lost job
@@ -183,16 +184,16 @@ interface ReviewState {
   /** Issue #126 (experiment): drop a card's streamed buffer. */
   clearStream: (annotationId: string) => void;
   /**
-   * Issue #388 (? mode): picking terms the reader doesn't understand.
-   * Transient UI state only — never sent except inside the Rewrite
-   * action, never stored. `clear` resets both.
+   * Issue #418 (Explain terms): the card in term picking, if any.
+   * Transient UI state only — the terms ride the Rewrite action, never
+   * stored. Only one card picks at a time. `clear` resets both.
    */
-  questionMode: boolean;
-  questionTerms: QuestionTerm[];
-  setQuestionMode: (on: boolean) => void;
-  addQuestionTerm: (term: { text: string; cardId: string }) => string;
-  removeQuestionTerm: (id: string) => void;
-  clearQuestionTerms: () => void;
+  explainPickCardId: string | null;
+  explainTerms: ExplainTerm[];
+  setExplainPickCard: (cardId: string | null) => void;
+  addExplainTerm: (term: { text: string; cardId: string }) => string;
+  removeExplainTerm: (id: string) => void;
+  clearExplainTerms: () => void;
   clear: () => void;
 }
 
@@ -520,19 +521,21 @@ export const useReview = create<ReviewState>()((set, get) => ({
       delete next[annotationId];
       return { streams: next };
     }),
-  questionMode: false,
-  questionTerms: [],
-  setQuestionMode: (on) =>
-    set(() => (on ? { questionMode: true } : { questionMode: false, questionTerms: [] })),
-  addQuestionTerm: (term) => {
+  explainPickCardId: null,
+  explainTerms: [],
+  setExplainPickCard: (cardId) =>
+    // One picking card at a time: opening another card's picker drops
+    // the first card's terms (its highlights are cleared at the call site).
+    set(() => (cardId ? { explainPickCardId: cardId, explainTerms: [] } : { explainPickCardId: null, explainTerms: [] })),
+  addExplainTerm: (term) => {
     // Same text twice is one term (the tray lists each term once).
-    const dup = get().questionTerms.find((t) => t.text === term.text);
+    const dup = get().explainTerms.find((t) => t.text === term.text);
     if (dup) return dup.id;
-    const id = `qt${++questionTermSeq}`;
-    set((s) => ({ questionTerms: [...s.questionTerms, { ...term, id }] }));
+    const id = `et${++explainTermSeq}`;
+    set((s) => ({ explainTerms: [...s.explainTerms, { ...term, id }] }));
     return id;
   },
-  removeQuestionTerm: (id) => set((s) => ({ questionTerms: s.questionTerms.filter((t) => t.id !== id) })),
-  clearQuestionTerms: () => set({ questionTerms: [] }),
-  clear: () => set({ snapshot: null, inflight: {}, pending: [], streams: {}, resyncSeq: 0, questionMode: false, questionTerms: [] }),
+  removeExplainTerm: (id) => set((s) => ({ explainTerms: s.explainTerms.filter((t) => t.id !== id) })),
+  clearExplainTerms: () => set({ explainTerms: [] }),
+  clear: () => set({ snapshot: null, inflight: {}, pending: [], streams: {}, resyncSeq: 0, explainPickCardId: null, explainTerms: [] }),
 }));
