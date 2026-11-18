@@ -87,8 +87,13 @@ function preferThreadEntry<T extends { key?: string }>(hits: T[], prompt: string
   return hits[0] as T;
 }
 
-/** Pattern-matched ask/explain entries, in manifest order. */
-function matchAskExplain(
+/**
+ * Pattern-matched entries of one kind, in manifest order (issue #417):
+ * any kind may carry `pattern` entries (reader recordings for scratch
+ * repos do), not just ask/explain. The thread-scoped preference stays
+ * ask/explain-only.
+ */
+function matchPatternedEntry(
   entries: ReplayManifestEntry[],
   hasText: (file: string) => boolean,
   kind: string,
@@ -98,7 +103,7 @@ function matchAskExplain(
     (e) => e.kind === kind && e.pattern && new RegExp(e.pattern, "i").test(prompt) && hasText(e.file),
   );
   if (hits.length === 0) return null;
-  const hit = preferThreadEntry(hits, prompt);
+  const hit = kind === "ask" || kind === "explain" ? preferThreadEntry(hits, prompt) : hits[0];
   return { kind, key: hit.key ?? null, file: hit.file, placeholder: false };
 }
 
@@ -117,8 +122,11 @@ export function resolveRecording(
     // pattern matching below in play: the quoted selection decides
     // which recording answers, and only an unmatched prompt falls
     // back to the kind's first entry. A keyed marker is exact.
-    if (explicit.key === null && (explicit.kind === "explain" || explicit.kind === "ask")) {
-      const hit = matchAskExplain(entries, hasText, explicit.kind, prompt);
+    if (explicit.key === null) {
+      // A kind-only marker keeps pattern matching in play: the quoted
+      // selection (or repo content, for reader recordings) decides
+      // which recording answers.
+      const hit = matchPatternedEntry(entries, hasText, explicit.kind, prompt);
       if (hit) return hit;
     }
     const hit = entries.find(
@@ -134,7 +142,7 @@ export function resolveRecording(
     // A follow-up carries its message but no quote; a first turn carries
     // quote and question. Either way the message (or quote) decides —
     // with thread-scoped recordings preferred in thread context.
-    const hit = matchAskExplain(entries, hasText, kind, prompt);
+    const hit = matchPatternedEntry(entries, hasText, kind, prompt);
     if (hit) return hit;
     return { kind, key: null, file: null, placeholder: true };
   }
