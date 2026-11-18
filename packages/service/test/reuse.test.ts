@@ -146,6 +146,8 @@ async function setupWithAgents(agents: FakeAgentRunner) {
   const snapshot: ReviewSnapshot = {
     review,
     version,
+    // Issue #421: the fixture guide describes this head.
+    guideHead: { version: version.n, sha: version.headSha },
     files,
     description: {
       html: "<p>Hi</p>",

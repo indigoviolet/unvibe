@@ -160,6 +160,8 @@ export async function setupReview(
   const snapshot: ReviewSnapshot = {
     review,
     version,
+    // Issue #421: the helper guide describes this head.
+    guideHead: { version: version.n, sha: version.headSha },
     files,
     description,
     ingest: { status: "ready" },

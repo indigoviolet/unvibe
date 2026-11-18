@@ -159,6 +159,8 @@ async function setupSharedCtx(
   const snapshot: ReviewSnapshot = {
     review,
     version,
+    // Issue #421: the fixture guide describes this head.
+    guideHead: { version: version.n, sha: version.headSha },
     files,
     description,
     ingest: { status: "ready" },
@@ -861,6 +863,8 @@ describe("isolation (PRD §12)", () => {
     const snap = toPromptSnapshot({
       review: { id: "r", repoId: "rp", branch: "b", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: 1 },
       version: { n: 1, headSha: "a".repeat(40), mergeBaseSha: "b".repeat(40), baseRef: "main", fetchedAt: 1, idMapping: {} },
+      // Issue #421: the fixture guide describes this head.
+      guideHead: { version: 1, sha: "a".repeat(40) },
       files: [],
       pages: [
         {

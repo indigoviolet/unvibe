@@ -59,6 +59,8 @@ function makeSnapshot(rev = 1): ReviewSnapshot {
       fetchedAt: 0,
       idMapping: {},
     },
+    // Issue #421: the fixture guide describes this head.
+    guideHead: { version: 1, sha: "abc" },
     files: [],
     pages: [],
     annotations: [],

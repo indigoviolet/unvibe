@@ -76,6 +76,8 @@ async function makeReview(ctx: Awaited<ReturnType<typeof createApp>>["ctx"]): Pr
   const snap: ReviewSnapshot = {
     review: { id, repoId: "demo", branch: "main", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: Date.now() },
     version: { n: 1, headSha: "abc1234def5678abc1234def5678abc1234def5", mergeBaseSha: "0000000", baseRef: "main", fetchedAt: Date.now(), idMapping: {} },
+    // Issue #421: the fixture guide describes this head.
+    guideHead: { version: 1, sha: "abc1234def5678abc1234def5678abc1234def5" },
     files: [
       {
         fileKey: "a-py",
@@ -326,6 +328,8 @@ function multiHunkSnapshot(id: string, hashes: string[]): ReviewSnapshot {
   return {
     review: { id, repoId: "demo", branch: "main", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: Date.now() },
     version: { n: 1, headSha: "abc1234def5678abc1234def5678abc1234def5", mergeBaseSha: "0000000", baseRef: "main", fetchedAt: Date.now(), idMapping: {} },
+    // Issue #421: the fixture guide describes this head.
+    guideHead: { version: 1, sha: "abc1234def5678abc1234def5678abc1234def5" },
     files: [
       {
         fileKey: "a-py",
