@@ -7,7 +7,7 @@
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import type { Thread, Card, Job, ReviewSnapshot } from "@unvibe/shared";
 import { api } from "../api/client.js";
@@ -69,6 +69,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   useReview.getState().clear();
+  vi.restoreAllMocks();
 });
 
 describe("CardView immediate feedback", () => {
@@ -336,7 +337,11 @@ describe("CardView immediate feedback", () => {
     expect(document.querySelector(".ui-card.child.placeholder")).toBeNull();
   });
 
-  test("Help me understand marks the card as rewriting on click", () => {
+  test("Help me understand marks the card as rewriting on click", async () => {
+    // Issue #422: the #418 menu needs the Explain-terms gate on.
+    vi.spyOn(api, "settings").mockResolvedValue({
+      experimental: { explainTerms: true, markdownDocs: false },
+    } as unknown as Awaited<ReturnType<typeof api.settings>>);
     seedSnapshot([card()]);
     const held = holdAction();
     try {
@@ -352,7 +357,9 @@ describe("CardView immediate feedback", () => {
         </MemoryRouter>
       );
       // Issue #418: the button opens the menu; Simplify is today's press.
-      fireEvent.click(screen.getByRole("button", { name: "Help me understand" }));
+      const button = screen.getByRole("button", { name: "Help me understand" });
+      await waitFor(() => expect(button).toHaveAttribute("aria-haspopup", "menu"));
+      fireEvent.click(button);
       fireEvent.click(screen.getByRole("menuitem", { name: "Simplify" }));
       const section = document.getElementById("C-c1");
       expect(section?.className).toMatch(/rewriting/);
@@ -361,6 +368,36 @@ describe("CardView immediate feedback", () => {
       // Conflicting controls go disabled; the local collapse toggle stays on.
       expect(screen.getByRole("button", { name: "Use examples" })).toBeDisabled();
       expect(screen.getByRole("button", { name: "Collapse" })).toBeEnabled();
+    } finally {
+      held.restore();
+    }
+  });
+
+  test("Help me understand is a plain Simplify press while the gate is off (issue #422)", async () => {
+    vi.spyOn(api, "settings").mockResolvedValue({
+      experimental: { explainTerms: false, markdownDocs: false },
+    } as unknown as Awaited<ReturnType<typeof api.settings>>);
+    seedSnapshot([card()]);
+    const held = holdAction();
+    try {
+      render(
+        <MemoryRouter>
+        <CardView
+          reviewId={REVIEW_ID}
+          card={card()}
+          lookupPage={() => undefined}
+          onOpenPage={() => {}}
+          onFollowUp={() => {}}
+        />,
+        </MemoryRouter>
+      );
+      // One click runs Simplify at once: never a menu.
+      const button = screen.getByRole("button", { name: "Help me understand" });
+      await waitFor(() => expect(api.settings).toHaveBeenCalled());
+      expect(button).not.toHaveAttribute("aria-haspopup", "menu");
+      fireEvent.click(button);
+      expect(screen.queryByRole("menuitem", { name: "Simplify" })).toBeNull();
+      expect(document.getElementById("C-c1")?.className).toMatch(/rewriting/);
     } finally {
       held.restore();
     }

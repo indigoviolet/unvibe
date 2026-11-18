@@ -2,15 +2,24 @@
  * ScreenTopBar tests (issue #31 round 2): app-wide header contents —
  * home link, breadcrumb trail, gear Settings button.
  */
-import { describe, expect, it, afterEach } from "vitest";
+import { describe, expect, it, afterEach, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
+import { api } from "../api/client.js";
 import { ScreenTopBar } from "./ScreenTopBar.js";
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
 });
+
+/** Settings with the Markdown-docs gate as given (issue #422). */
+function mockSettings(markdownDocs: boolean): void {
+  vi.spyOn(api, "settings").mockResolvedValue({
+    experimental: { explainTerms: false, markdownDocs },
+  } as unknown as Awaited<ReturnType<typeof api.settings>>);
+}
 
 function renderBar(props: Parameters<typeof ScreenTopBar>[0]): void {
   render(
@@ -30,9 +39,10 @@ describe("ScreenTopBar", () => {
     expect(screen.queryByRole("navigation", { name: "Breadcrumb" })).toBeNull();
   });
 
-  it("puts the Documents icon next to the home link, before the breadcrumb and Settings (#238)", () => {
+  it("puts the Documents icon next to the home link, before the breadcrumb and Settings (#238)", async () => {
+    mockSettings(true);
     renderBar({ crumbs: [{ label: "Settings", to: "/settings?tab=environment" }, { label: "Doctor" }] });
-    const docs = screen.getByRole("link", { name: "Documents" });
+    const docs = await screen.findByRole("link", { name: "Documents" });
     expect(docs).toHaveAttribute("href", "/documents");
     expect(docs).toHaveAttribute("title", "Documents");
     const order = [...(document.querySelector("header.top")?.children ?? [])].map(
@@ -54,6 +64,14 @@ describe("ScreenTopBar", () => {
     const current = screen.getByText("Doctor");
     expect(current).toHaveAttribute("aria-current", "page");
     expect(current.tagName).not.toBe("A");
+  });
+
+  it("hides the Documents icon while Markdown docs is off (issue #422)", async () => {
+    mockSettings(false);
+    renderBar({ crumbs: [{ label: "Settings", to: "/settings?tab=environment" }, { label: "Doctor" }] });
+    await waitFor(() => expect(api.settings).toHaveBeenCalled());
+    expect(screen.queryByRole("link", { name: "Documents" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Unvibe" })).toBeInTheDocument();
   });
 
   it("renders no Settings button on the Settings screen", () => {
