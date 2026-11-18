@@ -26,7 +26,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import type { DiagramBlock, DiagramTheme } from "@unvibe/shared";
 import { api, DiagramStatusError, friendlyError } from "../api/client.js";
-import { revealCitationFrom } from "../source/reveal.js";
+import { revealSource } from "../source/reveal.js";
 import { adoptD2Svg, naturalSize } from "./d2sanitize.js";
 
 export type FetchDiagramSvg = (
@@ -284,7 +284,7 @@ export function D2Diagram({ reviewId, block, fetchSvg, capNaturalWidth, onStateC
         if (!anchor) return;
         e.preventDefault();
         const target = anchor.getAttribute("data-src");
-        if (target) revealCitationFrom(anchor, target);
+        if (target) revealSource(target);
       }}
     />
   );

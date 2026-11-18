@@ -1253,11 +1253,6 @@ export interface SummarizeMoreResponse {
  */
 export interface UpdateDiffFilterRequest {
   plotline?: string | null;
-  /**
-   * Issue #351: true shows only hunks changed or added since the
-   * baseline; false and null both clear it back to all hunks.
-   */
-  sinceBaseline?: boolean | null;
 }
 
 /**

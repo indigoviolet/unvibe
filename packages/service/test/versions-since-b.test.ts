@@ -288,23 +288,11 @@ describe("since-B step 1", () => {
       // Explain recorded the X it explained from.
       expect(after.sinceBaseline).toEqual({ kind: "version", version: 1 });
 
-      // The Since diff filter flag still persists.
+      // #413: the diff Since filter is gone — the diff always shows the
+      // whole PR, and the filter route no longer takes the flag.
       const setFilter = await app.inject({ method: "PATCH", url: `/api/reviews/${id}/diff-filter`, headers: authed, payload: { sinceBaseline: true } });
-      expect(setFilter.statusCode).toBe(200);
-      const filtered = ctx.reviews.getSnapshot(id)!;
-      expect(filtered.diffFilter?.sinceBaseline).toBe(true);
-      const sinceSet = new Set([...(filtered.sinceHunks?.added ?? []), ...(filtered.sinceHunks?.changed ?? [])]);
-      for (const f of filtered.files) {
-        for (const h of f.hunks) {
-          const hid = `h:${f.fileKey}:${h.contentHash}`;
-          expect(hunkChangedSinceB(hid, filtered.sinceHunks)).toBe(sinceSet.has(hid));
-        }
-      }
-      const clearFilter = await app.inject({ method: "PATCH", url: `/api/reviews/${id}/diff-filter`, headers: authed, payload: { sinceBaseline: false } });
-      expect(clearFilter.statusCode).toBe(200);
+      expect(setFilter.statusCode).toBe(400);
       expect(ctx.reviews.getSnapshot(id)!.diffFilter).toBeUndefined();
-      const badFilter = await app.inject({ method: "PATCH", url: `/api/reviews/${id}/diff-filter`, headers: authed, payload: { sinceBaseline: "yes" } });
-      expect(badFilter.statusCode).toBe(400);
     } finally {
       await app.close();
       delete (globalThis as { __snap351?: ReviewSnapshot }).__snap351;

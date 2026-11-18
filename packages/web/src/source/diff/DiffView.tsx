@@ -30,7 +30,6 @@ import {
   hideLevelStats,
   hunkCategory,
   hunkMatchesFilter,
-  sinceBaselineLabel,
   type HideCategory,
 } from "@unvibe/shared";
 import { api, apiErrorCode } from "../../api/client.js";
@@ -53,14 +52,13 @@ import {
   filterFiles,
   hunkOverlaps,
   hunkPlotVisible,
-  hunkVisibleId,
   shouldHideHunk,
   tailPathParts,
   type TreeRow,
 } from "./diffLogic.js";
 import { useGithubThreads } from "../../comments/GithubThreads.js";
 import { useLineSlots, type LineSlots } from "./lineSlots.js";
-import { sinceSectionHunkIds, resolveHunkTarget } from "../../guide/citations.js";
+import { resolveHunkTarget } from "../../guide/citations.js";
 import {
   observeDiffPinned,
   onRevealSource,
@@ -397,34 +395,6 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
     [states],
   );
   const plotActive = plotFilter.plotline !== undefined;
-  // Issue #413: the Since filter shows only the X→head hunks behind
-  // the current Changes-since-X section (whatever X the section was
-  // written from). With no section the chip doesn't show. The hunk set
-  // is the section's cited set — every claim in the section is cited
-  // into its X→head hunks — never the stored baseline pick.
-  const sinceActive = plotFilter.sinceBaseline === true;
-  const sinceChipLabel = snapshot?.sinceSection ? sinceBaselineLabel(snapshot.sinceSection.baseline) : "";
-  const sinceIds = useMemo(() => {
-    if (!sinceActive || !snapshot) return undefined;
-    const ids = sinceSectionHunkIds(snapshot);
-    return ids && ids.size > 0 ? ids : new Set<string>();
-  }, [sinceActive, snapshot]);
-  // Issue #351: hunks the Since-B filter hides (hunk-granular, unlike the
-  // file-granular `hiddenHunks` behind the plotline chip).
-  const sinceHidden = useMemo(() => {
-    if (!sinceIds) return 0;
-    let n = 0;
-    for (const f of snapshot?.files ?? []) {
-      for (const h of f.hunks) {
-        if (!sinceIds.has(hunkVisibleId(f.fileKey, h.contentHash))) n += 1;
-      }
-    }
-    return n;
-  }, [sinceIds, snapshot]);
-  // #413: the Since chip's tooltip and accessible name carry the X.
-  const sinceTip = sinceActive
-    ? `Changed since ${sinceChipLabel} (${sinceHidden} hidden): show all hunks`
-    : `Changed since ${sinceChipLabel}: show only these hunks`;
   const visible = useMemo(
     () =>
       snapshot
@@ -433,12 +403,11 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
             cats,
             hideReviewed: prefs.hideReviewed,
             reviewedCount,
-            ...(plotActive || sinceActive ? { plot: plotFilter } : {}),
-            ...(sinceIds ? { sinceIds } : {}),
+            ...(plotActive ? { plot: plotFilter } : {}),
             hunkStateOf,
           })
         : [],
-    [snapshot, fq, cats, prefs.hideReviewed, reviewedCount, plotActive, sinceActive, sinceIds, plotFilter, hunkStateOf],
+    [snapshot, fq, cats, prefs.hideReviewed, reviewedCount, plotActive, plotFilter, hunkStateOf],
   );
 
   const progress = useMemo(() => {
@@ -537,8 +506,6 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
       if (readOnly) return;
       const body: UpdateDiffFilterRequest = {
         ...(next.plotline !== undefined ? { plotline: next.plotline } : { plotline: null }),
-        // Issue #351: false and null both clear the Since-B filter.
-        sinceBaseline: next.sinceBaseline === true ? true : null,
       };
       api.updateDiffFilter(reviewId, body).catch(() => {
         toast("Couldn't save the filter");
@@ -559,14 +526,6 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
     [plotFilter, setPlotFilterAndPersist],
   );
 
-  // Issue #351: the Since-B toolbar toggle — clicking it shows only
-  // hunks changed or added since the baseline.
-  const toggleSinceBaseline = useCallback(() => {
-    const next: DiffFilter = { ...plotFilter };
-    if (next.sinceBaseline === true) delete next.sinceBaseline;
-    else next.sinceBaseline = true;
-    setPlotFilterAndPersist(next);
-  }, [plotFilter, setPlotFilterAndPersist]);
   const hiddenHunks = useMemo(() => {
     const shown = visible.reduce((s, f) => s + f.hunks.length, 0);
     return Math.max(0, progress.total - shown);
@@ -749,8 +708,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
       cats: new Set(prefs.cats),
       hideReviewed: prefs.hideReviewed,
       reviewedCount,
-      ...(plotActive || sinceActive ? { plot: plotFilter } : {}),
-      ...(sinceIds ? { sinceIds } : {}),
+      ...(plotActive ? { plot: plotFilter } : {}),
       hunkStateOf: (hash) => {
         const s = st.get(hash);
         return s ? { score: s.score, plotline: s.plotline } : undefined;
@@ -769,7 +727,6 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
         if (
           !hunkPlotVisible(h, f.fileKey, {
             plot: plotFilter,
-            ...(sinceIds ? { sinceIds } : {}),
             hunkStateOf: (hash) => {
               const s = st.get(hash);
               return s ? { score: s.score, plotline: s.plotline } : undefined;
@@ -788,7 +745,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
     await Promise.all(targets.map(({ hunk }) => api.updateHunk(reviewId, hunk.contentHash, { folded: true }).catch(() => {})));
     const foldedNoun = `${targets.length} ${targets.length === 1 ? "hunk" : "hunks"}`;
     toast(`Folded ${foldedNoun}.`);
-  }, [reviewId, readOnly, fq, prefs, reviewedCount, unhidden, plotActive, sinceActive, sinceIds, plotFilter, hideLevel]);
+  }, [reviewId, readOnly, fq, prefs, reviewedCount, unhidden, plotActive, plotFilter, hideLevel]);
 
   const unfoldAll = useCallback(async () => {
     if (readOnly) {
@@ -872,22 +829,6 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
               ×
             </button>
           </span>
-        ) : null}
-        {(snapshot.sinceSection?.cards.length ?? 0) > 0 && !readOnly ? (
-          <Button
-            variant="secondary"
-            size="sm"
-            type="button"
-            aria-pressed={sinceActive}
-            data-filterchip="since"
-            // #413: a short label keeps the toolbar on one row; the X and
-            // the hidden count live in the tooltip and accessible name.
-            data-tip={sinceTip}
-            aria-label={sinceTip}
-            onClick={toggleSinceBaseline}
-          >
-            Since
-          </Button>
         ) : null}
         <Button
           variant="secondary"
@@ -1133,7 +1074,6 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
               onOpenPage={onOpenPage ?? (() => {})}
               onFollowUp={onFollowUp ?? (() => {})}
               plotFilter={plotActive ? plotFilter : undefined}
-              sinceIds={sinceActive ? sinceIds : undefined}
               plotlineNames={plotlineNames}
               onSelectPlotline={togglePlotline}
               isHidden={isHidden}

@@ -25,7 +25,7 @@
  */
 import { type Thread } from "@unvibe/shared";
 import { Icon } from "../components/Icon.js";
-import { revealCitationFrom } from "../source/reveal.js";
+import { revealSource } from "../source/reveal.js";
 import { isPromotedLink } from "./expansions/expansionUtils.js";
 import type { ResolvedCitation } from "./citations.js";
 import { citationChip } from "./citations.js";
@@ -67,7 +67,7 @@ export function BlockMarkers({ citations, threads, footnotes, onOpenPage }: Prop
           data-src={chip.targets[0]}
           aria-label={chip.targets.length > 1 ? `${chip.targets.length} sources` : "Source"}
           data-tip="Show in source"
-          onClick={(e) => revealCitationFrom(e.currentTarget, chip.targets[0])}
+          onClick={() => revealSource(chip.targets[0])}
         >
           {chip.text}
         </button>

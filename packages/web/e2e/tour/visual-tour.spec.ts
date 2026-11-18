@@ -4019,18 +4019,6 @@ test.describe("since-B tour (#351)", () => {
       await page.goto(`${svc351.origin}/review/${review351}?token=${svc351.token}`);
       await expect(page.locator("#page .doc")).toBeVisible({ timeout: 60_000 });
 
-      // The Since-B filter is stored with the review, so an earlier combo
-      // may have left it on: reset it first to keep every combo's opening
-      // scenes deterministic (the filter scene re-enables it below).
-      await page.locator('#right [role="tab"]').getByText("Diff").click();
-      await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
-      {
-        const chip = page.locator('[data-filterchip="since"]');
-        if ((await chip.getAttribute("aria-pressed")) === "true") {
-          await chip.click();
-          await expect(chip).toHaveAttribute("aria-pressed", "false");
-        }
-      }
 
       // 1. The dated Since-B section, expanded.
       const since = page.locator('[data-testid="since-section"]');
@@ -4086,22 +4074,6 @@ test.describe("since-B tour (#351)", () => {
       await page.mouse.move(20, 20);
       await shot(page, "since-feedback", suffix, "Answers:");
 
-      // 4. The diff with the Since filter on, reading the section's X.
-      // The filter flag is stored with the review, so an earlier combo
-      // may have left it on: reset it first to keep every combo
-      // deterministic.
-      await page.locator('#right [role="tab"]').getByText("Diff").click();
-      await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
-      const sinceChip = page.locator('[data-filterchip="since"]');
-      if ((await sinceChip.getAttribute("aria-pressed")) === "true") {
-        await sinceChip.click();
-        await expect(sinceChip).toHaveAttribute("aria-pressed", "false");
-      }
-      await page.locator("#right").getByRole("button", { name: "Changed since v1: show only these hunks" }).click();
-      await expect(sinceChip).toHaveAttribute("aria-pressed", "true", { timeout: 30_000 });
-      await stepChecks(page, "since-filter");
-      await page.mouse.move(20, 20);
-      await shot(page, "since-filter", suffix, "Since v1");
     });
   }
 });
@@ -4245,18 +4217,6 @@ test.describe("since-commit tour (#351 step 2)", () => {
       await page.mouse.move(20, 20);
       await shot(page, "since-commit-section", suffix, `Changes since ${short352}`);
 
-      // 2. The diff filter chip, reading the section's X.
-      await page.locator('#right [role="tab"]').getByText("Diff").click();
-      await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
-      const chip = page.locator('[data-filterchip="since"]');
-      if ((await chip.getAttribute("aria-pressed")) === "true") {
-        await chip.click();
-        await expect(chip).toHaveAttribute("aria-pressed", "false");
-      }
-      await expect(chip).toHaveAttribute("aria-label", `Changed since ${short352}: show only these hunks`, { timeout: 30_000 });
-      await stepChecks(page, "since-commit-filter");
-      await page.mouse.move(20, 20);
-      await shot(page, "since-commit-filter", suffix, `Since ${short352}`);
 
       // 5. The picker lists versions and the commit (guide is the
       // left pane, always present — just scroll back to the section).
