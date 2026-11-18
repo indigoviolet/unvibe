@@ -8,8 +8,8 @@
  * - **Commits:** all the PR's commits oldest first as
  *   `<sha8> <subject>`, with the head commit shown disabled ("latest"
  *   hint — explaining from it is an empty range the route refuses).
- * - **Your last GitHub review:** when one exists, isn't the head, and
- *   isn't already listed among the commits.
+ * - **Your last GitHub review:** when one exists and isn't the head —
+ *   a named row even when its commit is also listed above.
  *
  * No versions anywhere. Picking an item runs Explain at once through
  * the existing explain route (one agent call); the button shows the
@@ -96,12 +96,7 @@ export function ExplainMenu({ reviewId }: { reviewId: string }): React.JSX.Eleme
   const head = snapshot.version.headSha;
   const earlier = commits.filter((c) => !isHeadSha(head, c.sha));
   const priorPickable =
-    prior !== undefined &&
-    prior !== null &&
-    !isHeadSha(head, prior.sha) &&
-    !commits.some((c) => c.sha.toLowerCase() === prior.sha.toLowerCase())
-      ? prior
-      : null;
+    prior !== undefined && prior !== null && !isHeadSha(head, prior.sha) ? prior : null;
   if (earlier.length === 0 && !priorPickable) return null;
 
   const busy = phase.name === "explaining";

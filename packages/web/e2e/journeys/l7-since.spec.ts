@@ -165,20 +165,27 @@ test.describe("L7 explain-since (was j351 step 1)", () => {
     expect(app?.hunks).toHaveLength(2);
     for (const h of app!.hunks) await apiJson(svc, "PATCH", `/api/reviews/${reviewId}/hunks/${h.contentHash}`, { reviewed: true });
     await expect(page.locator(appFile).locator(".revc")).toContainText("2/2", { timeout: 30_000 });
-    const commits = snapJson.commits;
-    const baseCommit = commits.find((c) => /base/i.test(c.subject)) ?? commits[0];
-    const baseShort = baseCommit.sha.slice(0, 8);
     // The guide was written at the v1 head: the banner counts from it.
+    // (The base commit is outside the merge-base..head range, so the
+    // menu lists from the v1 head on.)
     const v1Head = snapJson.version.headSha;
     const v1Short = v1Head.slice(0, 8);
 
+    // A new commit touching only the alpha hunk, plus a commit adding a file
+    // that is then amended (two pickable commits past the guide's).
     writeFileSync(path.join(repoDir, "src-app.py"), V_ALPHA2);
     await git(repoDir, "add", "src-app.py");
     await git(repoDir, "commit", "-m", "rework alpha");
+    writeFileSync(path.join(repoDir, "d.py"), "D = 1\n");
+    await git(repoDir, "add", "d.py");
+    await git(repoDir, "commit", "-m", "add d");
+    writeFileSync(path.join(repoDir, "d.py"), "D = 1\nD2 = 2\n");
+    await git(repoDir, "add", "d.py");
+    await git(repoDir, "commit", "--amend", "--no-edit");
     await page.locator("#reviewbar").getByRole("button", { name: "Pull new commits from GitHub", exact: true }).click();
     const banner = page.locator('[data-testid="stale-banner"]');
-    await expect(banner).toContainText(/1 new commit since the guide was written/, { timeout: 60_000 });
-    await expect(banner).toContainText(/1 changed/);
+    await expect(banner).toContainText(/2 new commits since the guide was written/, { timeout: 60_000 });
+    await expect(banner).toContainText("1 changed · 1 new · 0 removed hunks");
     // No Update and no picker in the banner: one plain button, X fixed
     // to the commit the guide was written at.
     await expect(banner.getByRole("button", { name: "Update", exact: true })).toHaveCount(0);
@@ -192,11 +199,17 @@ test.describe("L7 explain-since (was j351 step 1)", () => {
 
     // The Changes panel, expanded with its cards: one grouped inset box
     // whose header names the commit range. No in-guide picker rows.
-    const head2 = ((await apiJson(svc, "GET", `/api/reviews/${reviewId}`)).json as { version: { headSha: string } }).version.headSha;
-    const h2Short = head2.slice(0, 8);
+    const afterPull = (await apiJson(svc, "GET", `/api/reviews/${reviewId}`)).json as {
+      commits: { sha: string; subject: string }[];
+      version: { headSha: string };
+    };
+    expect(afterPull.commits).toHaveLength(3);
+    const h2Short = afterPull.commits[1].sha.slice(0, 8);
+    const head3 = afterPull.version.headSha;
+    const h3Short = head3.slice(0, 8);
     const since = page.locator('[data-testid="since-section"]');
     await expect(since).toBeVisible({ timeout: 30_000 });
-    await expect(since).toContainText(new RegExp(`Changes ${v1Short} → ${h2Short}`));
+    await expect(since).toContainText(new RegExp(`Changes ${v1Short} → ${h3Short}`));
     await expect(page.getByTestId("explain-pick")).toHaveCount(0);
     await expect(page.getByTestId("explain-control")).toHaveCount(0);
     await expect(since.getByRole("button", { name: /Collapse changes/ })).toBeVisible();
@@ -234,7 +247,7 @@ test.describe("L7 explain-since (was j351 step 1)", () => {
     await expect(page.locator('[data-filterchip="since"]')).toHaveCount(0);
     expect(((await apiJson(svc, "GET", `/api/reviews/${reviewId}`)).json as { diffFilter?: unknown }).diffFilter).toBeUndefined();
 
-    // A re-run from the toolbar menu (the base commit) replaces the
+    // A re-run from the toolbar menu (the middle commit) replaces the
     // panel whole: still one card, header naming the new range. The
     // menu button is a borderless bar icon; the menu is the shared
     // `.fmenu` portal.
@@ -248,21 +261,21 @@ test.describe("L7 explain-since (was j351 step 1)", () => {
     // "latest" hint.
     const rows = menu.locator("[data-explain-commit]");
     await expect(rows).toHaveCount(3);
-    await expect(rows.first()).toContainText(baseShort);
-    const headRow = menu.locator(`[data-explain-commit="${head2}"]`);
+    await expect(rows.first()).toContainText(v1Short);
+    const headRow = menu.locator(`[data-explain-commit="${head3}"]`);
     await expect(headRow).toBeDisabled();
     await expect(headRow).toContainText("latest");
     // The head row is not clickable: a forced click picks nothing —
     // the menu stays open and the panel is untouched.
     await headRow.click({ force: true });
     await expect(menu).toBeVisible();
-    await expect(since).toContainText(new RegExp(`Changes ${v1Short} → ${h2Short}`));
-    await rows.first().click();
+    await expect(since).toContainText(new RegExp(`Changes ${v1Short} → ${h3Short}`));
+    await rows.nth(1).click();
     // Picking runs Explain at once: the bar button shows the busy
     // state while the run is in flight.
     await expect(menuBtn.locator(".dots")).toBeVisible();
     await waitForExplainPass(svc, reviewId);
-    await expect(since).toContainText(new RegExp(`Changes ${baseShort} → ${h2Short}`), { timeout: 30_000 });
+    await expect(since).toContainText(new RegExp(`Changes ${h2Short} → ${h3Short}`), { timeout: 30_000 });
     await expect(since.locator('[id^="C-since-"]')).toHaveCount(1);
     // The banner keeps offering Explain after the run.
     await expect(banner.getByRole("button", { name: "Explain changes", exact: true })).toBeVisible();
@@ -273,7 +286,7 @@ test.describe("L7 explain-since (was j351 step 1)", () => {
     await git(repoDir, "add", "src-app.py");
     await git(repoDir, "commit", "-m", "rework alpha again");
     await page.locator("#reviewbar").getByRole("button", { name: "Pull new commits from GitHub", exact: true }).click();
-    await expect(banner).toContainText(/2 new commits since the guide was written/, { timeout: 60_000 });
+    await expect(banner).toContainText(/3 new commits since the guide was written/, { timeout: 60_000 });
     await expect(since.getByTestId("since-newer")).toContainText("1 newer commit since this was written", { timeout: 30_000 });
   });
 
