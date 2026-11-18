@@ -311,6 +311,8 @@ async function runIngestBackground(
     await ctx.reviews.mutate(reviewId, (draft) => {
       draft.review = { ...snapshot.review, guidePersonaId: prevGuide };
       draft.version = { ...snapshot.version! };
+      // Issue #421: no guide yet — v1 is what the reader will describe.
+      draft.guideHead = { version: snapshot.review.currentVersion, sha: snapshot.version!.headSha };
       draft.files = snapshot.files as ReviewSnapshot["files"];
       draft.description = snapshot.description ? { ...snapshot.description } : undefined;
       draft.commits = snapshot.commits ? snapshot.commits.map((c) => ({ ...c })) : undefined;

@@ -138,7 +138,8 @@ test.describe("tour update banners", () => {
     await menuBtn.click();
     const menu = page.getByTestId("explain-menu");
     await expect(menu).toContainText("Commits", { timeout: 15_000 });
-    await expect(menu.locator("[data-explain-commit]")).toHaveCount(3);
+    // Two commits past the base, oldest first; the head is disabled.
+    await expect(menu.locator("[data-explain-commit]")).toHaveCount(2);
     await expect(menu.locator(`[data-explain-commit="${headNow.version.headSha}"]`)).toBeDisabled();
     await page.mouse.move(20, 20);
     await page.screenshot({ path: path.join(SHOTS, "367", "explain-menu-1440-light.png") });
