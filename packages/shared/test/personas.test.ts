@@ -5,8 +5,6 @@
 import { describe, expect, it } from "vitest";
 import {
   BUILT_IN_PERSONA_ID,
-  CLARITY_PERSONA,
-  CLARITY_PERSONA_ID,
   GUIDE_PERSONA,
   GUIDE_PERSONA_ID,
   PERSONA_COLORS,
@@ -125,42 +123,10 @@ describe("built-in Second opinion", () => {
   it("defaultPersonas returns a fresh seed list", () => {
     const a = defaultPersonas();
     const b = defaultPersonas();
-    expect(a).toEqual([GUIDE_PERSONA, SECOND_OPINION_PERSONA, CLARITY_PERSONA]);
+    expect(a).toEqual([GUIDE_PERSONA, SECOND_OPINION_PERSONA]);
     expect(a).not.toBe(b);
     expect(a[0]).not.toBe(GUIDE_PERSONA);
     expect(a[1]).not.toBe(SECOND_OPINION_PERSONA);
-    expect(a[2]).not.toBe(CLARITY_PERSONA);
-  });
-});
-
-describe("built-in Clarity", () => {
-  it("is seeded enabled, following the main model", () => {
-    expect(CLARITY_PERSONA.id).toBe(CLARITY_PERSONA_ID);
-    expect(CLARITY_PERSONA.id).toBe("clarity");
-    expect(CLARITY_PERSONA.name).toBe("Clarity");
-    expect(CLARITY_PERSONA.enabled).toBe(true);
-    // Follows the main model at run time; the stored pick is the
-    // static main fallback (display seed, starting point for pinning).
-    expect(CLARITY_PERSONA.followMain).toBe(true);
-    expect(CLARITY_PERSONA.provider).toBe("claude");
-    expect(CLARITY_PERSONA.model).toBe("claude-opus-5-5");
-    expect(CLARITY_PERSONA.cardInstruction).toBe(
-      "Rewrite this card's prose following your lens: the same facts, scope, hedges and citations, clearer to an engineer. If the card is already effective, return it unchanged.",
-    );
-    expect(CLARITY_PERSONA.color).toBe(PERSONA_COLORS[1]);
-    expect(validatePersona(CLARITY_PERSONA)).toEqual([]);
-  });
-
-  it("lens preserves citations, containers and fences and keeps ambiguity", () => {
-    expect(CLARITY_PERSONA.lens).toContain("[[diff:…]]");
-    expect(CLARITY_PERSONA.lens).toContain("[[code:…]]");
-    expect(CLARITY_PERSONA.lens).toContain("[[concept:…|…]]");
-    expect(CLARITY_PERSONA.lens).toContain("`:::` container");
-    expect(CLARITY_PERSONA.lens).toContain("d2 fences");
-    expect(CLARITY_PERSONA.lens).toContain("preserve the ambiguity");
-    expect(CLARITY_PERSONA.lens).not.toContain("ask one narrow question");
-    expect(CLARITY_PERSONA.lens).not.toContain("Output only the rewritten text");
-    expect(CLARITY_PERSONA.lens).not.toContain("ask for it");
   });
 });
 
@@ -184,12 +150,11 @@ describe("built-in Guide (issue #379)", () => {
     expect(validatePersona(GUIDE_PERSONA)).toEqual([]);
   });
 
-  it("seeds first, leaving Second opinion and Clarity on their colours", () => {
+  it("seeds Guide first and Second opinion second, on their colours", () => {
     const seed = defaultPersonas();
-    expect(seed.map((p) => p.id)).toEqual(["guide", "second-opinion", "clarity"]);
+    expect(seed.map((p) => p.id)).toEqual(["guide", "second-opinion"]);
     expect(seed[0]).toMatchObject({ id: GUIDE_PERSONA_ID });
     expect(seed[1]).toMatchObject({ id: "second-opinion", color: PERSONA_COLORS[0] });
-    expect(seed[2]).toMatchObject({ id: "clarity", color: PERSONA_COLORS[1] });
     expect(getGuidePersona(seed)).toMatchObject({ id: GUIDE_PERSONA_ID });
     expect(getGuidePersona([])).toBeUndefined();
   });
