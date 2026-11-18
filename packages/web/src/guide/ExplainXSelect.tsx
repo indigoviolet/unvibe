@@ -13,7 +13,7 @@ import { priorReviewDate, usePriorGithubReview } from "./usePriorGithubReview.js
 
 export type ExplainX = { version: number } | { sha: string };
 
-function optionValue(x: ExplainX): string {
+export function optionValue(x: ExplainX): string {
   return "version" in x ? `version:${x.version}` : `sha:${x.sha.toLowerCase()}`;
 }
 
@@ -74,9 +74,18 @@ export function explainXLabel(x: ExplainX): string {
   return "version" in x ? `v${x.version}` : shortBaselineSha(x.sha);
 }
 
-function buildEntries(review: Review, commits: { sha: string; subject: string }[], priorSha: string | null, priorWhen: string | null): SelectEntry[] {
+function buildEntries(
+  snapshot: ReviewSnapshot,
+  review: Review,
+  commits: { sha: string; subject: string }[],
+  priorSha: string | null,
+  priorWhen: string | null,
+): SelectEntry[] {
   const entries: SelectEntry[] = [];
   const current = review.currentVersion;
+  // The head is never an X: explaining from it is an empty range.
+  const earlier = commits.filter((c) => !isHeadX(snapshot, { sha: c.sha }));
+  const prior = priorSha && !isHeadX(snapshot, { sha: priorSha }) ? priorSha : null;
   const versionOptions = review.versions
     .filter((v) => v.n < current)
     .map((v) => ({
@@ -84,24 +93,24 @@ function buildEntries(review: Review, commits: { sha: string; subject: string }[
       label: `v${v.n} · ${v.headSha.slice(0, 8)}`,
     }));
   if (versionOptions.length > 0) entries.push({ label: "Versions", options: versionOptions });
-  if (commits.length > 0) {
+  if (earlier.length > 0) {
     entries.push({
       label: "Commits",
-      options: commits.map((c) => ({
+      options: earlier.map((c) => ({
         value: `sha:${c.sha.toLowerCase()}`,
         label: `${c.sha.slice(0, 8)} ${c.subject}`,
       })),
     });
   }
-  if (priorSha) {
-    const covered = commits.some((c) => c.sha.toLowerCase() === priorSha.toLowerCase());
+  if (prior) {
+    const covered = earlier.some((c) => c.sha.toLowerCase() === prior.toLowerCase());
     if (!covered) {
       entries.push({
         label: "GitHub reviews",
         options: [
           {
-            value: `sha:${priorSha.toLowerCase()}`,
-            label: `Your last GitHub review (${shortBaselineSha(priorSha)}${priorWhen ? `, ${priorWhen}` : ""})`,
+            value: `sha:${prior.toLowerCase()}`,
+            label: `Your last GitHub review (${shortBaselineSha(prior)}${priorWhen ? `, ${priorWhen}` : ""})`,
           },
         ],
       });
@@ -110,35 +119,52 @@ function buildEntries(review: Review, commits: { sha: string; subject: string }[
   return entries;
 }
 
-export function ExplainXSelect({
-  reviewId,
-  value,
-  onChange,
-  id,
-}: {
-  reviewId: string;
-  /** Null means the default X (stored, else the version last opened). */
-  value: ExplainX | null;
-  onChange: (x: ExplainX | null) => void;
-  id?: string;
-}) {
+/** True when `x` is one of the offered choices. Pure. */
+export function entriesHave(entries: SelectEntry[], x: ExplainX): boolean {
+  const v = optionValue(x);
+  return entries.some((e) => ("options" in e ? e.options.some((o) => o.value === v) : (e as { value?: string }).value === v));
+}
+
+/**
+ * The X choices for this review (#413): earlier versions, PR commits
+ * other than the head, and the reviewer's last GitHub review when it is
+ * not the head. Empty means there is nothing earlier to explain from.
+ */
+export function useExplainEntries(reviewId: string): SelectEntry[] {
   const snapshot = useReview((s) => s.snapshot);
-  const review = snapshot?.review;
   const prior = usePriorGithubReview(reviewId);
-  const entries = useMemo(
+  return useMemo(
     () =>
-      review
+      snapshot
         ? buildEntries(
-            review,
-            snapshot?.commits ?? [],
+            snapshot,
+            snapshot.review,
+            snapshot.commits ?? [],
             prior ? prior.sha : null,
             prior ? priorReviewDate(prior.submittedAt) : null,
           )
         : [],
-    [review, snapshot?.commits, prior],
+    [snapshot, prior],
   );
-  if (!review || entries.length === 0) return null;
-  const def = snapshot ? defaultExplainX(snapshot) : null;
+}
+
+export function ExplainXSelect({
+  reviewId,
+  value,
+  onChange,
+  placeholder,
+  id,
+}: {
+  reviewId: string;
+  /** The armed X (the picked one, else the default), or null. */
+  value: ExplainX | null;
+  onChange: (x: ExplainX | null) => void;
+  /** Shown when nothing is armed; never repeated on the button. */
+  placeholder: string;
+  id?: string;
+}) {
+  const entries = useExplainEntries(reviewId);
+  if (entries.length === 0) return null;
 
   const pick = (picked: string): void => {
     if (picked === "") {
@@ -157,7 +183,7 @@ export function ExplainXSelect({
         aria-label="Explain changes since: the version or commit to explain from"
         title="Explain changes since: the version or commit to explain from"
         value={value ? optionValue(value) : ""}
-        placeholder={def ? `Since ${explainXLabel(def)} (default)` : "Pick what to explain since"}
+        placeholder={placeholder}
         onValueChange={(v) => pick(v)}
         options={entries}
       />

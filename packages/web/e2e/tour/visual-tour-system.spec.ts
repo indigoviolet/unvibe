@@ -106,7 +106,7 @@ test.describe("tour update banners", () => {
     await page.screenshot({ path: path.join(SHOTS, "367", "stale-banner-1440-light.png") });
     await page.locator(appFile).locator(".dhunk").first().screenshot({ path: path.join(SHOTS, "367", "hunk-header-chip-1440-light.png") });
 
-    await banner.getByRole("button", { name: /Explain changes since v1/ }).click();
+    await banner.getByRole("button", { name: "Explain changes", exact: true }).click();
     const jobDeadline = Date.now() + 90_000;
     for (;;) {
       const res = await apiJson(svc, "GET", `/api/jobs?review=${reviewId}`);

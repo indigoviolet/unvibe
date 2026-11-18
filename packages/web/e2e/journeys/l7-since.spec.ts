@@ -170,11 +170,11 @@ test.describe("L7 explain-since (was j351 step 1)", () => {
     // to the version the new commits came after.
     await expect(banner.getByRole("button", { name: "Update", exact: true })).toHaveCount(0);
     await expect(banner.getByTestId("explain-pick")).toHaveCount(0);
-    await expect(banner.getByRole("button", { name: "Explain changes since v1" })).toBeVisible();
+    await expect(banner.getByRole("button", { name: "Explain changes", exact: true })).toBeVisible();
     // Unchanged hunks keep reviewed state through the refresh.
     await expect(page.locator(appFile).locator(".revc")).toContainText("1/2", { timeout: 30_000 });
 
-    await banner.getByRole("button", { name: "Explain changes since v1" }).click();
+    await banner.getByRole("button", { name: "Explain changes", exact: true }).click();
     await waitForExplainPass(svc, reviewId);
 
     // The Changes-since-X section, expanded with its cards. Only one
@@ -229,13 +229,14 @@ test.describe("L7 explain-since (was j351 step 1)", () => {
     const commitsGroup = page.locator('[role="group"]', { hasText: "Commits" }).first();
     await expect(commitsGroup).toBeVisible({ timeout: 15_000 });
     await commitsGroup.getByRole("option", { name: new RegExp(baseShort) }).click();
-    await expect(since.getByRole("button", { name: `Explain changes since ${baseShort}` })).toBeVisible({ timeout: 15_000 });
-    await since.getByRole("button", { name: `Explain changes since ${baseShort}` }).click();
+    await expect(pick).toContainText(baseShort, { timeout: 15_000 });
+    await expect(since.getByRole("button", { name: "Explain", exact: true })).toBeEnabled();
+    await since.getByRole("button", { name: "Explain", exact: true }).click();
     await waitForExplainPass(svc, reviewId);
     await expect(since).toContainText(new RegExp(`Changes since ${baseShort} → v2`), { timeout: 30_000 });
     await expect(since.locator('[id^="C-since-"]')).toHaveCount(1);
     // The banner keeps offering Explain after the run.
-    await expect(banner.getByRole("button", { name: /Explain changes since/ })).toBeVisible();
+    await expect(banner.getByRole("button", { name: "Explain changes", exact: true })).toBeVisible();
   });
 
   test("the X picker offers versions and commits; picking arms the button without storing", async ({ page }) => {
@@ -256,19 +257,32 @@ test.describe("L7 explain-since (was j351 step 1)", () => {
     const since = page.locator('[data-testid="since-section"]');
     await expect(since).toBeVisible({ timeout: 60_000 });
     const pick = since.locator('[data-testid="explain-pick"]');
-    // A default X is offered (whatever the stored X is); Versions and
-    // Commits groups list the choices.
-    await expect(pick).toContainText(/Since .* \(default\)/, { timeout: 30_000 });
+    // #413: the header already names its X, so the re-run picker starts
+    // empty and the button is disabled — and never repeats the picker's
+    // placeholder. It is the app's primary Button, not a chip.
+    await expect(pick).toContainText("Explain from another point…", { timeout: 30_000 });
+    const btn = since.getByTestId("explain-button");
+    await expect(btn).toBeDisabled();
+    await expect(btn).toHaveText("Explain");
+    await expect(btn).toHaveClass(/\bui-btn\b/);
+    await expect(btn).toHaveAttribute("data-variant", "primary");
+    await expect(btn).not.toHaveClass(/(^|\s)x(\s|$)/);
+    // Picker and button sit on one row.
+    const [pb, bb] = await Promise.all([pick.boundingBox(), btn.boundingBox()]);
+    expect(Math.abs(pb!.y + pb!.height / 2 - (bb!.y + bb!.height / 2))).toBeLessThanOrEqual(2);
     await pick.click();
     await expect(page.getByRole("group", { name: "Versions" })).toBeVisible({ timeout: 15_000 });
     const commitsGroup = page.locator('[role="group"]', { hasText: "Commits" }).first();
     await expect(commitsGroup).toBeVisible();
     await expect(commitsGroup.getByRole("option", { name: new RegExp(short) })).toBeVisible();
+    // The head commit is never offered (an empty range).
+    const headShort = before.commits[before.commits.length - 1].sha.slice(0, 8);
+    await expect(commitsGroup.getByRole("option", { name: new RegExp(headShort) })).toHaveCount(0);
     await commitsGroup.getByRole("option", { name: new RegExp(short) }).click();
     // The trigger names the picked commit, and the button arms from it.
     await expect(pick).toContainText(short, { timeout: 30_000 });
     await expect(pick).toContainText(older.subject.slice(0, 12), { timeout: 30_000 });
-    await expect(since.getByRole("button", { name: `Explain changes since ${short}` })).toBeVisible();
+    await expect(since.getByRole("button", { name: "Explain", exact: true })).toBeEnabled();
     // Picking stores nothing: stored X and section are untouched until click.
     const after = (await apiJson(svc, "GET", `/api/reviews/${reviewId}`)).json as {
       sinceBaseline: unknown;
@@ -414,8 +428,8 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
     // No section yet and no new commits: the guide side offers Explain
     // with the stored last-review commit as the default X.
     const slot = page.getByTestId("explain-control");
-    await expect(slot).toContainText(`Explain changes since ${c1short}`, { timeout: 30_000 });
-    await slot.getByRole("button", { name: `Explain changes since ${c1short}` }).click();
+    await expect(slot.getByTestId("explain-pick")).toContainText(c1short, { timeout: 30_000 });
+    await slot.getByRole("button", { name: "Explain changes", exact: true }).click();
     await waitForExplainPass(svc!, reviewId);
     // The section names the last-review commit as X.
     const since = page.locator('[data-testid="since-section"]');
@@ -496,18 +510,18 @@ test.describe("L7 explain banner; no stale anywhere", () => {
     await expect(banner).toContainText(/New commits · v1 → v2/, { timeout: 60_000 });
     await expect(banner).toContainText(/1 changed/);
     await expect(banner.getByRole("button", { name: "Update", exact: true })).toHaveCount(0);
-    await expect(banner.getByRole("button", { name: "Explain changes since v1" })).toBeVisible();
+    await expect(banner.getByRole("button", { name: "Explain changes", exact: true })).toBeVisible();
 
     // #368: the header chip sits off the diff stat with the shared gap.
     await expect(page.locator(appFile).getByText("changed since reviewed")).toHaveCount(1);
     await expect(page.locator(appFile).locator(".prtag").first()).toHaveCSS("margin-left", "6px");
 
     // Explain: the section lands, the banner keeps offering, nothing stale.
-    await banner.getByRole("button", { name: "Explain changes since v1" }).click();
+    await banner.getByRole("button", { name: "Explain changes", exact: true }).click();
     await waitForExplainPass(svc, reviewId);
     await expect(page.locator('[data-testid="since-section"]')).toContainText(/Changes since v1 → v2/, { timeout: 60_000 });
     await expect(banner).toContainText(/New commits · v1 → v2/);
-    await expect(banner.getByRole("button", { name: /Explain changes since/ })).toBeVisible();
+    await expect(banner.getByRole("button", { name: "Explain changes", exact: true })).toBeVisible();
 
     // No stale markers anywhere: no card badges, no Update buttons.
     await expect(page.locator("#page .stale")).toHaveCount(0);
@@ -622,7 +636,7 @@ test.describe("L7 refresh with new commits", () => {
     await expect(options.last()).toContainText("current");
     await options.last().click();
     await expect(banner).toBeVisible();
-    await banner.getByRole("button", { name: /Explain changes since/ }).click();
+    await banner.getByRole("button", { name: "Explain changes", exact: true }).click();
     await expect(banner.getByTestId("explain-error")).toContainText("no agent configured", { timeout: 30_000 });
   });
 
@@ -882,7 +896,7 @@ test.describe("L7 refresh carry-over", () => {
     rmSync(dataDir, { recursive: true, force: true });
   });
 
-  test("one-version review: no head default, Explain disabled until a pick; head X is a 409", async ({ page }) => {
+  test("one-version, one-commit review: no Explain row; head X is a 409", async ({ page }) => {
     test.setTimeout(240_000);
     if (!svc) throw new Error("no service");
     // A fresh review on the same repo: a single version, no section,
@@ -891,15 +905,14 @@ test.describe("L7 refresh carry-over", () => {
     await waitForGuideCards(svc, id2);
     await page.goto(`${svc.origin}/review/${id2}?token=${svc.token}`);
     await expect(page.locator("#page .doc")).toBeVisible({ timeout: 60_000 });
-    // The guide-top control names no "since v1" default: the pick asks
-    // for an X and the button stays disabled until one is picked.
-    const slot = page.getByTestId("explain-control");
-    await expect(slot).toBeVisible({ timeout: 30_000 });
-    await expect(slot.locator('[data-testid="explain-pick"]')).toContainText("Pick what to explain since");
-    await expect(slot.getByRole("button", { name: "Pick what to explain since" })).toBeDisabled();
-    await expect(slot.getByRole("button", { name: /Explain changes since/ })).toHaveCount(0);
-    // The route refuses the head in every spelling, before any spend.
+    // #413: nothing earlier than the head (one version, its only commit
+    // is the head, no prior review): the guide shows no Explain row at
+    // all, never a picker whose only choice is the head.
     const snap = await apiJson(svc, "GET", `/api/reviews/${id2}`);
+    expect((snap.json as { commits: unknown[] }).commits.length).toBe(1);
+    await expect(page.getByTestId("explain-control")).toHaveCount(0);
+    await expect(page.getByTestId("explain-pick")).toHaveCount(0);
+    // The route refuses the head in every spelling, before any spend.
     const headSha = (snap.json as { version: { headSha: string } }).version.headSha;
     for (const payload of [{}, { version: 1 }, { sha: headSha }]) {
       const res = await apiJson(svc, "POST", `/api/reviews/${id2}/explain`, payload);
@@ -946,7 +959,7 @@ test.describe("L7 refresh carry-over", () => {
     await expect(page.locator(appFile).getByText("return 111")).toBeVisible({ timeout: 30_000 });
 
     // #194: the explain pass finishes terminally either way under replay.
-    await page.locator('[data-testid="stale-banner"]').getByRole("button", { name: /Explain changes since/ }).click();
+    await page.locator('[data-testid="stale-banner"]').getByRole("button", { name: "Explain changes", exact: true }).click();
     const jobDeadline = Date.now() + 90_000;
     let explainJob: { id: string; kind: string; state: string; finishedAt?: number } | undefined;
     for (;;) {

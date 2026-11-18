@@ -132,24 +132,16 @@ test("citation hover previews real cited lines", async ({ page }) => {
   expect(violations).toEqual([]);
 });
 
-test("Explain with no stored section says nothing changed", async ({ page }) => {
+test("one version, only the head commit: no Explain row (#413)", async ({ page }) => {
   const violations = await sameOriginOnly(page);
   await gotoDemo(page);
   await closeSeedCard(page);
-  // The one-version demo offers its recorded commit as X. The mock run
-  // settles its job without storing a section, so the control says so
-  // instead of going quiet — role=status where the progress text was.
-  const slot = page.getByTestId("explain-control");
-  await expect(slot).toBeVisible({ timeout: 30_000 });
-  await expect(slot.getByTestId("explain-pick")).toContainText("Pick what to explain since");
-  await slot.getByTestId("explain-pick").getByRole("combobox").click();
-  await expect(page.getByRole("option", { name: /00162b20/ })).toBeVisible({ timeout: 15_000 });
-  await page.getByRole("option", { name: /00162b20/ }).click();
-  await slot.getByRole("button", { name: /Explain changes since 00162b20/ }).click();
-  const empty = slot.getByTestId("explain-empty");
-  await expect(empty).toContainText("No changes to explain since 00162b20", { timeout: 30_000 });
-  await expect(empty).toHaveAttribute("role", "status");
-  await expect(page.locator('[data-testid="since-section"]')).toHaveCount(0);
+  // The demo has one version and its only commit is the head, so there
+  // is nothing earlier to explain from: the guide shows no Explain row
+  // (never a picker whose only choice is the head).
+  await expect(page.locator("#page .doc")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("explain-control")).toHaveCount(0);
+  await expect(page.getByTestId("explain-pick")).toHaveCount(0);
   expect(violations).toEqual([]);
 });
 

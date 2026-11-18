@@ -4578,7 +4578,7 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       // The banner carries no picker: the only Explain entry on this
       // page is the plain banner button.
       await expect(page.getByTestId("explain-pick")).toHaveCount(0);
-      await expect(page.locator('[data-testid="stale-banner"]')).toContainText(/Explain changes since v1/);
+      await expect(page.locator('[data-testid="stale-banner"]').getByRole("button", { name: "Explain changes", exact: true })).toBeVisible();
       await page.getByTestId("prior-review-checkbox").click();
       // The failure leaves a persistent inline message under the
       // offer until the baseline changes — and no toast for this case.
@@ -4640,7 +4640,7 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       await goneOption.click();
       await expect(page.locator("#toast")).toBeHidden();
       // Explaining from the gone commit fails loudly in the control.
-      await since.getByRole("button", { name: `Explain changes since ${goneShort}` }).click();
+      await since.getByRole("button", { name: "Explain", exact: true }).click();
       const inline = since.getByTestId("explain-error");
       await expect(inline).toContainText(`Couldn't find commit ${goneShort}`, { timeout: 30_000 });
       await expect(page.locator("#toast")).toBeHidden();
