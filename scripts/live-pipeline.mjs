@@ -214,9 +214,10 @@ async function runOnce(run, token) {
     const r = await api("PUT", "/api/settings", patch, token);
     return { ok: r.code === 200, status: r.code, detail: (r.json?.errors ?? [r.raw.slice(0, 200)]).join("; "), body: r.json };
   };
+  const get = async () => (await api("GET", "/api/settings", undefined, token)).json;
   try {
-    await selectLiveModel(put, run.main, ["main"]);
-    await selectLiveModel(put, run.small, ["small"]);
+    await selectLiveModel(put, run.main, ["main"], get);
+    await selectLiveModel(put, run.small, ["small"], get);
   } catch (e) {
     out.failures.push(e instanceof Error ? e.message : String(e));
     return out;

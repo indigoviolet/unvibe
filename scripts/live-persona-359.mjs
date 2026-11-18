@@ -203,7 +203,8 @@ const main = async () => {
       const r = await api("PUT", "/api/settings", patch, token);
       return { ok: r.code === 200, status: r.code, detail: (r.json?.errors ?? [r.raw.slice(0, 200)]).join("; "), body: r.json };
     };
-    await selectLiveModel(put, { provider: live.provider, model: live.model }, ["main"]);
+    const get = async () => (await api("GET", "/api/settings", undefined, token)).json;
+    await selectLiveModel(put, { provider: live.provider, model: live.model }, ["main"], get);
     const seed = (await api("GET", "/api/settings", undefined, token)).json;
     const personas = [...(seed?.personas ?? []), { ...PERSONA, provider: live.provider, model: live.model }];
     const pset = await api("PUT", "/api/settings", { personas }, token);

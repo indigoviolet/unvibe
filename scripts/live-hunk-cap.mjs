@@ -162,8 +162,9 @@ async function runCap(cap, idx) {
       const r = await api(port, "PUT", "/api/settings", patch, token);
       return { ok: r.code === 200, status: r.code, detail: ((r.json?.errors ?? [r.raw.slice(0, 200)])).join("; "), body: r.json };
     };
+    const get = async () => (await api(port, "GET", "/api/settings", undefined, token)).json;
     try {
-      await selectLiveModel(put, pick, ["main", "small"]);
+      await selectLiveModel(put, pick, ["main", "small"], get);
     } catch (e) {
       throw new Error(e instanceof Error ? e.message : String(e));
     }

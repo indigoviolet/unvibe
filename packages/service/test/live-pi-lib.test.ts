@@ -12,6 +12,8 @@ import { tmpdir } from "node:os";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { defaultPersonas } from "@unvibe/shared";
+import { validateSettings } from "../src/settings/store.js";
 import {
   LIVE_PI_DEFAULT,
   assertPriced,
@@ -194,25 +196,53 @@ describe("cap pre-flight and spend tracker", () => {
 });
 
 describe("model selection (single place, TODO #292)", () => {
-  it("builds the patch for the requested roles", () => {
-    expect(liveModelPatch({ provider: "pi", model: "m" }, ["main", "small"])).toEqual({
-      // `effort` is required by the settings contract ("" = provider default).
-      main: { provider: "pi", model: "m", effort: "" },
-      small: { provider: "pi", model: "m", effort: "" },
-    });
+  // Issue #414: "main" is the Guide persona, not a settings key.
+  const current = { personas: defaultPersonas(), small: { provider: "claude", model: "haiku", effort: "" } };
+
+  it("points the Guide persona and the small role at the pick, leaving other personas alone", () => {
+    const patch = liveModelPatch({ provider: "pi", model: "m" }, ["main", "small"], current) as Record<string, unknown>;
+    // `effort` is required by the settings contract ("" = provider default).
+    expect(patch["small"]).toEqual({ provider: "pi", model: "m", effort: "" });
+    expect(patch["main"]).toBeUndefined();
+    const personas = patch["personas"] as { id: string; provider: string; model: string; effort: string }[];
+    const guide = personas.find((p) => p.id === "guide");
+    expect(guide).toMatchObject({ provider: "pi", model: "m", effort: "" });
+    const others = personas.filter((p) => p.id !== "guide");
+    expect(others).toEqual(current.personas.filter((p) => p.id !== "guide"));
   });
 
-  it("goes through the settings API and fails loudly when refused", async () => {
-    const ok = await selectLiveModel(async () => ({ ok: true, status: 200, detail: "", body: { main: 1 } }), {
-      provider: "pi",
-      model: "m",
-    });
-    expect(ok).toEqual({ main: 1 });
+  it("produces a patch the real settings validator accepts (no stale keys)", () => {
+    for (const roles of [["main", "small"], ["main"], ["small"]]) {
+      expect(validateSettings(liveModelPatch({ provider: "pi", model: "m" }, roles, current))).toEqual([]);
+    }
+  });
+
+  it("refuses the main role without a Guide persona to point at", () => {
+    expect(() => liveModelPatch({ provider: "pi", model: "m" }, ["main"], { personas: [] })).toThrow(/no Guide persona/);
+  });
+
+  it("goes through the settings API, reads personas for main, and fails loudly when refused", async () => {
+    const puts: unknown[] = [];
+    const ok = await selectLiveModel(
+      async (patch) => {
+        puts.push(patch);
+        return { ok: true, status: 200, detail: "", body: { done: 1 } };
+      },
+      { provider: "pi", model: "m" },
+      ["main", "small"],
+      async () => current,
+    );
+    expect(ok).toEqual({ done: 1 });
+    expect(Object.keys(puts[0] as object).sort()).toEqual(["personas", "small"]);
     await expect(
-      selectLiveModel(async () => ({ ok: false, status: 400, detail: 'main model "m" is not offered by pi', body: null }), {
-        provider: "pi",
-        model: "m",
-      }),
+      selectLiveModel(async () => ({ ok: true, status: 200, detail: "", body: null }), { provider: "pi", model: "m" }, ["main"]),
+    ).rejects.toThrow(/needs getSettings/);
+    await expect(
+      selectLiveModel(
+        async () => ({ ok: false, status: 400, detail: 'small model "m" is not offered by pi', body: null }),
+        { provider: "pi", model: "m" },
+        ["small"],
+      ),
     ).rejects.toThrow(/not offered by pi/);
   });
 });

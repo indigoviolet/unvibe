@@ -23,6 +23,7 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
+import { liveModelPatch } from "./live-pi-lib.mjs";
 import {
   DEMO_LARGE_MODEL,
   copyCacheToScratch,
@@ -219,10 +220,16 @@ const main = async () => {
   if (opts.mode === "interactive") {
     // Point every role at pi + muse-spark (the cache was built that way;
     // re-assert after the copy so Ask/Explain/diagram spend on the cap).
-    const patch = {
-      main: { ...DEMO_LARGE_MODEL, effort: "" },
-      small: { ...DEMO_LARGE_MODEL, effort: "" },
-    };
+    // "main" is the Guide persona (#414): read the personas, then patch.
+    const current = (await api(port, "GET", "/api/settings", undefined, token)).json;
+    let patch;
+    try {
+      patch = liveModelPatch(DEMO_LARGE_MODEL, ["main", "small"], current);
+    } catch (e) {
+      console.error(`demo-large open: ${e instanceof Error ? e.message : String(e)}`);
+      cleanup();
+      return;
+    }
     const r = await api(port, "PUT", "/api/settings", patch, token);
     if (r.code !== 200) {
       console.error(`demo-large open: settings refused pi model (HTTP ${r.code}): ${r.raw.slice(0, 200)}`);

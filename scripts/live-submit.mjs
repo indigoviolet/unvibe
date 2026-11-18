@@ -222,7 +222,8 @@ async function main() {
         return { ok: false, status: 400, detail: e instanceof Error ? e.message : String(e), body: null };
       }
     };
-    await selectLiveModel(put, { provider: live.provider, model: live.model }, ["main", "small"]);
+    const get = async () => api(base, token, "GET", "/api/settings");
+    await selectLiveModel(put, { provider: live.provider, model: live.model }, ["main", "small"], get);
 
     const reposRes = await api(base, token, "POST", "/api/repos", { path: cloneDir });
     const repo = reposRes.repos.find((r) => r.localPath === cloneDir) ?? reposRes.repos[0];
