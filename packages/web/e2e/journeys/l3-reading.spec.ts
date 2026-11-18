@@ -2248,6 +2248,19 @@ test.describe("L3 demo guide reading", () => {
       await expect(page.locator("#selbar")).toBeVisible({ timeout: 15_000 });
       await expect(page.getByTestId("explain-term")).toHaveCount(0);
       await page.keyboard.press("Escape");
+
+      // One picking card at a time: opening another card's picker
+      // clears the first card's terms and highlights.
+      await openUnderstandMenu("problem");
+      await page.locator('[data-understand-menu-list="problem"]').getByRole("menuitem", { name: "Explain terms…" }).click();
+      await selectText(page, "#C-problem", "HTTPMessage", 0, undefined, { waitForBar: false });
+      await expect(page.getByTestId("explain-term")).toHaveCount(1);
+      await openUnderstandMenu("central");
+      await page.locator('[data-understand-menu-list="central"]').getByRole("menuitem", { name: "Explain terms…" }).click();
+      await expect(page.locator("mark[data-explain-term]")).toHaveCount(0);
+      await expect(page.locator('#C-central [data-testid="explain-tray"]')).toBeVisible();
+      await expect(page.locator('#C-problem [data-testid="explain-tray"]')).toHaveCount(0);
+      await page.keyboard.press("Escape");
     });
   });
 
