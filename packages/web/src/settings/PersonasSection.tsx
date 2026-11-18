@@ -6,9 +6,9 @@
  *
  * The built-in Second opinion arrives seeded in fresh settings and is an
  * ordinary entry afterwards — editable and deletable like any other.
- * The built-in Clarity (issue #359) follows the Guide's model
- * (`followMain`); the form shows that with the option to pin a
- * specific one. The built-in Guide (issue #379) is the main
+ * Any persona may follow the Guide's model (`followMain`); the form
+ * shows that with the option to pin a specific one. The built-in
+ * Guide (issue #379) is the main
  * agent itself — fixed (no delete, no disable), owning the main provider
  * + model and a writing-style lens (empty by default).
  * Every change PUTs the whole list through `saveSettings`, like every
@@ -115,8 +115,8 @@ export function PersonasSection({
         The Guide is the main agent: it writes the guide, explanations and answers on its model,
         in its writing style (empty means no extra style). Reviewer voices can take on a card.
         Each runs on its model — or on the Guide&apos;s model — with its lens; the colour is
-        assigned automatically. Second opinion and Clarity are built in — edit or delete
-        them like any other persona. A persona whose fork holds reader instructions can also
+        assigned automatically. Second opinion is built in — edit or delete
+        it like any other persona. A persona whose fork holds reader instructions can also
         write a whole guide: use Re-do with that persona.
         New reviews and plain Re-do guide runs use the default guide below.
       </p>
