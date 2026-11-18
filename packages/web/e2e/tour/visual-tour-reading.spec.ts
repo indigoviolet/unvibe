@@ -124,24 +124,51 @@ test("Help me understand toolbar icon with tooltip (1440-light)", async ({ page 
   await page.screenshot({ path: path.join(SHOTS, "help-me-understand-1440-light.png"), fullPage: true });
 });
 
-// ---- ? mode (#388): two picked terms with highlights and the tray ----
-test("? mode with two picked terms and the tray (1440-light)", async ({ page }) => {
+// ---- Help me understand menu (#418): the card toolbar button opens the same menu as the persona button ----
+test("Help me understand menu open on a card (1440-light)", async ({ page }) => {
   if (!svc) throw new Error("service not running");
   test.setTimeout(240_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
   await expect(page.locator("#C-central")).toBeVisible({ timeout: 60_000 });
-  await expect(page.locator("#C-problem")).toBeVisible({ timeout: 60_000 });
-  await page.getByTestId("question-toggle").click();
-  await expect(page.getByTestId("question-tray")).toBeVisible({ timeout: 15_000 });
+  await page.locator("#C-central").scrollIntoViewIfNeeded();
+  const button = page.locator('#C-central > .chead .ctl').getByRole("button", { name: "Help me understand" });
+  await expect(button).toBeVisible();
+  await button.click();
+  const menu = page.locator('[data-understand-menu-list="central"]');
+  await expect(menu).toBeVisible({ timeout: 15_000 });
+  await expect(menu.getByRole("menuitem", { name: "Simplify" })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "Explain terms…" })).toBeVisible();
+  await checkLayout(page, "understand-menu");
+  // Full page: the frame must show the open menu next to the card
+  // toolbar button that opened it.
+  await page.screenshot({ path: path.join(SHOTS, "understand-menu-1440-light.png"), fullPage: true });
+  await page.keyboard.press("Escape");
+});
+
+// ---- Explain terms picking (#418): the picking card with two terms highlighted and in its tray ----
+test("Explain terms picking with two terms in the tray (1440-light)", async ({ page }) => {
+  if (!svc) throw new Error("service not running");
+  test.setTimeout(240_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+  await expect(page.locator("#C-central")).toBeVisible({ timeout: 60_000 });
+  await page.locator("#C-central").scrollIntoViewIfNeeded();
+  await page.locator('#C-central > .chead .ctl').getByRole("button", { name: "Help me understand" }).click();
+  await page.locator('[data-understand-menu-list="central"]').getByRole("menuitem", { name: "Explain terms…" }).click();
+  await expect(page.getByTestId("explain-tray")).toBeVisible({ timeout: 15_000 });
   await selectText(page, "#C-central", "obs-fold", 0, undefined, { waitForBar: false });
-  await selectText(page, "#C-problem", "HTTPMessage", 0, undefined, { waitForBar: false });
-  await expect(page.getByTestId("question-term")).toHaveCount(2, { timeout: 15_000 });
-  await expect(page.locator("mark[data-qterm]")).toHaveCount(2);
-  await checkLayout(page, "question-mode");
-  // Full page: the frame must show the highlights in both cards and the
-  // tray with both terms, Rewrite cards and Cancel.
-  await page.screenshot({ path: path.join(SHOTS, "question-mode-1440-light.png"), fullPage: true });
+  await selectText(page, "#C-central", "HTTPMessage", 0, undefined, { waitForBar: false });
+  await expect(page.getByTestId("explain-term")).toHaveCount(2, { timeout: 15_000 });
+  await expect(page.locator("mark[data-explain-term]")).toHaveCount(2);
+  // The tray's Rewrite is a primary ui Button, Cancel a quiet one.
+  await expect(page.getByTestId("explain-rewrite")).toHaveAttribute("data-variant", "primary");
+  await checkLayout(page, "explain-picking");
+  // Full page: the frame must show both highlights in the card and the
+  // in-card tray with both terms, Rewrite and Cancel.
+  await page.locator("#C-central").scrollIntoViewIfNeeded();
+  await page.screenshot({ path: path.join(SHOTS, "explain-picking-1440-light.png"), fullPage: true });
+  await page.keyboard.press("Escape");
 });
 
 // ---- slower rewrite (#398): the replaced body with its list, example and chips ----
