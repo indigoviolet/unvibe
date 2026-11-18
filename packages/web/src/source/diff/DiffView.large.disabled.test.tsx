@@ -90,6 +90,8 @@ function makeBigSnapshot(): import("@unvibe/shared").ReviewSnapshot {
     },
     version: { n: 1, headSha: "abc1234", mergeBaseSha: "def5678", baseRef: "main", fetchedAt: Date.now(), idMapping: {} },
     files,
+    // Issue #421: the fixture guide describes this head.
+    guideHead: { version: 1, sha: "abc1234" },
     ingest: { status: "ready" },
     pages: [],
     annotations: [],

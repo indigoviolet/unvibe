@@ -1,18 +1,19 @@
 /**
- * New-commits banner (PRD §8, #413): "New commits · v1 → v2 (…)" plus
- * range-diff plus a plain Explain button. X is fixed to the version the
- * new commits came after — the X picker lives only in the guide (the
- * section header, or the guide-top control when no section exists), so
- * only one picker is ever on screen. Explain runs one agent call on
- * click; the end is always the head. There is no up-to-date state.
+ * New-commits banner (PRD §8, #413, text #421): "N new commits since
+ * the guide was written" plus one primary Explain button. X is fixed
+ * to the commit the current guide was written at (stamped when the
+ * reader lands, so it follows a Re-do); the end is always the head.
+ * Explain runs one agent call on click. There is no up-to-date state.
  *
  * Counts come from `versionStatus` on the snapshot (or the refresh
  * `comparison`, normalised by the caller).
  */
 import { Button } from "../ui/index.js";
 import type { VersionComparisonSummary, VersionStatus } from "@unvibe/shared";
+import { newerCommitsSince } from "@unvibe/shared";
+import { useReview } from "../state/store.js";
 import { SinceBaselineError } from "../guide/PriorReviewOffer.js";
-import { useExplainPass } from "../guide/useExplainPass.js";
+import { explainXLabel, useExplainPass } from "../guide/useExplainPass.js";
 import { versionCountsText } from "./versionUtils.js";
 
 export interface BannerCounts {
@@ -62,6 +63,7 @@ export function VersionBanner({
   counts: BannerCounts;
   onUpdated: (stored: boolean) => void;
 }): React.JSX.Element | null {
+  const snapshot = useReview((s) => s.snapshot);
   const { phase, start } = useExplainPass(reviewId, onUpdated);
   const explaining = phase.name === "explaining" ? phase : null;
 
@@ -80,13 +82,21 @@ export function VersionBanner({
   // here (no `versionStatus` yet).
   if (counts.changedHunks + counts.newHunks + counts.removedHunks === 0) return null;
 
-  // X is fixed: the version the new commits came after.
+  // X is fixed: the commit the guide was written at. A rewrite that
+  // moved it falls back to the whole listed range.
+  const commits = snapshot?.commits ?? [];
+  const guideSha = snapshot?.guideHead.sha;
+  const fromSha = guideSha ?? commits[0]?.sha ?? snapshot?.version.headSha ?? "";
+  const newer = guideSha ? newerCommitsSince(commits, guideSha) : null;
+  const count = newer ?? commits.length;
+  const noun = count === 1 ? "1 new commit" : `${count} new commits`;
+  const fromLabel = fromSha !== "" ? explainXLabel({ sha: fromSha }) : null;
 
   return (
     <div className="dbar" data-testid="stale-banner" role="status">
       <span className="dbar-group dbar-group-summary">
         <span className="hint">
-          New commits · v{counts.fromVersion} → v{counts.toVersion} ({versionCountsText(counts)}{" "}
+          {noun} since the guide was written ({versionCountsText(counts)}{" "}
           hunks)
         </span>
         {counts.rangeDiff.trim() !== "" ? (
@@ -107,19 +117,19 @@ export function VersionBanner({
             <i />
             <i />
           </span>{" "}
-          Explaining changes since v{counts.fromVersion}…
+          Explaining changes since {fromLabel ?? "…"}…
         </span>
       ) : (
         <span className="dbar-group">
-          {/* #413: the banner text already names v{from}; the button
-              doesn't repeat it. */}
+          {/* #421: the banner text never repeats the X, so neither does
+              the button. */}
           <Button
             variant="primary"
             size="sm"
             type="button"
             data-testid="explain-button"
-            data-tip={`Explain changes since v${counts.fromVersion}`}
-            onClick={() => start({ version: counts.fromVersion })}
+            data-tip={fromLabel ? `Explain changes since ${fromLabel}` : undefined}
+            onClick={() => start({ sha: fromSha })}
           >
             Explain changes
           </Button>
@@ -132,11 +142,10 @@ export function VersionBanner({
       ) : null}
       {phase.name === "empty" ? (
         <span className="hint" role="status" data-testid="explain-empty">
-          No changes to explain since v{counts.fromVersion}
+          No changes to explain since {fromLabel}
         </span>
       ) : null}
       <SinceBaselineError />
     </div>
   );
 }
-

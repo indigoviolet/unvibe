@@ -9,7 +9,8 @@
  * down → chevron-down, right → chevron-right, hide → chevron-up,
  * upUp → chevrons-up, downDown → chevrons-down, fold → fold,
  * unfold → arrows-move-vertical, home → home, open → external-link,
- * refresh → refresh, pull → cloud-download (#420), bug → bug, question → help-circle,
+ * refresh → refresh, pull → cloud-download (#420), history → history (#421),
+ * bug → bug, question → help-circle,
  * redo → refresh-alert, undo → arrow-back-up, gear → settings,
  * doc → file-text, gift → gift, filter → filter, eye → eye,
  * eyeOff → eye-off, slower → sort-descending-small-big,
@@ -54,6 +55,7 @@ import {
   IconGitPullRequestDraft,
   IconHelpCircle,
   IconHierarchy2,
+  IconHistory,
   IconHome,
   IconLayoutColumns,
   IconLayoutRows,
@@ -112,6 +114,8 @@ const COMPONENTS = {
   refresh: IconRefresh,
   // #420: the review bar pulls new commits from GitHub.
   pull: IconCloudDownload,
+  // #421: the review bar explains changes since a picked commit.
+  history: IconHistory,
   home: IconHome,
   filter: IconFilter,
   unified: IconLayoutRows,

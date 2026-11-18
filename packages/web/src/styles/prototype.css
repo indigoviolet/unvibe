@@ -530,6 +530,14 @@ textarea { min-width: 120px; max-width: 100%; min-height: 40px; max-height: 320p
 /* Filter menu group headings (plotline/score radio rows): quiet labels
    between the checkbox rows and the radio rows. */
 .fmenu .fgroup { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding: 6px 8px 0; }
+/* Disabled menu rows (#421: the head commit in the Explain menu is
+   shown but not pickable — explaining from it is an empty range). The
+   quiet count doubles as the "latest" hint (no extra label). */
+.fmenu button:disabled { opacity: .55; cursor: default; }
+.fmenu button:disabled:hover, .fmenu button:disabled:focus-visible { background: none; }
+/* Long commit subjects ellipsise in place (the full text stays in the
+   row's tooltip); short rows like persona names never overflow. */
+.fmenu button .lbl { overflow: hidden; text-overflow: ellipsis; }
 /* Hunk score dots (issue #169): Okabe-Ito, colour-blind-safe — a small
    marker only, never a background wash, so the diff's red and green keep
    their meaning. Colour is never the only signal: every dot carries its
@@ -844,6 +852,16 @@ table.diff tr.pr > td { padding: 0; white-space: normal; font-family: var(--sans
 .folded { border: 0; background: var(--bg); color: var(--muted); font: 12px var(--sans); padding: 3px 10px; text-align: left; width: 100%; }
 .folded:hover { color: var(--ink); }
 
+/* Changes section (#421): one grouped inset panel like the Contents
+   box (same padding and rhythm) — the old "never a box holding cards"
+   rule is gone. Header row mirrors the Contents header (chevron plus
+   title); cards keep the 14px guide rhythm inside the panel. */
+.ui-card.since-panel { padding: 8px 14px; }
+.since-h { display: flex; align-items: center; gap: 6px; margin-left: -6px; flex-wrap: wrap; }
+.since-title { font-size: 13px; font-weight: 600; }
+.since-panel .since-cards { display: flex; flex-direction: column; gap: 14px; margin-top: 8px; }
+/* ID-qualified to beat `#page .ui-card` (the gap above owns the rhythm). */
+#page .since-panel .since-cards .ui-card { margin-block: 0; }
 /* ---------- guided page ---------- */
 #page { padding: var(--pad-page); }
 /* #232: the preparing-state loading carries its own shared padding

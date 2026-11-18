@@ -1,20 +1,30 @@
 /**
- * One Explain-since-X run from the UI (issue #413): starts
- * `POST …/explain` with the chosen X, then follows the `explain-pass`
- * job by polling until it settles. On success the hook refetches the
- * snapshot itself (the existing job-result path: poll, then the same
- * `GET` the callers used to do) and reports through `onDone` whether
- * the run stored anything: a run whose reply carried no cards ends
- * "done" with the section untouched, and the caller shows "No changes
- * to explain since X" instead of going quiet. One agent call, only on
- * click — choosing X never reaches this hook.
+ * One Explain-since-X run from the UI (issue #413, entry #421): starts
+ * `POST …/explain` with the picked commit sha, then follows the
+ * `explain-pass` job by polling until it settles. On success the hook
+ * refetches the snapshot itself (the existing job-result path: poll,
+ * then the same `GET` the callers used to do) and reports through
+ * `onDone` whether the run stored anything: a run whose reply carried
+ * no cards ends "done" with the section untouched, and the caller shows
+ * "No changes to explain since X" instead of going quiet. One agent
+ * call, only on click — opening the menu never reaches this hook.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Job, ReviewSnapshot } from "@unvibe/shared";
+import { shortBaselineSha } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { explainRunKey } from "./inflight.js";
 import { useReview } from "../state/store.js";
-import { explainXLabel, type ExplainX } from "./ExplainXSelect.js";
+
+/** Issue #421: the X is always a commit sha (menu picks, never versions). */
+export interface ExplainX {
+  sha: string;
+}
+
+/** Short label for the Explain control (`abc12345`). Pure. */
+export function explainXLabel(x: ExplainX): string {
+  return shortBaselineSha(x.sha);
+}
 
 export type ExplainPhase =
   | { name: "idle" }
@@ -28,7 +38,7 @@ function sectionKey(snapshot: ReviewSnapshot | null): string {
 
 export function useExplainPass(reviewId: string, onDone: (stored: boolean) => void): {
   phase: ExplainPhase;
-  start: (x: ExplainX | null) => void;
+  start: (x: ExplainX) => void;
 } {
   const [phase, setPhase] = useState<ExplainPhase>({ name: "idle" });
   const timer = useRef<number | undefined>(undefined);
@@ -45,15 +55,14 @@ export function useExplainPass(reviewId: string, onDone: (stored: boolean) => vo
   }, [reviewId]);
 
   const start = useCallback(
-    (x: ExplainX | null): void => {
+    (x: ExplainX): void => {
       const myRun = ++runRef.current;
       const alive = (): boolean => runRef.current === myRun;
       setPhase({ name: "explaining", jobId: "", job: null });
       const key = explainRunKey(reviewId);
       useReview.getState().beginInflight(key, "update");
-      const label = x ? explainXLabel(x) : "…";
+      const label = explainXLabel(x);
       const before = sectionKey(useReview.getState().snapshot);
-      const body = x === null ? undefined : "version" in x ? { version: x.version } : { sha: x.sha };
       const finish = (): void => {
         useReview.getState().clearInflight(key);
       };
@@ -101,7 +110,7 @@ export function useExplainPass(reviewId: string, onDone: (stored: boolean) => vo
         setPhase({ name: "failed", message: job.error ?? `The explain run didn't finish (${job.state}). Try again.` });
       };
       api
-        .explain(reviewId, body)
+        .explain(reviewId, { sha: x.sha })
         .then((res) => {
           if (!alive()) return;
           useReview.getState().attachInflightJob(key, res.jobId);

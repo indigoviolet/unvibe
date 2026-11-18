@@ -55,6 +55,7 @@ import type { PrStackInfo } from "@unvibe/shared";
 import { useNavigate } from "react-router";
 import { useState } from "react";
 import { jobCounts } from "./jobCounts.js";
+import { ExplainMenu } from "./ExplainMenu.js";
 import { RedoGuideButton } from "./RedoGuideButton.js";
 import { GuideCopyButton } from "../guide/GuideCopyButton.js";
 import { useReviewIdentity } from "./reviewIdentity.js";
@@ -216,6 +217,10 @@ export function ReviewBar({
             <Icon name="pull" />
           </button>
         ) : null}
+        {/* #421: Explain changes since a picked commit — icon-only
+            like Pull, hidden wherever Pull hides (plus old versions
+            and with nothing pickable). */}
+        <ExplainMenu reviewId={reviewId} />
         <VersionSwitcher />
         {ingestReady && !STATIC_DEMO ? (
           <Link
