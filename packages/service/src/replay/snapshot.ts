@@ -520,10 +520,11 @@ export function buildSnapshot(fixturesDir: string): BuiltSnapshot {
   const counts: { file: string; citations: number; links: number }[] = [];
   for (const entry of manifest.recordings) {
     // Journey-only fixtures share the replay manifest but are not demo
-    // content: the explain-pass reply (issue #413) is hand-made for a
-    // scratch repo, so it is neither validated nor counted here. Its
-    // journey covers it.
-    if (entry.kind === "explain-pass") continue;
+    // content: the explain-pass reply (issue #413) and the scratch-app
+    // reader reply (issue #417) are hand-made for scratch repos, so
+    // they are neither validated nor counted here. Their journeys cover
+    // them.
+    if (entry.kind === "explain-pass" || (entry.kind === "reader" && entry.key === "scratch-app")) continue;
     const text = textOf(entry.file);
     const parsed = parseReply(text);
     if (parsed.splitError && parsed.splitError.kind !== "missing") {
