@@ -18,23 +18,8 @@ this section alone explains the change and why.
     "cards": [
       {
         "id": "since-alpha-111",
-        "pageId": "since",
         "title": "Alpha reworked",
-        "collapsed": false,
-        "revision": 1,
-        "undoStack": [],
-        "blocks": [
-          {
-            "type": "paragraph",
-            "id": "b-since-alpha-1",
-            "text": "Alpha now returns 111 instead of 11. The rework-alpha commit says the reviewer asked for 111, so this answers that remark. It affects the central card, which still describes the old value.",
-            "citations": [
-              {
-                "target": "h:src-app.py:659fc4a4a13ac005"
-              }
-            ]
-          }
-        ]
+        "blocks": "Alpha now returns 111 instead of 11. The rework-alpha commit says the reviewer asked for 111, so this answers that remark. It affects the central card, which still describes the old value. [[h:src-app.py:659fc4a4a13ac005]]"
       }
     ]
   }

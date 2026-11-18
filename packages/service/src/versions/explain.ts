@@ -22,6 +22,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type {
+  Card,
   ExplainPassResult,
   Job,
   ReviewSnapshot,
@@ -258,10 +259,16 @@ export async function applyExplainResult(
       result.baseline && isSinceBaseline(result.baseline) ? result.baseline : resolveSinceBaseline(draft);
     const now = Date.now();
     if (result.sinceSection && result.sinceSection.cards.length > 0) {
-      const cards = buildSinceSectionCards(draft, result.sinceSection.cards as SinceCardDraftWithRefs[]);
-      if (cards.length > 0) {
-        draft.sinceSection = { baseline: baselineV, headVersion: toVersion, at: now, cards };
+      // Issue #413: a reply that names cards but stores none is
+      // unusable (cf. the bodyless-card rule #411) — not an empty
+      // range. Fail the job loudly instead of landing "done" with
+      // nothing stored; a genuinely empty reply (no cards named)
+      // still lands done and the UI says there was nothing to explain.
+      const cards: Card[] = buildSinceSectionCards(draft, result.sinceSection.cards as SinceCardDraftWithRefs[]);
+      if (cards.length === 0) {
+        throw new Error("The explain run's reply had no usable cards; try again");
       }
+      draft.sinceSection = { baseline: baselineV, headVersion: toVersion, at: now, cards };
     }
     if (result.sinceHunks) {
       const clean = (ids: unknown): string[] =>

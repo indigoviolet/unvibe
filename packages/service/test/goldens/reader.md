@@ -274,7 +274,7 @@ plotlines and glossary travel in the trailing `json` block, not as cards:
 {"pendingCards": [{"id": "g-flow", "label": "...", "why": "..."}],
  "plotlines": [{"id": "retry-logic", "name": "Retry failed uploads", "description": "...", "buildsOn": "<earlier-plotline-id, only when it depends on one>", "hunks": ["h:<fileKey>:<hash>"]}],
  "glossary": [{"name": "HTTPHeaderDict", "definition": "The headers view urllib3 builds from the parsed response.", "citation": "code:src/urllib3/connection.py:91-110"}],
- "sinceSection": {"cards": [{"id": "since-1", "title": "...", "blocks": [...], "answers": [{"kind": "comment", "id": "7"}]}]}}
+ "sinceSection": {"cards": [{"id": "since-1", "title": "...", "blocks": "Body in Markdown, with [[h:fileKey:hash]] citations", "answers": [{"kind": "comment", "id": "7"}]}]}}
 ```
 
 When the reviewed context at the top names a baseline commit, the
