@@ -263,6 +263,43 @@ describe("issue #365: minimal-turn matching", () => {
   });
 });
 
+describe("issue #417: patterned recordings for non-ask/explain kinds", () => {
+  const ENTRIES417: ReplayManifestEntry[] = [
+    { kind: "reader", file: "reader.md" },
+    { kind: "reader", key: "scratch-app", pattern: "src-app\\.py|def alpha", file: "reader-scratch-app.md" },
+    { kind: "ask", key: "order", pattern: "order|ordering|duplicate", file: "ask-order.md" },
+  ];
+  const has417 = (file: string): boolean => ENTRIES417.some((e) => e.file === file);
+
+  it("a kind-only reader marker matches the scratch recording by repo content", () => {
+    expect(
+      resolveRecording(ENTRIES417, has417, "# Reader task\n\n## Diff\n\ndiff src-app.py def alpha return 11\n\n<!-- replay-kind: reader -->"),
+    ).toMatchObject({ kind: "reader", key: "scratch-app", file: "reader-scratch-app.md", placeholder: false });
+  });
+
+  it("a kind-only reader marker falls back to the first entry without a pattern hit", () => {
+    expect(
+      resolveRecording(ENTRIES417, has417, "# Reader task\n\n## Diff\n\nsrc/urllib3/connection.py obs-fold\n\n<!-- replay-kind: reader -->"),
+    ).toMatchObject({ kind: "reader", key: null, file: "reader.md", placeholder: false });
+  });
+
+  it("a reader repair prompt with the marker resolves to the same scratch recording", () => {
+    expect(
+      resolveRecording(
+        ENTRIES417,
+        has417,
+        "Some citations in your previous reply could not be verified:\n- diff:src-app.py:1-5: outside any hunk\n\nReply with the same cards.\n\n<!-- replay-kind: reader -->",
+      ),
+    ).toMatchObject({ kind: "reader", key: "scratch-app", file: "reader-scratch-app.md", placeholder: false });
+  });
+
+  it("a keyed reader marker stays exact", () => {
+    expect(
+      resolveRecording(ENTRIES417, has417, "prompt\n\n<!-- replay-kind: reader replay-key: scratch-app -->"),
+    ).toMatchObject({ kind: "reader", key: "scratch-app", file: "reader-scratch-app.md", placeholder: false });
+  });
+});
+
 describe("extractReplayKey", () => {
   it("parses hunk file keys", () => {
     expect(extractReplayKey("hunk", "summarize conn:1 please")).toBe("conn:1");
