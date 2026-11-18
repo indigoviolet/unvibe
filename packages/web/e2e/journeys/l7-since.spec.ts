@@ -731,6 +731,128 @@ test.describe("L7 refresh with new commits", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Section citation into a folded doc/config hunk (#413): h: targets
+// resolve to their head range, so the reveal unfolds the hidden group
+// with the Since filter on and no toast.
+// ---------------------------------------------------------------------------
+
+test.describe("L7 section citation into a folded doc hunk", () => {
+  let repoDir = "", dataDir = "";
+  let svc: RunningService | null = null;
+  let reviewId = "";
+
+  const RST_V1 = ["Title", "=====", "", "Alpha line one.", "Alpha line two.", "Alpha line three.", "Beta line one.", ""].join("\n") + "\n";
+  const RST_V2 = RST_V1.replace("Alpha line two.", "Alpha line TWO reworked.").replace("Alpha line three.", "Alpha line THREE reworked.");
+
+  test.beforeAll(async () => {
+    repoDir = await initTwoHunkRepo();
+    writeFileSync(path.join(repoDir, "docs.rst"), RST_V1);
+    await git(repoDir, "add", ".");
+    await git(repoDir, "commit", "-m", "add docs");
+    dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-l7doc-data-"));
+    svc = await startService(dataDir, { agent: "replay", label: "l7secdoc" });
+    reviewId = await createScratchReview(svc, repoDir);
+    await waitForGuideCards(svc, reviewId);
+    // v2 touches the docs only.
+    writeFileSync(path.join(repoDir, "docs.rst"), RST_V2);
+    await git(repoDir, "add", "docs.rst");
+    await git(repoDir, "commit", "-m", "rework docs");
+    const refreshed = await apiJson(svc, "POST", `/api/reviews/${reviewId}/refresh`);
+    expect(refreshed.status).toBe(200);
+  });
+  test.afterAll(async () => {
+    await svc?.stop().catch(() => {});
+    rmSync(repoDir, { recursive: true, force: true });
+    rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  test("a section citation into a folded doc hunk unfolds and reveals it with no toast", async ({ page }) => {
+    test.setTimeout(240_000);
+    if (!svc) throw new Error("no service");
+    // The doc hunk's head id, then a stop-seed-restart (the #112
+    // pattern): the Since section cites the doc hunk and the hunk
+    // carries the docs/config hidden reason, so it renders grouped.
+    const before = (await apiJson(svc, "GET", `/api/reviews/${reviewId}`)).json as ReviewSnapshot;
+    const docFile = before.files.find((f) => f.path === "docs.rst");
+    if (!docFile) throw new Error("no docs.rst in the snapshot");
+    const docHunk = docFile.hunks[0];
+    if (!docHunk) throw new Error("no doc hunk in the snapshot");
+    const docId = `h:${docFile.fileKey}:${docHunk.contentHash}`;
+    await svc.stop();
+    const { DatabaseSync } = await import("node:sqlite");
+    const { stampDataFormat } = await import("./journey-helpers.js");
+    const db = new DatabaseSync(path.join(dataDir, "unvibe.db"));
+    try {
+      const row = db.prepare("SELECT rev, snapshot FROM review_snapshots WHERE review_id = ?").get(reviewId) as
+        | { rev: number; snapshot: string }
+        | undefined;
+      if (!row) throw new Error("no snapshot row to seed");
+      const snap = JSON.parse(row.snapshot) as ReviewSnapshot & { pages: { id: string; cards: unknown[] }[] };
+      for (const f of snap.files) {
+        if (f.path !== "docs.rst") continue;
+        for (const h of f.hunks) h.hiddenReason = "docs / config";
+      }
+      snap.sinceBaseline = { kind: "version", version: 1 };
+      snap.sinceHunks = { added: [docId], changed: [] };
+      const now = Date.now();
+      snap.sinceSection = {
+        baseline: { kind: "version", version: 1 },
+        headVersion: snap.review.currentVersion,
+        at: now,
+        cards: [
+          {
+            id: "since-doc-1",
+            pageId: "since",
+            title: "Docs reworked",
+            collapsed: false,
+            revision: 1,
+            undoStack: [],
+            blocks: [
+              {
+                type: "paragraph",
+                id: "b-since-doc-1",
+                text: "The docs now say TWO and THREE.",
+                citations: [{ target: docId }],
+              },
+            ],
+            answers: [],
+          },
+        ],
+      };
+      db.prepare("UPDATE review_snapshots SET rev = ?, snapshot = ? WHERE review_id = ?").run(
+        row.rev + 1,
+        JSON.stringify(snap),
+        reviewId,
+      );
+      stampDataFormat(db);
+    } finally {
+      db.close();
+    }
+    svc = await startService(dataDir, { agent: "replay", label: "l7secdoc2" });
+
+    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    await expect(page.locator(appFile)).toBeVisible({ timeout: 60_000 });
+    const since = page.locator('[data-testid="since-section"]');
+    await expect(since).toContainText(/Changes since v1/, { timeout: 30_000 });
+
+    // The doc hunk starts folded in its hidden group: new text absent.
+    await page.locator('#right [role="tab"]').getByText("Diff").click();
+    await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
+    const docSection = page.locator(`[id="F-${fileKeyForPath("docs.rst")}"]`);
+    await expect(docSection.locator(".dhid").first()).toBeVisible({ timeout: 30_000 });
+    await expect(docSection.getByText("Alpha line TWO reworked.")).toHaveCount(0);
+
+    // Clicking the section citation turns the Since filter on and
+    // reveals the hunk: unfolded, highlighted, no toast.
+    await since.locator("#C-since-doc-1 .lk").first().click();
+    const chip = page.locator('[data-filterchip="since"]');
+    await expect(chip).toContainText("Since v1 ·", { timeout: 30_000 });
+    await expect(docSection.getByText("Alpha line TWO reworked.")).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator("#toast")).toBeHidden({ timeout: 15_000 });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Refresh carry-over (j16): cards, comments and reviewed state survive;
 // the changed hunk reopens; the update pass terminates; Debug shows the
 // refresh steps and job times.
