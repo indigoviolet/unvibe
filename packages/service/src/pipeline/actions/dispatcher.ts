@@ -28,7 +28,6 @@ import { examplesAction } from "./examples.js";
 import { followupAction } from "./followup.js";
 import { noteAction } from "./note.js";
 import { promoteAction } from "./promote.js";
-import { questionRewriteAction } from "./question.js";
 import { undoAction } from "./undo.js";
 import type { ActionContext } from "./common.js";
 import { errorCodeFor, errorCodeOf, sendError } from "../../errors.js";
@@ -103,7 +102,6 @@ export async function dispatchAction(
     if (
       !!snap && isDocumentReview(snap) &&
       (action.kind === "slower" ||
-        action.kind === "question-rewrite" ||
         action.kind === "examples" ||
         action.kind === "diagram" ||
         action.kind === "generate" ||
@@ -211,20 +209,19 @@ export async function dispatchAction(
         if (action.personaId !== undefined && typeof action.personaId !== "string") {
           return bad(reply, "personaId must be a string");
         }
+        // Issue #418 (Explain terms): optional picked terms ride the
+        // existing terms prompt path (empty terms are an ordinary press).
+        if (action.terms !== undefined && !Array.isArray(action.terms)) {
+          return bad(reply, "terms must be an array of strings");
+        }
+        const terms = action.terms?.filter((t) => typeof t === "string" && t.trim().length > 0);
         const res = await slowerAction(ctx, action.cardId, {
           ...(action.personaId ? { personaId: action.personaId } : {}),
+          ...(terms && terms.length > 0 ? { terms } : {}),
         });
         const out: ActionResponse = { accepted: true, cardId: res.cardId };
         if (res.jobId) out.jobId = res.jobId;
         if (res.deduplicated) out.deduplicated = true;
-        return out;
-      }
-      case "question-rewrite": {
-        need(ctx);
-        if (!Array.isArray(action.terms) || action.terms.length === 0) return bad(reply, "terms are required");
-        const res = await questionRewriteAction(ctx, action.terms);
-        const out: ActionResponse = { accepted: true, cardJobs: res.cardJobs };
-        if (res.cardJobs.length > 0 && res.cardJobs.every((j) => !j.jobId)) out.deduplicated = true;
         return out;
       }
       case "examples": {

@@ -1,17 +1,18 @@
 /**
- * ? mode highlight helpers (issue #388).
+ * Explain-terms highlight helpers (issue #418).
  *
  * Picked terms highlight where they were picked: a plain `<mark
- * data-qterm="<id>">` wrapped around the selected slice. The marks are
- * direct DOM edits (React doesn't know them); they are removed when the
- * mode turns off, on Cancel, and as soon as a Rewrite starts — always
- * before any rewrite can change the text, so they can never go stale.
+ * data-explain-term="<id>">` wrapped around the selected slice. The marks
+ * are direct DOM edits (React doesn't know them); they are removed when
+ * picking ends (Cancel, Escape, another card's picker) and as soon as a
+ * Rewrite starts — always before any rewrite can change the text, so
+ * they can never go stale.
  */
 
-const ATTR = "data-qterm";
+const ATTR = "data-explain-term";
 
 /** Wrap the range's slice in a term mark. Single-text-node ranges only. */
-export function highlightQuestionTerm(range: Range, id: string): boolean {
+export function highlightExplainTerm(range: Range, id: string): boolean {
   if (range.collapsed) return false;
   if (range.startContainer !== range.endContainer || range.startContainer.nodeType !== 3) return false;
   const mark = document.createElement("mark");
@@ -26,7 +27,7 @@ export function highlightQuestionTerm(range: Range, id: string): boolean {
 }
 
 /** Remove one term's marks (its × in the tray). */
-export function unhighlightQuestionTerm(id: string): void {
+export function unhighlightExplainTerm(id: string): void {
   for (const el of document.querySelectorAll(`mark[${ATTR}="${CSS.escape(id)}"]`)) {
     const parent = el.parentNode;
     if (!parent) continue;
@@ -36,8 +37,8 @@ export function unhighlightQuestionTerm(id: string): void {
   }
 }
 
-/** Remove every term mark (mode off, Cancel, Rewrite start). */
-export function clearQuestionHighlights(): void {
+/** Remove every term mark (picking ends, Rewrite starts). */
+export function clearExplainHighlights(): void {
   for (const el of document.querySelectorAll(`mark[${ATTR}]`)) {
     const parent = el.parentNode;
     if (!parent) continue;

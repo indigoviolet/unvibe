@@ -12,11 +12,9 @@
  * `jobId`). `deduplicated` answers follow the existing job.
  */
 import type { ActionResponse, ReviewAction, ReviewSnapshot } from "@unvibe/shared";
-import { questionRewriteTargetIds } from "@unvibe/shared";
 import { api, apiErrorCode, friendlyError } from "../api/client.js";
 import { toast } from "../floating/Toast.js";
 import { INFLIGHT_TTL_MS, inflightExpired, useReview, type InFlightKind } from "../state/store.js";
-import { isReadOnlyVersionNow } from "../comments/readOnly.js";
 import {
   askKey,
   conceptKey,
@@ -25,7 +23,7 @@ import {
   followupKey,
 } from "./inflight.js";
 import { NO_AGENT_COPY } from "./expansions/expansionUtils.js";
-import { clearQuestionHighlights } from "./question.js";
+import { clearExplainHighlights } from "./explainTerms.js";
 
 function optimistic(fn: (snap: ReviewSnapshot) => ReviewSnapshot): void {
   const { snapshot, setSnapshot } = useReview.getState();
@@ -417,60 +415,25 @@ export function performInsertAction(
 }
 
 /**
- * Issue #388 (? mode): Rewrite cards posts one `question-rewrite`
- * action with the picked terms. Every targeted card gets a synchronous
- * in-flight entry (issue #46, kind `slower` so each card shows its
- * usual writing state), handed to that card's job once the response
- * arrives. After the rewrite starts the tray clears and the mode turns
- * off; highlights are removed before any rewrite can change the text.
+ * Issue #418 (Explain terms): Rewrite posts one `slower` press on the
+ * picking card with its picked terms attached (the existing terms
+ * prompt path). Fire-and-forget: `performAction` toasts and manages
+ * the in-flight entry. Highlights clear before any text can change.
  */
-export async function performQuestionRewrite(reviewId: string): Promise<void> {
+export function performExplainRewrite(reviewId: string, cardId: string, personaId?: string): void {
   const st = useReview.getState();
-  const snap = st.snapshot;
-  if (!snap) {
-    toast("The review is still loading");
-    return;
-  }
-  const terms = st.questionTerms.map((t) => t.text);
+  const terms = st.explainTerms.map((t) => t.text);
   if (terms.length === 0) return;
-  if (isReadOnlyVersionNow()) {
-    toast("Rewriting is only available on the current version");
-    return;
-  }
-  const targets = questionRewriteTargetIds(snap);
-  for (const cardId of targets) st.beginInflight(cardId, "slower");
-  let res: ActionResponse;
-  try {
-    res = await api.action(reviewId, { kind: "question-rewrite", terms });
-  } catch (err) {
-    const cur = useReview.getState();
-    for (const cardId of targets) cur.clearInflight(cardId);
-    const msg = err instanceof Error ? err.message : String(err);
-    if (apiErrorCode(err) === "no-agent" || /no agent configured/i.test(msg)) {
-      toast(NO_AGENT_COPY);
-    } else {
-      toast(`Couldn't rewrite: ${friendlyError(err)}`);
-    }
-    await resync(reviewId);
-    return;
-  }
-  const cur = useReview.getState();
-  if (!res.accepted) {
-    for (const cardId of targets) cur.clearInflight(cardId);
-    toast("Not available with mock data");
-    await resync(reviewId);
-    return;
-  }
-  const byId = new Map((res.cardJobs ?? []).map((j) => [j.cardId, j.jobId]));
-  for (const cardId of targets) {
-    const jobId = byId.get(cardId);
-    if (jobId) cur.attachInflightJob(cardId, jobId);
-    else cur.clearInflight(cardId);
-  }
-  // The rewrite started: tray clears and the mode turns off. Cards
-  // follow their jobs from here (the entries reap on settle).
-  clearQuestionHighlights();
-  cur.setQuestionMode(false);
+  // Picking ends the moment Rewrite is pressed: the tray goes away and
+  // the highlights clear before the rewrite can change the text.
+  clearExplainHighlights();
+  st.setExplainPickCard(null);
+  void performAction(
+    reviewId,
+    personaId ? { kind: "slower", cardId, personaId, terms } : { kind: "slower", cardId, terms },
+  ).catch(() => {
+    // performAction already toasted; the control stays so the user can retry.
+  });
 }
 
 /**

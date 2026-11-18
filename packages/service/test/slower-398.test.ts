@@ -13,10 +13,14 @@
  * - the same replacement lands on persona variants and thread replies;
  * - the #388 bulk path uses the same replacement.
  */
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { AgentEvent, Block, DiagramBlock, FollowUpBlock, ParagraphBlock, ReviewSnapshot } from "@unvibe/shared";
-import { questionRewriteTargetIds } from "@unvibe/shared";
 import { FakeAgentRunner } from "../src/agent/fake.js";
+import { loadTemplatesDirSync, renderTemplate } from "../src/prompts/index.js";
+import { fixtureSnapshot } from "./fixtures.js";
 import { replaceSlowerBody } from "../src/interaction/cards.js";
 import { createApp } from "../src/server.js";
 
@@ -551,31 +555,65 @@ describe("slower wholesale replacement over HTTP (#398)", () => {
     }
   });
 
-  it("bulk rewrite (#388) uses the same replacement on every guide card", { timeout: 180000 }, async () => {
-    const { app, ctx, id } = await openDemo(fakeWith([{ match: "# Help me understand", events: textEvents(SLOWER_RICH) }]));
+  it("per-card slower with terms carries the terms; only that card changes (#418)", { timeout: 180000 }, async () => {
+    const agents = fakeWith([{ match: "# Help me understand", events: textEvents(SLOWER_RICH) }]);
+    const { app, ctx, id } = await openDemo(agents);
     try {
+      // Non-array terms are rejected; empty terms are an ordinary press.
+      const badTerms = await postAction(app, id, { kind: "slower", cardId: "problem", terms: "obs-fold" });
+      expect(badTerms.status).toBe(400);
       const before = ctx.reviews.getSnapshot(id)!;
-      const targets = questionRewriteTargetIds(before);
-      expect(targets.length).toBeGreaterThan(1);
-      const res = await postAction(app, id, { kind: "question-rewrite", terms: ["obs-fold", "HTTPMessage"] });
+      const beforeTexts = new Map(
+        before.pages
+          .flatMap((p) => p.cards)
+          .map((c) => [c.id, JSON.stringify(c.blocks)] as const),
+      );
+      const res = await postAction(app, id, { kind: "slower", cardId: "problem", terms: ["obs-fold", "HTTPMessage"] });
       expect(res.status).toBe(200);
-      const cardJobs = res.json.cardJobs as { cardId: string; jobId?: string }[];
-      expect(cardJobs.map((j) => j.cardId).sort()).toEqual([...targets].sort());
-      for (const j of cardJobs) {
-        expect(j.jobId).toBeTruthy();
-        await waitForJob(ctx, j.jobId as string);
-      }
+      expect(res.json.jobId).toBeTruthy();
+      await waitForJob(ctx, res.json.jobId as string);
+      // The prompt carries the terms and the whole-guide context.
+      const prompt = agents.prompts[agents.prompts.length - 1].text;
+      expect(prompt).toContain("Terms the reader doesn't understand");
+      expect(prompt).toContain('"obs-fold"');
+      expect(prompt).toContain('"HTTPMessage"');
+      expect(prompt).toContain("Whole guide");
+      // Only the targeted card changed, exactly one press deep.
       const after = ctx.reviews.getSnapshot(id)!;
-      for (const c of targets) {
-        const blocks = after.pages.flatMap((p) => p.cards).find((x) => x.id === c)!.blocks;
-        expect(blocks.map((b) => b.type)).toEqual(["paragraph", "paragraph", "list", "aside"]);
-        expect(JSON.stringify(blocks)).toContain("skipped step filled in");
-        const card = after.pages.flatMap((p) => p.cards).find((x) => x.id === c)!;
-        expect(card.undoStack).toHaveLength(1);
-        expect(card.variants ?? {}).toEqual({});
+      for (const c of after.pages.flatMap((p) => p.cards)) {
+        const text = JSON.stringify(c.blocks);
+        if (c.id === "problem") {
+          expect(text).not.toBe(beforeTexts.get(c.id));
+          expect(text).toContain("skipped step filled in");
+          expect(c.undoStack).toHaveLength(1);
+          expect(c.variants ?? {}).toEqual({});
+        } else {
+          expect(text).toBe(beforeTexts.get(c.id));
+        }
       }
+      // Undo restores the rewritten card.
+      const undo = await postAction(app, id, { kind: "undo", cardId: "problem" });
+      expect(undo.status).toBe(200);
+      const settled = ctx.reviews.getSnapshot(id)!;
+      expect(JSON.stringify(settled.pages.flatMap((p) => p.cards).find((c) => c.id === "problem")!.blocks)).toBe(
+        beforeTexts.get("problem"),
+      );
     } finally {
       await app.close();
     }
+  });
+
+  it("an ordinary slower press renders the golden bytes (#418)", () => {
+    // The terms/guide splice points render empty without terms, so the
+    // prompt is byte-identical to the pre-terms template.
+    const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
+    const REPO_PROMPTS = path.resolve(TEST_DIR, "..", "..", "..", "prompts");
+    const lib = loadTemplatesDirSync(REPO_PROMPTS);
+    const tpl = lib.get("slower");
+    if (!tpl) throw new Error("missing template slower");
+    const snap = fixtureSnapshot();
+    const card = `### ${snap.cards[0].title} [[card:${snap.cards[0].id}]]\n\n${snap.cards[0].markdown}\n`;
+    const rendered = renderTemplate(tpl, { card, terms: "", guide: "" });
+    expect(rendered).toBe(fs.readFileSync(path.join(TEST_DIR, "goldens", "slower.md"), "utf8"));
   });
 });

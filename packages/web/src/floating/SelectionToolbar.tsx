@@ -52,7 +52,7 @@ import { selectionOffsetsIn } from "../comments/anchor.js";
 import { isReadOnlyVersionNow, useIsReadOnlyVersion } from "../comments/readOnly.js";
 import { parseLineElementId, snapWordOffsets, normalizeQuote, MAX_QUOTE_CHARS } from "../comments/selection.js";
 import { performAction } from "../guide/actions.js";
-import { highlightQuestionTerm } from "../guide/question.js";
+import { highlightExplainTerm } from "../guide/explainTerms.js";
 import { NO_AGENT_COPY } from "../guide/expansions/expansionUtils.js";
 import { showGuidePane } from "../shell/panes.js";
 import { hunkCommentAnchor, hunkDiffRange, parseHunkAttr, promotedPageForHunk } from "../source/diff/hunkAnchor.js";
@@ -549,12 +549,13 @@ export function isInScrollGrace(now: number, shownAt: number, selectionLive: boo
 }
 
 /**
- * Issue #388 (? mode): a finished selection in a guide card becomes a
- * picked term instead of summoning the toolbar. The term highlights
- * where it was picked; the tray lists it. Multi-node selections still
- * list the term, only without a highlight.
+ * Issue #418 (Explain terms): a finished selection inside the picking
+ * card becomes a picked term instead of summoning the toolbar. The
+ * term highlights where it was picked; the card's tray lists it.
+ * Multi-node selections still list the term, only without a highlight.
+ * Selections in any other card keep the normal toolbar.
  */
-function pickQuestionTerm(quote: string, anchorEl: HTMLElement): void {
+function pickExplainTerm(quote: string, anchorEl: HTMLElement, pickingCardId: string): void {
   const sel = window.getSelection();
   if (!quote || quote.length < 2) return;
   if (quote.length > MAX_QUOTE_CHARS) {
@@ -562,11 +563,11 @@ function pickQuestionTerm(quote: string, anchorEl: HTMLElement): void {
     return;
   }
   const owner = anchorEl.closest("section.ui-card[id]")?.id ?? "";
-  if (!/^[CB]-/.test(owner)) return;
-  const id = useReview.getState().addQuestionTerm({ text: quote, cardId: owner.slice(2) });
+  if (owner !== `C-${pickingCardId}`) return;
+  const id = useReview.getState().addExplainTerm({ text: quote, cardId: pickingCardId });
   if (sel && sel.rangeCount > 0) {
     try {
-      highlightQuestionTerm(sel.getRangeAt(0), id);
+      highlightExplainTerm(sel.getRangeAt(0), id);
     } catch {
       // The term is still listed without a highlight.
     }
@@ -630,25 +631,25 @@ export function SelectionToolbar() {
 
     const onMouseUp = (e: MouseEvent): void => {
       if ((e.target as Element | null)?.closest?.("#selbar")) return;
-      // Issue #388: while ? mode is on the normal toolbar is suspended
-      // — a finished selection in a guide card becomes a picked term.
-      // Clicks outside the guide (tray included) are ignored here.
-      // Unlike the toolbar path, text inside a link stays pickable (a
-      // glossary term is exactly the jargon readers pick); only real
-      // controls are excluded.
-      if (useReview.getState().questionMode) {
-        const inGuide =
-          (e.target as Element | null) !== null &&
-          (e.target as Element).closest?.("#page") !== null &&
-          (e.target as Element | null)?.closest?.("button, input, textarea") == null &&
-          !isReadOnlyVersionNow();
-        if (!inGuide) return;
+      // Issue #418: while a card is picking, the normal toolbar is
+      // suspended for that card only — a finished selection inside it
+      // becomes a picked term. Unlike the toolbar path, text inside a
+      // link stays pickable (a glossary term is exactly the jargon
+      // readers pick); only real controls are excluded. Every other
+      // card keeps the normal toolbar.
+      const pickingCardId = useReview.getState().explainPickCardId;
+      if (
+        pickingCardId !== null &&
+        (e.target as Element | null)?.closest?.(`#C-${CSS.escape(pickingCardId)}`) !== null &&
+        (e.target as Element | null)?.closest?.("button, input, textarea") == null &&
+        !isReadOnlyVersionNow()
+      ) {
         window.setTimeout(() => {
           const sel = window.getSelection();
           if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
           snapLiveSelection(sel);
           const quote = normalizeQuote(sel.toString());
-          pickQuestionTerm(quote, elementOf(sel.anchorNode) ?? document.body);
+          pickExplainTerm(quote, elementOf(sel.anchorNode) ?? document.body, pickingCardId);
         }, 0);
         return;
       }

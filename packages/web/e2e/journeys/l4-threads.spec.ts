@@ -612,13 +612,19 @@ test.describe("L4 threads on the demo (fast replay)", () => {
     expect.soft(await help.getAttribute("data-tip")).toBe("Help me understand");
     await expect.soft(card.locator(".pips")).toHaveCount(0);
 
+    // Issue #418: the button opens the menu; Simplify is today's press.
+    const pressSimplify = async (): Promise<void> => {
+      await card.locator("> .chead .ctl").getByRole("button", { name: "Help me understand" }).click();
+      await page.locator('[data-understand-menu-list="central"]').getByRole("menuitem", { name: "Simplify" }).click();
+    };
+
     await test.step("two presses rewrite further each time", async () => {
-      await help.click();
+      await pressSimplify();
       await expect.soft.poll(async () => paraText(), { timeout: 60_000 }).toContain("obsolete folded header line");
       const afterFirst = await paraText();
       expect.soft(afterFirst).not.toBe(before);
       await card.hover();
-      await card.locator("> .chead .ctl").getByRole("button", { name: "Help me understand" }).click();
+      await pressSimplify();
       await expect.soft.poll(async () => paraText(), { timeout: 60_000 }).toContain("Start with what the server sends");
       expect.soft(await paraText()).not.toBe(afterFirst);
     });

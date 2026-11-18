@@ -439,9 +439,11 @@ test.describe("J349b persona versions", () => {
     expect(ring).toContain(PERSONA_RGB);
 
     // Help me understand on the persona tab: a slower rewrite of the
-    // variant, never the Guide version.
+    // variant, never the Guide version. Issue #418: the button opens
+    // the menu; Simplify is today's press.
     const variantTextBefore = await card.locator(".prose, .lst").first().innerText();
     await card.getByRole("button", { name: "Help me understand" }).click();
+    await page.locator('[data-understand-menu-list="central"]').getByRole("menuitem", { name: "Simplify" }).click();
     {
       const deadline = Date.now() + 90_000;
       for (;;) {

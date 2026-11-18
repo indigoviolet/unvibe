@@ -369,12 +369,9 @@ needed (that deviation is closed, not added).
   card/guide copy copies the shown text. Stored `level` and per-level
   paragraph text are gone (`DATA_FORMAT` 8).
   Supersedes the depth-stepper verdict below.
-- ? mode (#388): the top-bar toggle picks terms across guide cards into a
-  tray; Rewrite cards runs one ordinary Help-me-understand press per
-  written guide card with the terms + whole guide as reader context
-  (`question-rewrite`, one agent call per card, Guide version only,
-  per-card Undo) — met (`question.ts`, `question-388.test.ts`, L3 journey
-  + tour frame; see the #388 addendum).
+- ? mode (#388): superseded by #418 below — the top-bar toggle, the
+  guide-wide picking, the global tray, `question-rewrite` and their
+  journeys/frames are removed, nothing left over.
 - Examples / Add diagram inserts, never duplicated — met
   (`actions/examples.ts`, `diagram.ts`, dedupe in apply; audit-10 adds
   upfront `reused:true` short-circuit so repeats cost no agent call —
@@ -4384,10 +4381,18 @@ one-variant union today).
   Reviews render first, exactly one fetch per load). No tour frame: the
   visible page barely changes. Full gates not yet run.
 
-## Addendum: #388 — ? mode rewrites the guide for picked terms (branch `feat/388-question-mode`)
+## Addendum: #388 — ? mode rewrites the guide for picked terms (branch `feat/388-question-mode`; SUPERSEDED by #418)
 
 - **? toggle + tray (§4.4):** one icon button (tooltip "Pick terms you don't understand") in the review top bar with the other review-only buttons (hidden where they hide, plus the static demo). While on, guide-card selections become picked terms — highlighted where picked, listed in a small tray (× each) with Rewrite cards / Cancel; the selection toolbar is suspended; mode off / Cancel clears terms and highlights. Rewrite posts one `question-rewrite` action fanning out one ordinary #387 press per written guide card (same dedupe shape, same undo push, same slower-rewrite log scope), one agent call per card through the job queue's existing limits, each turn carrying the terms plus the whole guide; Guide version only, persona variants and thread replies untouched. Nothing new stored beyond #387's shape. `prompts/slower.md` gains `{{terms}}` / `{{guide}}` splice points that render empty for an ordinary press (byte-identical prompt, pinned by a unit test); the terms/whole-guide blocks are composed in `slower.ts`. Per-card Undo works; cards show the usual writing state mid-rewrite.
   Evidence: service `test/question-388.test.ts` (prompt carries terms + whole-guide context, every card targeted with one job each, one press each, undo restores one card only, variants untouched; ordinary press renders the golden bytes), `test/snapshot.test.ts` (12 hand-authored `slower-*-terms1` replay recordings validate with zero unverified citations), journey `e2e/journeys/l3-reading.spec.ts` "? mode picks terms across cards and rewrites every card", tour frame `packages/web/visual-tour/question-mode-1440-light.png` (git-ignored, ? mode on with two terms and the tray, full page at 1440 light). Full gates not yet run.
+
+  SUPERSEDED by #418 (branch `feat/card-explain-terms`): the ? toggle, guide-wide picking, global tray, `questionMode` and `question-rewrite` are removed — no flag, nothing left over. Explain terms is a per-card action (see the #418 addendum).
+
+## Addendum: #418 — Explain terms becomes a per-card action (branch `feat/card-explain-terms`)
+
+- **Help-me-understand menu (§4.4):** the card's icon-only "Help me understand" button (no caret) opens a menu exactly the way the persona button does (same `.fmenu` portal menu). Two items: Simplify runs today's press unchanged (one agent call on that card, undoable, persona-aware); Explain terms… puts that card alone into term picking. One picking card at a time; opening another card's picker cancels the first.
+- **Per-card picking (§4.4):** selecting text inside the picking card adds a term, highlighted where picked; selections in any other card keep the normal selection toolbar. A small in-card tray lists the terms as the app's existing remove chips (`.fchip` with ×), with Rewrite (primary ui Button) and Cancel (quiet ui Button) — no labels restating the controls. Rewrite posts one `slower` press on that card with the terms attached (the existing terms prompt path: terms block + whole guide, Guide version only); Escape, Cancel and Rewrite clear the highlights before any text changes, and any other agent action on the card ends its picking first. Nothing new stored beyond #387's shape.
+  Evidence: service `test/slower-398.test.ts` (per-card `slower` with terms: terms + whole-guide context in the prompt, only that card changes, one press, undo restores; non-array terms rejected; ordinary press renders the golden bytes), journey `e2e/journeys/l3-reading.spec.ts` "Help me understand menu" (menu items, no top-bar toggle; Simplify rewrites one card; pick two, × removes one, Rewrite carries the remaining term in the job's prompt snapshot; Cancel/Escape clear; Undo restores; other cards keep the toolbar; ui-component assertions), tour frames `packages/web/visual-tour/understand-menu-1440-light.png` and `explain-picking-1440-light.png` (git-ignored, full page at 1440 light). Full gates not yet run.
 
 ## Addendum: #387 — Help me understand replaces the depth stepper (branch `feat/387-help-me-understand`)
 
@@ -4499,7 +4504,7 @@ one-variant union today).
   gone: it dropped reply blocks beyond the old paragraph count and kept
   the old paragraphs' citations on the wrong text. Same path for page
   cards, thread replies, persona variants (rewritten as that persona) and
-  the #388 bulk rewrite (one ordinary press per card).
+  the per-card Explain-terms rewrite (one ordinary press with terms, #418).
 - **Undo / anchors / citations / diagrams / follow-ups:** the pre-press
   blocks ride the undo stack as before, so Undo restores the exact
   previous body; `markStaleAnchors` runs after every replacement

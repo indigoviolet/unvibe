@@ -244,8 +244,8 @@ test.describe("L3 guide mock shell", () => {
       await expect.soft(page.locator("#pop")).toBeHidden();
 
       await openPopover(page);
-      // (300, 20) used to be empty bar space; since #388 it is the ?
-      // toggle, so press the demo banner instead (plain text, no controls).
+      // Press the demo banner (plain text, no controls); the per-card
+      // Explain-terms picker (#418) leaves the top bar without toggles.
       await page.mouse.click(200, 64);
       await expect.soft(page.locator("#pop")).toBeHidden();
 
@@ -1933,13 +1933,18 @@ test.describe("L3 demo guide reading", () => {
 
       // The toolbar reveals on card hover (#274): one icon button with
       // the Help-me-understand tooltip (no text label, no level pips).
+      // Issue #418: the button opens the menu; Simplify is today's press.
       await page.locator("#C-central").hover();
       const help = page.locator("#C-central > .chead .ctl").getByRole("button", { name: "Help me understand" });
       await expect.soft(help).toBeVisible({ timeout: 15_000 });
       expect.soft(await help.getAttribute("data-tip")).toBe("Help me understand");
+      const pressSimplify = async (): Promise<void> => {
+        await page.locator("#C-central > .chead .ctl").getByRole("button", { name: "Help me understand" }).click();
+        await page.locator('[data-understand-menu-list="central"]').getByRole("menuitem", { name: "Simplify" }).click();
+      };
 
       // First press rewrites the card more slowly (replay central:1).
-      await help.click();
+      await pressSimplify();
       await expect
         .poll(async () => paraText(), { timeout: 60_000 })
         .toContain("obsolete folded header line");
@@ -1949,7 +1954,7 @@ test.describe("L3 demo guide reading", () => {
 
       // Second press slows the rewrite further (replay central:2).
       await page.locator("#C-central").hover();
-      await page.locator("#C-central > .chead .ctl").getByRole("button", { name: "Help me understand" }).click();
+      await pressSimplify();
       await expect
         .poll(async () => paraText(), { timeout: 60_000 })
         .toContain("Start with what the server sends");
@@ -1986,9 +1991,14 @@ test.describe("L3 demo guide reading", () => {
       // undid once, so the card holds the first rewrite and the press
       // ordinal is 1 — the next press replays central:2 again, then the
       // third press replays central:3).
+      // Issue #418: the button opens the menu; Simplify is today's press.
+      const pressSimplify = async (): Promise<void> => {
+        await page.locator("#C-central > .chead .ctl").getByRole("button", { name: "Help me understand" }).click();
+        await page.locator('[data-understand-menu-list="central"]').getByRole("menuitem", { name: "Simplify" }).click();
+      };
       // Re-apply the second press to reach the two-press state.
       await page.locator("#C-central").hover();
-      await page.locator("#C-central > .chead .ctl").getByRole("button", { name: "Help me understand" }).click();
+      await pressSimplify();
       await expect
         .poll(async () => centralBlocks().then((b) => b.filter((x) => x.type === "paragraph").map((x) => x.text ?? "").join("\n\n")), { timeout: 60_000 })
         .toContain("Start with what the server sends");
@@ -1997,7 +2007,7 @@ test.describe("L3 demo guide reading", () => {
       // list of steps and an example walk-through, each citing its own
       // paragraph — the whole reply becomes the body.
       await page.locator("#C-central").hover();
-      await page.locator("#C-central > .chead .ctl").getByRole("button", { name: "Help me understand" }).click();
+      await pressSimplify();
       await expect
         .poll(async () => page.locator("#C-central").getByText("A slower look at the same change").count(), { timeout: 90_000 })
         .toBeGreaterThan(0);
@@ -2063,96 +2073,194 @@ test.describe("L3 demo guide reading", () => {
     });
   });
 
-  test("? mode picks terms across cards and rewrites every card (#388)", async ({ page }) => {
+  test("Help me understand menu: Simplify rewrites one card; Explain terms picks and rewrites one card (#418)", async ({
+    page,
+  }) => {
     test.setTimeout(300_000);
     const s = service();
     if (!s) throw new Error("no service");
 
-    await test.step("? mode picks two terms in different cards, rewrite rewrites every card", async () => {
-      const questionReview = await createDemoReview(s);
-      await openReview(page, questionReview);
-      await expect.soft(page.locator("#C-problem")).toBeVisible({ timeout: 30_000 });
-      // Let the whole guide (findings included) fill before capturing.
+    type CardShape = { id: string; blocks: { type: string; text?: string }[] };
+    const cardParas = async (reviewId: string): Promise<Map<string, string>> => {
+      const cur = await apiJson(s, "GET", `/api/reviews/${reviewId}`);
+      const pages = ((cur.json as { pages: { id: string; cards: CardShape[] }[] }).pages ?? []);
+      const m = new Map<string, string>();
+      for (const p of pages) {
+        for (const c of p.cards) {
+          const t = c.blocks
+            .filter((b) => b.type === "paragraph")
+            .map((b) => b.text ?? "")
+            .join("\n\n");
+          if (t) m.set(c.id, t);
+        }
+      }
+      return m;
+    };
+    // A settled guide: every job done, so captures are stable.
+    const waitSettled = async (reviewId: string): Promise<void> => {
       await expect
         .poll(
           async () => {
-            const snap = await apiJson(s, "GET", `/api/reviews/${questionReview}`);
+            const snap = await apiJson(s, "GET", `/api/reviews/${reviewId}`);
             const jobs = ((snap.json as { jobs?: { state: string }[] }).jobs ?? []);
             return jobs.length > 0 && jobs.every((j) => j.state === "done" || j.state === "error" || j.state === "cancelled");
           },
           { timeout: 120_000 },
         )
         .toBe(true);
-      type CardShape = { id: string; blocks: { type: string; text?: string }[] };
-      const cardParas = async (): Promise<Map<string, string>> => {
-        const cur = await apiJson(s, "GET", `/api/reviews/${questionReview}`);
-        const pages = ((cur.json as { pages: { id: string; cards: CardShape[] }[] }).pages ?? []);
-        const m = new Map<string, string>();
-        for (const p of pages) {
-          for (const c of p.cards) {
-            const t = c.blocks
-              .filter((b) => b.type === "paragraph")
-              .map((b) => b.text ?? "")
-              .join("\n\n");
-            if (t) m.set(c.id, t);
-          }
-        }
-        return m;
-      };
+    };
+    // Open the card's Help-me-understand menu (hover-revealed toolbar).
+    const openUnderstandMenu = async (cardId: string): Promise<void> => {
+      await page.locator(`#C-${cardId}`).hover();
+      await page.locator(`#C-${cardId} [data-understand-menu="${cardId}"]`).click();
+      await expect(page.locator(`[data-understand-menu-list="${cardId}"]`)).toBeVisible({ timeout: 15_000 });
+    };
+    // The latest slower job's prompt snapshot.
+    const lastSlowerPrompt = async (reviewId: string): Promise<string> => {
+      const res = await apiJson(s, "GET", `/api/jobs?review=${reviewId}`);
+      const jobs = (res.json as { jobs: { id: string; kind: string }[] }).jobs.filter((j) => j.kind === "slower");
+      expect(jobs.length).toBeGreaterThan(0);
+      const full = await apiJson(s, "GET", `/api/jobs/${jobs.at(-1)!.id}`);
+      return (full.json as { job: { promptSnapshot: string } }).job.promptSnapshot;
+    };
 
-      // Enter ? mode: the toggle presses in and the tray appears.
-      await page.getByTestId("question-toggle").click();
-      await expect.soft(page.getByTestId("question-toggle")).toHaveAttribute("aria-pressed", "true");
-      await expect.soft(page.getByTestId("question-tray")).toBeVisible({ timeout: 15_000 });
+    await test.step("the menu has both items; the top-bar ? button is gone", async () => {
+      const menuReview = await createDemoReview(s);
+      await openReview(page, menuReview);
+      await expect(page.locator("#C-problem")).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByTestId("question-toggle")).toHaveCount(0);
+      await openUnderstandMenu("central");
+      const menu = page.locator('[data-understand-menu-list="central"]');
+      // The existing menu component, not chips.
+      await expect(menu).toHaveClass(/fmenu/);
+      await expect(menu.getByRole("menuitem", { name: "Simplify" })).toBeVisible();
+      await expect(menu.getByRole("menuitem", { name: "Explain terms…" })).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(menu).toBeHidden();
+    });
 
-      // Pick two terms in different cards: both highlight where picked,
-      // the tray lists both, and the normal toolbar stays suspended.
-      await selectText(page, "#C-central", "obs-fold", 0, undefined, { waitForBar: false });
-      await expect.soft(page.getByTestId("question-term")).toHaveCount(1);
-      await expect.soft(page.locator("#C-central mark[data-qterm]")).toHaveCount(1);
-      await selectText(page, "#C-problem", "HTTPMessage", 0, undefined, { waitForBar: false });
-      await expect.soft(page.getByTestId("question-term")).toHaveCount(2);
-      await expect.soft(page.locator("#C-problem mark[data-qterm]")).toHaveCount(1);
-      await expect.soft(page.getByTestId("question-tray")).toContainText("obs-fold");
-      await expect.soft(page.getByTestId("question-tray")).toContainText("HTTPMessage");
-      await expect.soft(page.locator("#selbar")).toBeHidden();
-
-      // Remove one with ×, then re-add it.
-      await page.getByRole("button", { name: 'Remove "HTTPMessage"' }).click();
-      await expect.soft(page.getByTestId("question-term")).toHaveCount(1);
-      await expect.soft(page.locator("mark[data-qterm]")).toHaveCount(1);
-      await selectText(page, "#C-problem", "HTTPMessage", 0, undefined, { waitForBar: false });
-      await expect.soft(page.getByTestId("question-term")).toHaveCount(2);
-
-      const before = await cardParas();
-      expect.soft(before.size).toBeGreaterThan(1);
-
-      // Rewrite: every guide card changes, the tray clears and the mode
-      // turns off once the rewrite starts.
-      await page.getByTestId("question-rewrite").click();
-      await expect.soft(page.getByTestId("question-tray")).toBeHidden({ timeout: 30_000 });
-      await expect.soft(page.getByTestId("question-toggle")).toHaveAttribute("aria-pressed", "false");
-      await expect.soft(page.locator("mark[data-qterm]")).toHaveCount(0);
+    await test.step("Simplify rewrites only that card; Undo restores", async () => {
+      const simplifyReview = await createDemoReview(s);
+      await openReview(page, simplifyReview);
+      await waitSettled(simplifyReview);
+      const before = await cardParas(simplifyReview);
+      await openUnderstandMenu("central");
+      await page.locator('[data-understand-menu-list="central"]').getByRole("menuitem", { name: "Simplify" }).click();
       await expect
-        .poll(
-          async () => {
-            const after = await cardParas();
-            if (after.size !== before.size) return false;
-            return [...before].every(([cid, txt]) => after.get(cid) !== undefined && after.get(cid) !== txt);
-          },
-          { timeout: 120_000 },
-        )
-        .toBe(true);
-
-      // Undo one card: only that card reverts.
-      await page.locator("#C-central").hover();
-      await page.locator("#C-central > .chead .ctl").getByRole("button", { name: "Undo" }).click();
-      await expect.poll(async () => (await cardParas()).get("central"), { timeout: 60_000 }).toBe(before.get("central"));
-      const settled = await cardParas();
+        .poll(async () => (await cardParas(simplifyReview)).get("central"), { timeout: 120_000 })
+        .not.toBe(before.get("central"));
+      const after = await cardParas(simplifyReview);
       for (const [cid, txt] of before) {
         if (cid === "central") continue;
-        expect.soft(settled.get(cid)).not.toBe(txt);
+        expect.soft(after.get(cid)).toBe(txt);
       }
+      // No terms ride an ordinary press.
+      expect(await lastSlowerPrompt(simplifyReview)).not.toContain("Terms the reader doesn't understand");
+      // Undo restores only that card.
+      await page.locator("#C-central").hover();
+      await page.locator("#C-central > .chead .ctl").getByRole("button", { name: "Undo" }).click();
+      await expect.poll(async () => (await cardParas(simplifyReview)).get("central"), { timeout: 60_000 }).toBe(before.get("central"));
+    });
+
+    await test.step("Explain terms: pick two in the card, × removes one, Rewrite carries the other", async () => {
+      const explainReview = await createDemoReview(s);
+      await openReview(page, explainReview);
+      await waitSettled(explainReview);
+      await expect(page.locator("#C-problem")).toBeVisible({ timeout: 30_000 });
+      const before = await cardParas(explainReview);
+      await openUnderstandMenu("problem");
+      await page.locator('[data-understand-menu-list="problem"]').getByRole("menuitem", { name: "Explain terms…" }).click();
+      const tray = page.getByTestId("explain-tray");
+      await expect(tray).toBeVisible({ timeout: 15_000 });
+      // ui Buttons, Rewrite disabled with no terms; picked terms are chips.
+      await expect(page.getByTestId("explain-rewrite")).toHaveClass(/ui-btn/);
+      await expect(page.getByTestId("explain-rewrite")).toHaveAttribute("data-variant", "primary");
+      await expect(page.getByTestId("explain-rewrite")).toBeDisabled();
+      await expect(page.getByTestId("explain-cancel")).toHaveClass(/ui-btn/);
+
+      // Pick two terms in the card: both highlight where picked.
+      await selectText(page, "#C-problem", "obs-fold", 0, undefined, { waitForBar: false });
+      await expect(page.getByTestId("explain-term")).toHaveCount(1);
+      await expect(page.locator("#C-problem mark[data-explain-term]")).toHaveCount(1);
+      await selectText(page, "#C-problem", "HTTPMessage", 0, undefined, { waitForBar: false });
+      await expect(page.getByTestId("explain-term")).toHaveCount(2);
+      await expect(page.locator("#C-problem mark[data-explain-term]")).toHaveCount(2);
+      await expect(page.getByTestId("explain-rewrite")).toBeEnabled();
+
+      // × removes one term and its highlight.
+      await page.getByRole("button", { name: 'Remove "obs-fold"' }).click();
+      await expect(page.getByTestId("explain-term")).toHaveCount(1);
+      await expect(page.locator("mark[data-explain-term]")).toHaveCount(1);
+
+      // Rewrite changes only that card; the prompt carries the
+      // remaining term's list entry and not the removed one's.
+      await page.getByTestId("explain-rewrite").click();
+      await expect(tray).toBeHidden({ timeout: 30_000 });
+      await expect(page.locator("mark[data-explain-term]")).toHaveCount(0);
+      await expect
+        .poll(async () => (await cardParas(explainReview)).get("problem"), { timeout: 120_000 })
+        .not.toBe(before.get("problem"));
+      const after = await cardParas(explainReview);
+      for (const [cid, txt] of before) {
+        if (cid === "problem") continue;
+        expect.soft(after.get(cid)).toBe(txt);
+      }
+      const prompt = await lastSlowerPrompt(explainReview);
+      expect(prompt).toContain('- "HTTPMessage"');
+      expect(prompt).not.toContain('- "obs-fold"');
+
+      // Undo restores the card.
+      await page.locator("#C-problem").hover();
+      await page.locator("#C-problem > .chead .ctl").getByRole("button", { name: "Undo" }).click();
+      await expect.poll(async () => (await cardParas(explainReview)).get("problem"), { timeout: 60_000 }).toBe(before.get("problem"));
+    });
+
+    await test.step("Cancel and Escape clear the highlights; other cards keep the toolbar", async () => {
+      const cancelReview = await createDemoReview(s);
+      await openReview(page, cancelReview);
+      await waitSettled(cancelReview);
+      await expect(page.locator("#C-problem")).toBeVisible({ timeout: 30_000 });
+
+      // Cancel clears the tray and the highlights, with no rewrite.
+      await openUnderstandMenu("problem");
+      await page.locator('[data-understand-menu-list="problem"]').getByRole("menuitem", { name: "Explain terms…" }).click();
+      await selectText(page, "#C-problem", "obs-fold", 0, undefined, { waitForBar: false });
+      await expect(page.getByTestId("explain-term")).toHaveCount(1);
+      await page.getByTestId("explain-cancel").click();
+      await expect(page.getByTestId("explain-tray")).toBeHidden();
+      await expect(page.locator("mark[data-explain-term]")).toHaveCount(0);
+
+      // Escape clears too.
+      await openUnderstandMenu("problem");
+      await page.locator('[data-understand-menu-list="problem"]').getByRole("menuitem", { name: "Explain terms…" }).click();
+      await selectText(page, "#C-problem", "obs-fold", 0, undefined, { waitForBar: false });
+      await expect(page.getByTestId("explain-term")).toHaveCount(1);
+      await page.keyboard.press("Escape");
+      await expect(page.getByTestId("explain-tray")).toBeHidden();
+      await expect(page.locator("mark[data-explain-term]")).toHaveCount(0);
+
+      // Selecting text in another card still shows the normal toolbar
+      // (plain prose — the first "obs-fold" sits inside a glossary
+      // link, which keeps the popover instead of the toolbar).
+      await openUnderstandMenu("problem");
+      await page.locator('[data-understand-menu-list="problem"]').getByRole("menuitem", { name: "Explain terms…" }).click();
+      await selectText(page, "#C-central", "unfolds");
+      await expect(page.locator("#selbar")).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByTestId("explain-term")).toHaveCount(0);
+      await page.keyboard.press("Escape");
+
+      // One picking card at a time: opening another card's picker
+      // clears the first card's terms and highlights.
+      await openUnderstandMenu("problem");
+      await page.locator('[data-understand-menu-list="problem"]').getByRole("menuitem", { name: "Explain terms…" }).click();
+      await selectText(page, "#C-problem", "HTTPMessage", 0, undefined, { waitForBar: false });
+      await expect(page.getByTestId("explain-term")).toHaveCount(1);
+      await openUnderstandMenu("central");
+      await page.locator('[data-understand-menu-list="central"]').getByRole("menuitem", { name: "Explain terms…" }).click();
+      await expect(page.locator("mark[data-explain-term]")).toHaveCount(0);
+      await expect(page.locator('#C-central [data-testid="explain-tray"]')).toBeVisible();
+      await expect(page.locator('#C-problem [data-testid="explain-tray"]')).toHaveCount(0);
+      await page.keyboard.press("Escape");
     });
   });
 
