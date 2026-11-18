@@ -171,6 +171,8 @@ describe("#178 reader with code citations outside the hunks (fake runner)", () =
           fetchedAt: Date.now(),
           idMapping: {},
         },
+        // Issue #421: the fixture guide describes this head.
+        guideHead: { version: 1, sha: "abc1234def5678abc1234def5678abc1234def5" },
         files: [
           {
             fileKey: "a-py",

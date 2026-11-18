@@ -13,6 +13,8 @@ function emptySnapshot(id: string): ReviewSnapshot {
   return {
     review: { id, repoId: "rp_x", branch: "feature", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: 0 },
     version: { n: 1, headSha: "a", mergeBaseSha: "b", baseRef: "main", fetchedAt: 0, idMapping: {} },
+    // Issue #421: the fixture guide describes this head.
+    guideHead: { version: 1, sha: "a" },
     files: [],
     pages: [],
     annotations: [],

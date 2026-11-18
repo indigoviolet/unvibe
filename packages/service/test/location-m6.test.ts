@@ -17,6 +17,8 @@ function snapshotWith(annotations: Thread[], files = [sourceFile()], pages: Revi
   return {
     review: { id: "rv", repoId: "rp", branch: "b", prNumber: 7, versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: 1 },
     version: { n: 1, headSha: HEAD_SHA, mergeBaseSha: BASE_SHA, baseRef: "main", fetchedAt: 1, idMapping: {} },
+    // Issue #421: the fixture guide describes this head.
+    guideHead: { version: 1, sha: HEAD_SHA },
     files,
     pages,
     annotations,

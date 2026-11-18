@@ -4661,3 +4661,64 @@ Owner decision (2026-11-18): remove the diff "Since" filter chip entirely; the d
 - **Kept:** `snapshot.sinceBaseline` (the stored X for Explain defaults and the pre-guide offer) and `sinceHunks` (the explain pass's X→head context). Neither is the diff filter.
 - **Data:** no `DATA_FORMAT` bump. Old stored filters with `sinceBaseline: true` stay readable; the key is ignored and dropped on the next filter write.
 - **Tests:** `l7-since` asserts a section citation reveals its hunk with every hunk still shown, no `[data-filterchip="since"]` exists, and no diff filter is stored. `versions-since-b` asserts the route refuses `sinceBaseline`.
+
+## Addendum: #421 — Explain changes from a toolbar menu; the Changes section becomes one panel (branch `feat/421-explain-toolbar-menu`)
+
+Owner-approved redesign (2026-11-18): the in-guide Explain picker is
+gone; one toolbar menu is the only entry, and the Changes section is
+one grouped panel with a commit-range header.
+
+- **Toolbar menu** (`shell/ExplainMenu.tsx`): a review-bar icon-only
+  borderless `button.ib` (Tabler `history`) right after Pull, tooltip
+  and aria-label "Explain changes since…". It opens the same `.fmenu`
+  portal menu PersonaButton uses: a "Commits" group with every PR
+  commit oldest first as `<sha8> <subject>`, the head commit shown
+  disabled with a quiet "latest" hint (the shared menu code gains the
+  disabled-row rule in `prototype.css`; the group label reuses the
+  existing `.fgroup`), plus a "Your last GitHub review" row (sha +
+  date hint) when one exists and isn't the head. No versions
+  anywhere. Picking runs Explain at once through the existing
+  explain route (one agent call); the button shows the busy state
+  while it runs. Failures and the empty result toast — the toolbar
+  sits above both panes, so a toast reaches the reader wherever they
+  are (the section/banner inline slots may be on the other pane or
+  off-screen). Hidden wherever Pull hides (document reviews, static
+  demo) plus old versions and when nothing is pickable.
+- **In-guide picker removed:** `ExplainControlSlot`, the section
+  header re-run control, `ExplainXSelect` / `useExplainEntries` and
+  their tests are deleted. The pre-guide "focus on changes since your
+  last review?" checkbox, versions and the version switcher stay.
+- **One panel** (`SinceSection.tsx`): the section is a single grouped
+  inset panel matching the Contents box (same `UiCard` inset, header
+  row and 14px card rhythm), header at the top and cards inside;
+  collapsing folds the whole panel to its header. The old "never a
+  box holding cards" rule is gone.
+- **Range header:** "Changes `<fromSha8>` → `<toSha8>` · `<date>`",
+  where `to` is the head the section was written at (stored on the
+  section as `SinceSection.headSha`) and a version baseline resolves
+  through its stored head. A re-run replaces the panel whole. When
+  the PR has newer commits than `to`, a quiet note reads "N newer
+  commits since this was written" (hidden when the old head is gone
+  after a rewrite). No "vN" anywhere.
+- **Banner** (`VersionBanner.tsx`): "N new commits since the guide
+  was written" plus one primary "Explain changes" button, explaining
+  from the commit the current guide was written at
+  (`snapshot.guideHead`, stamped when the reader lands so it follows
+  a Re-do) up to the head. No picker in the banner.
+- **Data format 10 → 11:** `SinceSection` gains required `headSha`
+  and the snapshot gains required `guideHead`; stored data without
+  them needs a reset.
+- **Tests:** rewritten journey `l7-since.spec.ts` (menu lists all
+  commits oldest first with the head disabled and not clickable;
+  picking runs Explain and the panel appears with a range header;
+  collapse folds the panel; a re-run replaces it; after a Pull the
+  header notes newer commits and the banner recounts from the
+  guide's commit; banner text and button; no in-guide picker rows;
+  menu hidden on the old version; static demo hides the menu),
+  `ExplainMenu.test.tsx` (button, menu rows, head disabled, pick
+  runs + busy + empty toast, hidden when nothing pickable), tour
+  frames `since-expanded` / `since-collapsed` / `since-feedback`
+  (panel), `since-commit-section` + `since-commit-menu`,
+  `since-menu-groups` + `since-unfetchable-menu`, `367` banner +
+  `explain-menu` (all at 1440 light). Fake runner only. Full gates
+  not yet run.

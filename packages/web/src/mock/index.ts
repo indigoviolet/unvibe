@@ -1405,6 +1405,8 @@ function currentSnapshot(reviewId = "demo", version?: number): ReviewSnapshot {
       currentVersion: stale ? 2 : 1,
     },
     version: stale ? { ...MOCK_VERSION, n: viewing } : MOCK_VERSION,
+    // Issue #421: the mock guide describes the mock head.
+    guideHead: { version: 1, sha: MOCK_VERSION.headSha },
     files: MOCK_FILES,
     description,
     ingest: { status: "ready" },
@@ -2129,6 +2131,8 @@ function mockLoadingSnapshot(entry: ReviewSummary): ReviewSnapshot {
     contributions: [],
     logTail: [],
     rev: 1,
+    // Issue #421: no guide yet (placeholder version 0).
+    guideHead: { version: 0, sha: "" },
     ingest: { status: "loading", step: entry.ingestStep ?? "fetching" },
   };
 }
@@ -2158,6 +2162,8 @@ function mockFailedSnapshot(entry: ReviewSummary, error: string): ReviewSnapshot
     contributions: [],
     logTail: [],
     rev: 1,
+    // Issue #421: no guide (failed open).
+    guideHead: { version: 0, sha: "" },
     ingest: { status: "failed", error },
   };
 }
@@ -2492,6 +2498,8 @@ export const mockApi = {
         };
       }),
       version,
+      // Issue #421: the mock document guide describes this head.
+      guideHead: { version: 1, sha: "mockdoc" },
       files: [],
       pages: [],
       annotations: [],
@@ -2583,6 +2591,8 @@ export const mockApi = {
         contributions: [],
         logTail: [],
         rev: 1,
+        // Issue #421: no guide yet (failed/loading placeholder).
+        guideHead: { version: 0, sha: "" },
         ingest: { status: "failed", error: fail },
       };
     }
@@ -2639,6 +2649,8 @@ export const mockApi = {
         contributions: [],
         logTail: [],
         rev: 1,
+        // Issue #421: no guide yet (failed/loading placeholder).
+        guideHead: { version: 0, sha: "" },
         ingest: { status: "loading", step },
       };
     }
@@ -2821,6 +2833,8 @@ export const mockApi = {
             contributions: [],
             logTail: [],
             rev: 1,
+            // Issue #421: no guide yet (failed/loading placeholder).
+            guideHead: { version: 0, sha: "" },
             ingest: { status: "loading", step: "fetching" },
           };
         }
@@ -2852,6 +2866,8 @@ export const mockApi = {
             contributions: [],
             logTail: [],
             rev: 1,
+            // Issue #421: no guide yet (failed/loading placeholder).
+            guideHead: { version: 0, sha: "" },
             ingest: { status: "failed", error: fail },
           };
         }

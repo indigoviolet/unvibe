@@ -293,19 +293,49 @@ export function hunkChangedSinceB(hunkId: string, s: SinceHunks | undefined): bo
 }
 
 /**
- * Issue #351/#413: the Changes-since-X section at the top of the
- * guide. Dated, collapsible, replaced whole on the next Explain run —
- * never revised in place.
+ * Issue #351/#413/#421: the Changes section at the top of the guide.
+ * Dated, collapsible, replaced whole on the next Explain run — never
+ * revised in place. One grouped panel (matching the Contents box),
+ * the commit range in the header, cards inside.
  */
 export interface SinceSection {
   /** Baseline B this section explains (version or commit). */
   baseline: SinceBaseline;
   /** Head version at the time of the pass that wrote it. */
   headVersion: number;
+  /**
+   * Issue #421: head commit the section was written at (the `to` of
+   * the header range). Stored at write time — required, no fallback.
+   */
+  headSha: string;
   /** Epoch ms the pass wrote it. */
   at: number;
   /** Cards explaining what changed, why, and what feedback caused it. */
   cards: import("./entities.js").Card[];
+}
+
+/**
+ * Issue #421: the head the current guide was written at. Stamped when
+ * the reader lands (so it follows a Re-do, which writes a new review)
+ * and never touched by refreshes or Explain runs. The new-commits
+ * banner counts and explains from this commit.
+ */
+export interface GuideHead {
+  /** Guide's version (the current version when the reader landed). */
+  version: number;
+  /** Head commit the guide was written at. */
+  sha: string;
+}
+
+/**
+ * Issue #421: commits after a reference sha in an oldest-first commit
+ * list. Null when the reference is gone from the list (a rewrite moved
+ * it) — callers decide the fallback. Pure.
+ */
+export function newerCommitsSince(commits: readonly { sha: string }[], refSha: string): number | null {
+  const idx = commits.findIndex((c) => c.sha.toLowerCase() === refSha.toLowerCase());
+  if (idx < 0) return null;
+  return commits.length - 1 - idx;
 }
 
 /**

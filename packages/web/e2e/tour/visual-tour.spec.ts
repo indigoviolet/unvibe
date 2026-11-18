@@ -3951,6 +3951,8 @@ test.describe("since-B tour (#351)", () => {
       snap.sinceSection = {
         baseline: { kind: "version", version: 1 },
         headVersion: 2,
+        // Issue #421: the section was written at the v2 head.
+        headSha: snap.version.headSha,
         at: now,
         cards: [
           {
@@ -4058,13 +4060,20 @@ test.describe("since-B tour (#351)", () => {
         expect(Math.abs((gaps.sinceGap as number) - (gaps.normalGap as number))).toBeLessThanOrEqual(2);
       }
 
-      // 2. Collapsed: the cards fold away.
-      await since.getByRole("button", { name: /Collapse changes since v1/ }).click();
+      // 2. Collapsed: the whole panel folds to its range header.
+      const snap351 = (await apiJson(svc351.origin, svc351.token, "GET", `/api/reviews/${review351}`)) as {
+        review: { versions: { n: number; headSha: string }[] };
+        version: { headSha: string };
+      };
+      const r1 = (snap351.review.versions.find((v) => v.n === 1)?.headSha ?? "").slice(0, 8);
+      const r2 = snap351.version.headSha.slice(0, 8);
+      const range351 = `${r1} → ${r2}`;
+      await since.getByRole("button", { name: /Collapse changes/ }).click();
       await expect(since.locator('[id^="C-since-"]')).toHaveCount(0);
       await stepChecks(page, "since-collapsed");
       await page.mouse.move(20, 20);
-      await shot(page, "since-collapsed", suffix, "Changes since v1 → v2");
-      await since.getByRole("button", { name: /Expand changes since v1/ }).click();
+      await shot(page, "since-collapsed", suffix, range351);
+      await since.getByRole("button", { name: /Expand changes/ }).click();
       await expect(since.locator('[id^="C-since-"]')).toHaveCount(2);
 
       // 3. The visible feedback link: the remark the delta answers.
@@ -4079,11 +4088,11 @@ test.describe("since-B tour (#351)", () => {
 });
 
 /**
- * Since-commit tour (#351 step 2): the baseline is a commit, not a
- * version. Same seeded-demo technique as the step-1 scene (tour-only
- * synthetic state with real demo hunk ids, so every combo renders
- * deterministically): the header, addendum, markers and filter chip all
- * name the real short sha, and the picker lists versions and commits.
+ * Since-commit tour (#351 step 2, menu #421): the baseline is a commit,
+ * not a version. Same seeded-demo technique as the step-1 scene
+ * (tour-only synthetic state with real demo hunk ids, so every combo
+ * renders deterministically): the panel header names the real commit
+ * range, and the toolbar menu lists the commit.
  */
 test.describe("since-commit tour (#351 step 2)", () => {
   test.describe.configure({ mode: "serial" });
@@ -4148,6 +4157,8 @@ test.describe("since-commit tour (#351 step 2)", () => {
       snap.sinceSection = {
         baseline: { kind: "commit", sha: commit352 },
         headVersion: 2,
+        // Issue #421: the section was written at the v2 head.
+        headSha: snap.version.headSha,
         at: now,
         cards: [
           {
@@ -4209,29 +4220,33 @@ test.describe("since-commit tour (#351 step 2)", () => {
       await page.goto(`${svc352.origin}/review/${review352}?token=${svc352.token}`);
       await expect(page.locator("#page .doc")).toBeVisible({ timeout: 60_000 });
 
-      // 1. The Since section names the short sha, not a version.
+      // 1. The panel header names the commit range, never a version.
+      const snap352 = (await apiJson(svc352.origin, svc352.token, "GET", `/api/reviews/${review352}`)) as {
+        version: { headSha: string };
+      };
+      const range352 = `${short352} → ${snap352.version.headSha.slice(0, 8)}`;
       const since = page.locator('[data-testid="since-section"]');
       await expect(since).toBeVisible({ timeout: 30_000 });
-      await expect(since).toContainText(new RegExp(`Changes since ${short352} → v2`));
+      await expect(since).toContainText(new RegExp(`Changes ${range352}`));
       await stepChecks(page, "since-commit-section");
       await page.mouse.move(20, 20);
-      await shot(page, "since-commit-section", suffix, `Changes since ${short352}`);
+      await shot(page, "since-commit-section", suffix, `Changes ${short352}`);
 
 
-      // 5. The picker lists versions and the commit (guide is the
-      // left pane, always present — just scroll back to the section).
-      // Layout checks run before the popup opens: the open popup
-      // overlays the diff gutter by design, which the gutter check
-      // would flag.
+      // 2. The toolbar menu lists the commit (guide is the left pane,
+      // always present — just scroll back to the review bar). Layout
+      // checks run before the popup opens: the open popup overlays
+      // the diff gutter by design, which the gutter check would flag.
       await expect(since).toBeVisible({ timeout: 30_000 });
-      const pick = since.locator('[data-testid="explain-pick"]');
-      await pick.scrollIntoViewIfNeeded();
-      await stepChecks(page, "since-commit-picker");
-      await pick.getByRole("combobox").click();
-      await expect(page.getByRole("group", { name: "Versions" })).toBeVisible({ timeout: 15_000 });
-      await expect(page.getByRole("group", { name: "Commits" })).toBeVisible();
+      const menuBtn = page.locator('#reviewbar [data-testid="explain-menu-button"]');
+      await expect(menuBtn).toBeVisible();
+      await stepChecks(page, "since-commit-menu");
+      await menuBtn.click();
+      const menu = page.getByTestId("explain-menu");
+      await expect(menu).toContainText("Commits", { timeout: 15_000 });
+      await expect(menu.locator(`[data-explain-commit="${commit352}"]`)).toBeVisible();
       await page.mouse.move(20, 20);
-      await shot(page, "since-commit-picker", suffix, "Commits");
+      await shot(page, "since-commit-menu", suffix, "Commits");
       await page.keyboard.press("Escape");
     });
   }
@@ -4440,6 +4455,8 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
         snap.sinceSection = {
           baseline: { kind: "commit", sha: c1 },
           headVersion: 2,
+          // Issue #421: the section was written at the refreshed head.
+          headSha: c3,
           at: Date.now(),
           cards: [
             {
@@ -4557,7 +4574,7 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       await shot(page, "since-unfetchable", suffix, `Couldn't find commit ${goneShort}`);
     });
 
-    test(`picker with versions, commits and the last GitHub review (${suffix})`, async ({ page }) => {
+    test(`menu with commits and the last GitHub review (${suffix})`, async ({ page }) => {
       test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
       if (!svcO) throw new Error("tour-offer service did not start");
       await page.setViewportSize({ width: combo.width, height: 900 });
@@ -4565,24 +4582,30 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       await page.goto(`${svcO.origin}/review/${revGone}?token=${svcO.token}`);
       const since = page.locator('[data-testid="since-section"]');
       await expect(since).toBeVisible({ timeout: 60_000 });
-      await expect(since).toContainText(new RegExp(`Changes since ${c1short} → v2`));
-      const pick = since.locator('[data-testid="explain-pick"]');
-      await pick.scrollIntoViewIfNeeded();
+      const goneSnap = (await apiJson(svcO.origin, svcO.token, "GET", `/api/reviews/${revGone}`)) as {
+        version: { headSha: string };
+      };
+      await expect(since).toContainText(
+        new RegExp(`Changes ${c1short} → ${goneSnap.version.headSha.slice(0, 8)}`),
+      );
       // Layout checks run before the popup opens: the open popup
       // overlays the diff gutter by design, which the gutter check
       // would flag.
-      await stepChecks(page, "since-picker-groups");
-      await pick.getByRole("combobox").click();
-      await expect(page.getByRole("group", { name: "Versions" })).toBeVisible({ timeout: 15_000 });
-      await expect(page.getByRole("group", { name: "Commits" })).toBeVisible();
-      await expect(page.getByRole("group", { name: "GitHub reviews" })).toBeVisible();
-      await expect(page.getByRole("option", { name: new RegExp(`Your last GitHub review \\(${goneShort}`) })).toBeVisible();
+      const menuBtn = page.locator('#reviewbar [data-testid="explain-menu-button"]');
+      await expect(menuBtn).toBeVisible();
+      await stepChecks(page, "since-menu-groups");
+      await menuBtn.click();
+      const menu = page.getByTestId("explain-menu");
+      await expect(menu).toContainText("Commits", { timeout: 15_000 });
+      const priorRow = menu.locator("[data-explain-prior]");
+      await expect(priorRow).toContainText("Your last GitHub review");
+      await expect(priorRow).toContainText(goneShort);
       await page.mouse.move(20, 20);
-      await shot(page, "since-picker-groups", suffix, "GitHub reviews");
+      await shot(page, "since-menu-groups", suffix, "Your last GitHub review");
       await page.keyboard.press("Escape");
     });
 
-    test(`unfetchable X fails loudly on Explain (${suffix})`, async ({ page }) => {
+    test(`unfetchable X fails loudly from the menu (${suffix})`, async ({ page }) => {
       test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
       if (!svcO) throw new Error("tour-offer service did not start");
       await page.setViewportSize({ width: combo.width, height: 900 });
@@ -4590,23 +4613,20 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       await page.goto(`${svcO.origin}/review/${revGone}?token=${svcO.token}`);
       const since = page.locator('[data-testid="since-section"]');
       await expect(since).toBeVisible({ timeout: 60_000 });
-      const pick = since.locator('[data-testid="explain-pick"]');
-      await expect(pick).toBeVisible({ timeout: 30_000 });
-      // Picking arms the button without validating: no error, no toast.
-      await pick.scrollIntoViewIfNeeded();
-      await pick.getByRole("combobox").click();
-      const goneOption = page.getByRole("option", { name: new RegExp(`Your last GitHub review \\(${goneShort}`) });
-      await expect(goneOption).toBeVisible({ timeout: 15_000 });
-      await goneOption.click();
-      await expect(page.locator("#toast")).toBeHidden();
-      // Explaining from the gone commit fails loudly in the control.
-      await since.getByRole("button", { name: "Explain", exact: true }).click();
-      const inline = since.getByTestId("explain-error");
-      await expect(inline).toContainText(`Couldn't find commit ${goneShort}`, { timeout: 30_000 });
-      await expect(page.locator("#toast")).toBeHidden();
-      await stepChecks(page, "since-unfetchable-picker");
+      await stepChecks(page, "since-unfetchable-menu");
+      // Picking the gone commit runs Explain at once and fails loudly
+      // in a toast (the toolbar sits above both panes); the panel is
+      // untouched. The toast dismisses itself, so the shot follows at once.
+      const menuBtn = page.locator('#reviewbar [data-testid="explain-menu-button"]');
+      await menuBtn.click();
+      const goneRow = page.getByTestId("explain-menu").locator("[data-explain-prior]");
+      await expect(goneRow).toBeVisible({ timeout: 15_000 });
+      await goneRow.click();
+      const toast = page.locator("#toast");
+      await expect(toast).toContainText(`Couldn't find commit ${goneShort}`, { timeout: 30_000 });
+      await expect(since).not.toContainText(goneShort);
       await page.mouse.move(20, 20);
-      await shot(page, "since-unfetchable-picker", suffix, `Couldn't find commit ${goneShort}`);
+      await shot(page, "since-unfetchable-menu", suffix, `Couldn't find commit ${goneShort}`);
     });
   }
 });

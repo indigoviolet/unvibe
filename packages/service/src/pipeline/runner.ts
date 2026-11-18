@@ -2462,12 +2462,18 @@ export class Pipeline {
             draft.sinceSection = {
               baseline: readerBaseline,
               headVersion: draft.review.currentVersion,
+              headSha: draft.version.headSha,
               at: Date.now(),
               cards,
             };
           }
         }
       }
+      // Issue #421: the guide describes this head — the new-commits
+      // banner counts and explains from it. Stamped on every reader
+      // landing (a Re-do writes a new review, so it follows one); no
+      // other pass touches it.
+      draft.guideHead = { version: draft.review.currentVersion, sha: draft.version.headSha };
       this.markFirstCard(draft);
       const seq = draft.logTail.reduce((m, e) => Math.max(m, e.seq), 0) + 1;
       draft.logTail.push({

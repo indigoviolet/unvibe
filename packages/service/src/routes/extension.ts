@@ -171,6 +171,8 @@ export async function registerExtensionRoutes(
         web: { url: cap.url, title: cap.title, pageKey: key, captureHash: hash, context: cap.context, messages: [] },
         version, files: [], pages: [], annotations: [], hunkStates: [], fileStates: [],
         viewPrefs: { ...DEFAULT_REVIEW_VIEW_PREFS }, jobs: [], contributions: [], logTail: [], rev: 1,
+        // Issue #421: the web guide describes this capture.
+        guideHead: { version: 1, sha: hash },
         ingest: { status: "ready" },
       };
       transaction(ctx.db, () => {

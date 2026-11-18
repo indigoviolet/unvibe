@@ -19,7 +19,7 @@ import { revealSource } from "../source/reveal.js";
 import { performFollowUp } from "./actions.js";
 import { CardView } from "./CardView.js";
 import { contentsModel, plotlineReviewedState } from "./guideUtils.js";
-import { ExplainControlSlot, SinceSection } from "./SinceSection.js";
+import { SinceSection } from "./SinceSection.js";
 import { Badge, Card as UiCard, ListRow } from "../ui/index.js";
 import { InlineCode, stripCodeSpans } from "../components/inlineCode.js";
 import { inflightLabel } from "./inflight.js";
@@ -429,10 +429,7 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
       </div>
       {isFinding && page.summary ? <div className="meta">{page.summary}</div> : null}
       {page.kind === "root" && review ? (
-        <>
-          <ExplainControlSlot reviewId={reviewId} />
-          <SinceSection reviewId={reviewId} renderCard={(card) => renderCard(card, 0)} />
-        </>
+        <SinceSection renderCard={(card) => renderCard(card, 0)} />
       ) : null}
       {conceptWorking ? (
         <div className="working" role="status">

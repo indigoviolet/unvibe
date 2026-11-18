@@ -257,6 +257,8 @@ describe("pipeline failure paths (scripted fakes)", () => {
     const snap: ReviewSnapshot = {
       review: { id, repoId: "demo", branch: "main", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: Date.now() },
       version: { n: 1, headSha: "abc1234def5678abc1234def5678abc1234def5", mergeBaseSha: "0000000", baseRef: "main", fetchedAt: Date.now(), idMapping: {} },
+      // Issue #421: the fixture guide describes this head.
+      guideHead: { version: 1, sha: "abc1234def5678abc1234def5678abc1234def5" },
       files: [
         {
           fileKey: "a-py",
@@ -726,6 +728,8 @@ describe("reader pinned code (#37)", () => {
         ctx.reviews.putSnapshot(reviewId, {
           review,
           version,
+          // Issue #421: the fixture guide describes this head.
+          guideHead: { version: version.n, sha: version.headSha },
           files,
           description,
           ingest: { status: "ready" },
@@ -863,6 +867,8 @@ describe("reader pinned code (#37)", () => {
         ctx.reviews.putSnapshot(reviewId, {
           review,
           version,
+          // Issue #421: the fixture guide describes this head.
+          guideHead: { version: version.n, sha: version.headSha },
           files,
           description,
           ingest: { status: "ready" },

@@ -268,7 +268,7 @@ export async function applyExplainResult(
       if (cards.length === 0) {
         throw new Error("The explain run's reply had no usable cards; try again");
       }
-      draft.sinceSection = { baseline: baselineV, headVersion: toVersion, at: now, cards };
+      draft.sinceSection = { baseline: baselineV, headVersion: toVersion, headSha: draft.version.headSha, at: now, cards };
     }
     if (result.sinceHunks) {
       const clean = (ids: unknown): string[] =>

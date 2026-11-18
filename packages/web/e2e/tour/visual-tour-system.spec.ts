@@ -83,7 +83,7 @@ test.describe("tour update banners", () => {
     rmSync(dataDir, { recursive: true, force: true });
   });
 
-  test("new-commits banner with the header chip; Explain replaces the section", async ({ page }) => {
+  test("new-commits banner with the header chip; Explain writes the panel; the menu", async ({ page }) => {
     test.setTimeout(240_000);
     if (!svc) throw new Error("no service");
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -108,7 +108,7 @@ test.describe("tour update banners", () => {
     await page.locator("#reviewbar").getByRole("button", { name: "Pull new commits from GitHub", exact: true }).click();
 
     const banner = page.locator('[data-testid="stale-banner"]');
-    await expect(banner).toContainText(/New commits · v1 → v2/, { timeout: 60_000 });
+    await expect(banner).toContainText(/1 new commit since the guide was written/, { timeout: 60_000 });
     await page.screenshot({ path: path.join(SHOTS, "367", "stale-banner-1440-light.png") });
     await page.locator(appFile).locator(".dhunk").first().screenshot({ path: path.join(SHOTS, "367", "hunk-header-chip-1440-light.png") });
 
@@ -122,8 +122,28 @@ test.describe("tour update banners", () => {
       if (Date.now() > jobDeadline) throw new Error("explain-pass job never finished");
       await new Promise((r) => setTimeout(r, 500));
     }
-    await expect(page.locator('[data-testid="since-section"]')).toContainText(/Changes since v1 → v2/, { timeout: 60_000 });
+    const headNow = ((await apiJson(svc, "GET", `/api/reviews/${reviewId}`)).json as {
+      version: { headSha: string };
+      review: { versions: { n: number; headSha: string }[] };
+    });
+    const from8 = (headNow.review.versions.find((v) => v.n === 1)?.headSha ?? "").slice(0, 8);
+    const to8 = headNow.version.headSha.slice(0, 8);
+    const since = page.locator('[data-testid="since-section"]');
+    await expect(since).toContainText(new RegExp(`Changes ${from8} → ${to8}`), { timeout: 60_000 });
     await page.screenshot({ path: path.join(SHOTS, "367", "explained-banner-1440-light.png") });
+
+    // The toolbar Explain menu, open: Commits oldest first, head disabled.
+    const menuBtn = page.locator('#reviewbar [data-testid="explain-menu-button"]');
+    await expect(menuBtn).toBeVisible();
+    await menuBtn.click();
+    const menu = page.getByTestId("explain-menu");
+    await expect(menu).toContainText("Commits", { timeout: 15_000 });
+    // Two commits past the base, oldest first; the head is disabled.
+    await expect(menu.locator("[data-explain-commit]")).toHaveCount(2);
+    await expect(menu.locator(`[data-explain-commit="${headNow.version.headSha}"]`)).toBeDisabled();
+    await page.mouse.move(20, 20);
+    await page.screenshot({ path: path.join(SHOTS, "367", "explain-menu-1440-light.png") });
+    await page.keyboard.press("Escape");
   });
 });
 

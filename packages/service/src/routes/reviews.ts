@@ -265,6 +265,8 @@ async function runIngestBackground(
     const snapshot: ReviewSnapshot = {
       review: { ...ingested.review, repoId },
       version: ingested.version,
+      // Issue #421: no guide yet — v1 is what the reader will describe.
+      guideHead: { version: 1, sha: ingested.version.headSha },
       files: ingested.files,
       description: ingested.description,
       commits: ingested.commits,
@@ -309,6 +311,8 @@ async function runIngestBackground(
     await ctx.reviews.mutate(reviewId, (draft) => {
       draft.review = { ...snapshot.review, guidePersonaId: prevGuide };
       draft.version = { ...snapshot.version! };
+      // Issue #421: no guide yet — v1 is what the reader will describe.
+      draft.guideHead = { version: snapshot.review.currentVersion, sha: snapshot.version!.headSha };
       draft.files = snapshot.files as ReviewSnapshot["files"];
       draft.description = snapshot.description ? { ...snapshot.description } : undefined;
       draft.commits = snapshot.commits ? snapshot.commits.map((c) => ({ ...c })) : undefined;
@@ -536,6 +540,8 @@ async function beginReviewFromSourceInner(
     contributions: [],
     logTail: [],
     rev: 1,
+    // Issue #421: no guide yet (placeholder version 0).
+    guideHead: { version: 0, sha: "" },
     ingest: { status: "loading", step: "fetching" },
   };
   transaction(ctx.db, () => {
@@ -802,6 +808,8 @@ export async function registerReviews(
         document,
         contextRepos,
         version,
+        // Issue #421: the document guide describes this head.
+        guideHead: { version: 1, sha: docSha },
         files: [],
         pages: [],
         annotations: [],
@@ -847,6 +855,8 @@ export async function registerReviews(
       const snapshot: ReviewSnapshot = {
         review: ingested.review,
         version: ingested.version,
+        // Issue #421: no guide yet — v1 is what the reader will describe.
+        guideHead: { version: 1, sha: ingested.version.headSha },
         files: ingested.files,
         description: ingested.description,
         ingest: { status: "ready" },

@@ -23,6 +23,8 @@ function snapshot(): ReviewSnapshot {
       createdAt: 0,
     },
     version: { n: 1, headSha: "h", mergeBaseSha: "m", baseRef: "main", fetchedAt: 0, idMapping: {} },
+    // Issue #421: the fixture guide describes this head.
+    guideHead: { version: 1, sha: "h" },
     ingest: { status: "ready" },
     files: [
       {

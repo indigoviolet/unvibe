@@ -14,7 +14,11 @@
  *   link right after the PR number — and the Refresh
  *   button next to the link (#241: same handler/check/banner as the diff
  *   toolbar owned, tooltip "Pull new commits from GitHub" (#420), hidden for document reviews which
- *   never had it),
+ *   never had it), the Explain menu next to it (#421: icon-only
+ *   history button, tooltip "Explain changes since…", opening the
+ *   shared `.fmenu` portal menu of all PR commits plus the last
+ *   GitHub review; hidden wherever Pull hides, on old versions, and
+ *   with nothing pickable),
  *   the version selector next to it (issue #120; hidden for
  *   single-version reviews, the current version annotated in the
  *   dropdown, an older shown version flagged with a warning border),
@@ -55,6 +59,7 @@ import type { PrStackInfo } from "@unvibe/shared";
 import { useNavigate } from "react-router";
 import { useState } from "react";
 import { jobCounts } from "./jobCounts.js";
+import { ExplainMenu } from "./ExplainMenu.js";
 import { RedoGuideButton } from "./RedoGuideButton.js";
 import { GuideCopyButton } from "../guide/GuideCopyButton.js";
 import { useReviewIdentity } from "./reviewIdentity.js";
@@ -216,6 +221,10 @@ export function ReviewBar({
             <Icon name="pull" />
           </button>
         ) : null}
+        {/* #421: Explain changes since a picked commit — icon-only
+            like Pull, hidden wherever Pull hides (plus old versions
+            and with nothing pickable). */}
+        <ExplainMenu reviewId={reviewId} />
         <VersionSwitcher />
         {ingestReady && !STATIC_DEMO ? (
           <Link
