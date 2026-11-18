@@ -1420,14 +1420,14 @@ function currentSnapshot(reviewId = "demo", version?: number): ReviewSnapshot {
     existingComments,
     plotlines: [...MOCK_PLOTLINES],
     ...(mockDiffFilter !== undefined ? { diffFilter: { ...mockDiffFilter } } : {}),
-    // The bundled demo is one version with one recorded commit: the
-    // guide-top Explain control offers it as X (#413 journey: Explain
-    // with the mock settles a job but stores no section).
+    // The bundled demo is one version with one recorded commit, and that
+    // commit is the head (#413): its sha matches the version's head, so
+    // nothing earlier exists and the guide shows no Explain row.
     ...(reviewId === "demo"
       ? {
           commits: [
             {
-              sha: "00162b2030837429af8f2de8ef07b602d910cbbd",
+              sha: MOCK_VERSION.headSha,
               subject: "Unfold obsolete line folding",
               body: "",
               files: [],
