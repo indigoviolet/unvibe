@@ -437,12 +437,6 @@ export function formatHideLevelStats(stats: HideLevelStats): string {
 export interface DiffFilter {
   /** Plotline id, or "other" for unassigned hunks. Absent = all. */
   plotline?: string;
-  /**
-   * Issue #351: true shows only hunks changed or added since the
-   * baseline (the snapshot's `sinceHunks`); composes with the plotline
-   * filter and every other filter.
-   */
-  sinceBaseline?: boolean;
 }
 
 /**

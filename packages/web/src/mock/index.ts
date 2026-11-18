@@ -3758,25 +3758,15 @@ export const mockApi = {
     return { jobIds };
   },
 
-  // Issue #169: mirrors the service PATCH semantics (null clears a field;
-  // unknown plotlines and levels are refused). Issue #351: `sinceBaseline`
-  // joins the filter (true shows only the delta; false and null clear).
+  // Issue #169: mirrors the service PATCH semantics (null clears the
+  // plotline; unknown plotlines are refused).
   updateDiffFilter: async (_id: string, body: UpdateDiffFilterRequest): Promise<{ ok: boolean }> => {
-    const { plotline, sinceBaseline } = body;
+    const { plotline } = body;
     if (plotline !== undefined && plotline !== null) {
       const ids = new Set([...MOCK_PLOTLINES.map((p) => p.id), "other"]);
       if (!ids.has(plotline)) throw new Error(`unknown plotline ${plotline}`);
     }
-    if (sinceBaseline !== undefined && sinceBaseline !== null && typeof sinceBaseline !== "boolean") {
-      throw new Error("sinceBaseline must be a boolean or null");
-    }
-    const next: DiffFilter = mockDiffFilter?.plotline ? { plotline: mockDiffFilter.plotline } : {};
-    if (mockDiffFilter?.sinceBaseline === true) next.sinceBaseline = true;
-    if (plotline === null) delete next.plotline;
-    else if (plotline !== undefined) next.plotline = plotline;
-    if (sinceBaseline === null) delete next.sinceBaseline;
-    else if (sinceBaseline === true) next.sinceBaseline = true;
-    else if (sinceBaseline === false) delete next.sinceBaseline;
+    const next: DiffFilter = typeof plotline === "string" ? { plotline } : {};
     mockDiffFilter = Object.keys(next).length === 0 ? undefined : next;
     emitDiffFilter();
     return { ok: true };

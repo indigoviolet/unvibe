@@ -23,7 +23,7 @@ import { parseId } from "@unvibe/shared";
 import { PERSON_SVG_INNER, SPARK_SVG_INNER } from "../components/Icon.js";
 import { citationRange } from "../guide/citations.js";
 import { api } from "../api/client.js";
-import { revealCitationFrom } from "../source/reveal.js";
+import { revealSource } from "../source/reveal.js";
 import { useReview } from "../state/store.js";
 import { resolveBlockCitations } from "../guide/citations.js";
 import { lookupConceptPage, pagePreviewHtml } from "../guide/guideUtils.js";
@@ -520,7 +520,7 @@ export function HoverPopover() {
         }
         const src = target.closest?.("[data-src]");
         if (src) {
-          revealCitationFrom(src, src.getAttribute("data-src") ?? "");
+          revealSource(src.getAttribute("data-src") ?? "");
           hideRef.current();
           return;
         }

@@ -230,39 +230,3 @@ export function canonicalRevealTarget(
   return `diff:${file.fileKey}:${range}${sha}`;
 }
 
-/**
- * Issue #413: the X→head hunk set behind the Since filter chip — the
- * new-side `h:` IDs the current Changes-since-X section cites. Every
- * claim in the section is cited into the X→head hunks, so the cited
- * set is the range the section explains. `h:` targets name their hunk
- * directly; `diff:` ranges resolve to the head hunks they overlap.
- * Null when there is no section (the chip then doesn't show). Pure.
- */
-export function sinceSectionHunkIds(snapshot: ReviewSnapshot): Set<string> | null {
-  const section = snapshot.sinceSection;
-  if (!section || section.cards.length === 0) return null;
-  const out = new Set<string>();
-  for (const card of section.cards) {
-    for (const block of card.blocks) {
-      const citations = "citations" in block ? (block.citations ?? []) : [];
-      const itemCitations =
-        block.type === "list" ? (block.items ?? []).flatMap((item) => item.citations ?? []) : [];
-      for (const citation of [...citations, ...itemCitations]) {
-        const parsed = parseId(citation.target);
-        if (!parsed) continue;
-        if (parsed.kind === "h") {
-          out.add(`h:${parsed.fileKey}:${parsed.contentHash}`);
-        } else if (parsed.kind === "diff") {
-          const file = snapshot.files.find((f) => f.fileKey === parsed.fileKey);
-          if (!file) continue;
-          for (const h of file.hunks) {
-            if (h.newEnd >= parsed.start && h.newStart <= parsed.end) {
-              out.add(`h:${file.fileKey}:${h.contentHash}`);
-            }
-          }
-        }
-      }
-    }
-  }
-  return out;
-}

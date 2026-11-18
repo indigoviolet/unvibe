@@ -29,7 +29,7 @@
  * `j5-settings-versions` (settings halves live in L9).
  *
  * Guards kept: #413 (Changes-since-X section, X picker, citation
- * reveal through the Since filter, re-run replacement, old guide
+ * reveal with the whole diff shown, re-run replacement, old guide
  * untouched, no stale markers anywhere); #351 (commit baseline +
  * delta hunk set, prior-review offer); #368 (the header chip's shared
  * gap — asserted, not framed); #112 (citation re-anchor); #194
@@ -205,21 +205,17 @@ test.describe("L7 explain-since (was j351 step 1)", () => {
     await expect(central).toBeVisible({ timeout: 30_000 });
     await expect(page.locator("#page [data-addendum]")).toHaveCount(0);
 
-    // A section citation opens the X→head range diff: the Since filter
-    // turns on and only the delta hunk shows.
+    // #413: a section citation reveals and highlights its hunk like any
+    // other citation; the diff keeps every hunk, and there is no Since
+    // filter chip.
     await page.locator('#right [role="tab"]').getByText("Diff").click();
     await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
     await expect(page.locator(appFile).locator(".dhunk")).toHaveCount(2);
     await since.locator('[id^="C-since-"]').first().locator(".lk").first().click();
-    const chip = page.locator('[data-filterchip="since"]');
-    await expect(chip).toHaveAttribute("aria-pressed", "true", { timeout: 30_000 });
-    // #413: short label; the X and hidden count are in the accessible name.
-    await expect(chip).toHaveText("Since");
-    await expect(chip).toHaveAttribute("aria-label", /^Changed since v1 \(\d+ hidden\): show all hunks$/);
-    await expect(page.locator(appFile).locator(".dhunk")).toHaveCount(1);
-    await expect(page.locator(appFile).locator(".dhunk").first()).toContainText("return 111");
-    await chip.click();
+    await expect(page.locator(appFile).getByText("return 111")).toBeVisible({ timeout: 30_000 });
     await expect(page.locator(appFile).locator(".dhunk")).toHaveCount(2);
+    await expect(page.locator('[data-filterchip="since"]')).toHaveCount(0);
+    expect(((await apiJson(svc, "GET", `/api/reviews/${reviewId}`)).json as { diffFilter?: unknown }).diffFilter).toBeUndefined();
 
     // Re-run with a different X (the base commit) replaces the section
     // whole: still one card, header naming the new X.
@@ -421,7 +417,7 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
     expect((s.jobs ?? []).some((j) => j.kind === "explain-pass")).toBe(false);
   });
 
-  test("Explain from the last GitHub review writes the section; the Since filter reads its X", async ({ page }) => {
+  test("Explain from the last GitHub review writes the section", async ({ page }) => {
     test.setTimeout(180_000);
     await page.goto(`${svc!.origin}/review/${reviewId}?token=${svc!.token}`);
     await expect(page.locator("#page .doc")).toBeVisible({ timeout: 60_000 });
@@ -437,14 +433,10 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
     await expect(since.locator('[id^="C-since-"]')).toHaveCount(1);
     // The guide-side entry is replaced by the section header control.
     await expect(page.getByTestId("explain-control")).toHaveCount(0);
-    // The Since filter chip reads the section's X.
+    // #413: no Since filter chip in the diff toolbar.
     await page.locator('#right [role="tab"]').getByText("Diff").click();
     await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
-    const chip = page.locator('[data-filterchip="since"]');
-    await expect(chip).toHaveText("Since", { timeout: 30_000 });
-    await expect(chip).toHaveAttribute("aria-label", `Changed since ${c1short}: show only these hunks`);
-    await chip.click();
-    await expect(chip).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator('[data-filterchip="since"]')).toHaveCount(0);
   });
 
   test("the offer is gone once the guide lands", async ({ page }) => {
@@ -750,7 +742,7 @@ test.describe("L7 refresh with new commits", () => {
 // ---------------------------------------------------------------------------
 // Section citation into a folded doc/config hunk (#413): h: targets
 // resolve to their head range, so the reveal unfolds the hidden group
-// with the Since filter on and no toast.
+// with no toast, and the whole diff stays shown.
 // ---------------------------------------------------------------------------
 
 test.describe("L7 section citation into a folded doc hunk", () => {
@@ -859,15 +851,11 @@ test.describe("L7 section citation into a folded doc hunk", () => {
     await expect(docSection.locator(".dhid").first()).toBeVisible({ timeout: 30_000 });
     await expect(docSection.getByText("Alpha line TWO reworked.")).toHaveCount(0);
 
-    // Clicking the section citation turns the Since filter on and
-    // reveals the hunk: unfolded, highlighted, no toast.
+    // Clicking the section citation reveals the hunk: unfolded,
+    // highlighted, no toast; no filter turns on.
     await since.locator("#C-since-doc-1 .lk").first().click();
-    const chip = page.locator('[data-filterchip="since"]');
-    await expect(chip).toHaveAttribute("aria-pressed", "true", { timeout: 30_000 });
-    // #413: short label; the X and hidden count are in the accessible name.
-    await expect(chip).toHaveText("Since");
-    await expect(chip).toHaveAttribute("aria-label", /^Changed since v1 \(\d+ hidden\): show all hunks$/);
     await expect(docSection.getByText("Alpha line TWO reworked.")).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator('[data-filterchip="since"]')).toHaveCount(0);
     await expect(page.locator("#toast")).toBeHidden({ timeout: 15_000 });
   });
 });

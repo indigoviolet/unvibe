@@ -4625,7 +4625,7 @@ Update button, addenda, and every stale marker are gone.
   `Card`, `stale` gone from `VersionStatus`). Hunk-level
   `reviewed`/`needsSummary`/diff "changed since reviewed" mechanics
   are unchanged. Citations are still remapped on refresh.
-- **Since filter kept, now section-backed** (owner answer 3): the
+- **Since filter kept, now section-backed** (owner answer 3; later removed entirely, see the Since-filter-removed addendum below): the
   diff chip reads the section's cited X→head hunks
   (`sinceSectionHunkIds`, shared by chip label/count and the
   reveal), shows only when a section exists, and names the section's
@@ -4651,3 +4651,13 @@ Update button, addenda, and every stale marker are gone.
   banner offering "Explain changes since v1"), tour banner +
   section frames at 1440 light, regenerated prompt goldens
   (`explain_pass.md`). Fake runner only. Full gates not yet run.
+
+## Addendum: #413 follow-up — diff Since filter removed (branch `fix/413-since-chip`)
+
+Owner decision (2026-11-18): remove the diff "Since" filter chip entirely; the diff always shows the whole PR.
+
+- **Removed:** the chip in `DiffView`, `sinceBaseline` in the diff filter (`DiffFilter` / `UpdateDiffFilterRequest` in shared, the `PATCH …/diff-filter` route, the mock), the `sinceSectionHunkIds` / `sinceIds` / `sinceHidden` plumbing in `DiffView`, `FileSection` and `diffLogic`, and `revealCitationFrom` (the citation path that turned the filter on). Its unit tests, journey asserts and the `since-filter` / `since-commit-filter` tour frames are gone.
+- **Now:** section citations reveal and highlight their hunk through `revealSource`, like every other citation, with all hunks visible. The route accepts only `plotline`; a `sinceBaseline` patch is a 400.
+- **Kept:** `snapshot.sinceBaseline` (the stored X for Explain defaults and the pre-guide offer) and `sinceHunks` (the explain pass's X→head context). Neither is the diff filter.
+- **Data:** no `DATA_FORMAT` bump. Old stored filters with `sinceBaseline: true` stay readable; the key is ignored and dropped on the next filter write.
+- **Tests:** `l7-since` asserts a section citation reveals its hunk with every hunk still shown, no `[data-filterchip="since"]` exists, and no diff filter is stored. `versions-since-b` asserts the route refuses `sinceBaseline`.
