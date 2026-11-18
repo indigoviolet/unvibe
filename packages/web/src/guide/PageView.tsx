@@ -429,7 +429,7 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
       </div>
       {isFinding && page.summary ? <div className="meta">{page.summary}</div> : null}
       {page.kind === "root" && review ? (
-        <SinceSection reviewId={reviewId} renderCard={(card) => renderCard(card, 0)} />
+        <SinceSection renderCard={(card) => renderCard(card, 0)} />
       ) : null}
       {conceptWorking ? (
         <div className="working" role="status">

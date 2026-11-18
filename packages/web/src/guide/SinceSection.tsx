@@ -23,13 +23,7 @@ export function sinceDate(at: number): string {
   return `${day} ${month}`;
 }
 
-export function SinceSection({
-  reviewId,
-  renderCard,
-}: {
-  reviewId: string;
-  renderCard: (card: Card) => ReactNode;
-}) {
+export function SinceSection({ renderCard }: { renderCard: (card: Card) => ReactNode }) {
   const snapshot = useReview((s) => s.snapshot);
   const since = snapshot?.sinceSection;
   const [open, setOpen] = useState(true);
