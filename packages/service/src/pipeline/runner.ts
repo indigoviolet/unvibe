@@ -727,14 +727,19 @@ export class Pipeline {
                 first.validation.anchor && !first.validation.anchor.ok
                   ? `\nAnchor problem: ${first.validation.anchor.reason}. Reply with the same content and a corrected anchor host (the host block's ID).\n`
                   : "";
-              const repairPrompt =
+              // Issue #417: the repair turn carries the same replay
+              // marker as the first turn, so the replay runner resolves
+              // it to a recording instead of the unknown placeholder.
+              const repairPrompt = withReplayMark(
                 `Some citations in your previous reply could not be verified:\n` +
                 first.validation.tokens
                   .filter((t) => t.status === "unverified")
                   .map((t) => `- ${t.target}: ${t.reason ?? "unknown"}`)
                   .join("\n") +
                 anchorProblem +
-                `\nReply with the same content and corrected citation tokens. End with the same trailing JSON block.`;
+                `\nReply with the same content and corrected citation tokens. End with the same trailing JSON block.`,
+                o.replay && isReplayRunner(this.opts.runner) ? o.replay : undefined,
+              );
               snapshotText = appendPromptSnapshot(ctx, snapshotText, "repair turn", repairPrompt);
               const repair = await timedTurn(ctx, "repair", () =>
                 collectTracked(this.opts.sessions, this.opts.runner, forked.session, repairPrompt, o.signal ?? ctx.signal, (d) =>
@@ -927,13 +932,17 @@ export class Pipeline {
               let repaired = false;
               if (first.validation.needsRepairTurn) {
                 repaired = true;
-                const repairPrompt =
+                // Issue #417: the repair turn carries the same replay
+                // marker as the first turn (unknown placeholder otherwise).
+                const repairPrompt = withReplayMark(
                   `Some citations could not be verified:\n` +
                   first.validation.tokens
                     .filter((t) => t.status === "unverified")
                     .map((t) => `- ${t.target}: ${t.reason ?? "unknown"}`)
                     .join("\n") +
-                  `\nReply with the same one-line summary and corrected citations. End with the same trailing JSON block.`;
+                  `\nReply with the same one-line summary and corrected citations. End with the same trailing JSON block.`,
+                  o.replay && isReplayRunner(this.opts.runner) ? o.replay : undefined,
+                );
                 snapshotText = appendPromptSnapshot(ctx, snapshotText, "repair turn", repairPrompt);
                 const repair = await timedTurn(ctx, "repair", () =>
                   collectTracked(this.opts.sessions, this.opts.runner, session, repairPrompt, o.signal ?? ctx.signal, (d) =>
@@ -2096,10 +2105,15 @@ export class Pipeline {
               // requested (see `requestedReaderFields`) — an unrequested
               // field is never named here, so the repair turn cannot leak
               // it; no new mechanism.
-              const repairPrompt =
+              // Issue #417: the repair turn carries the reader replay
+              // marker, so the replay runner resolves it to a recording
+              // instead of the unknown placeholder.
+              const repairPrompt = withReplayMark(
                 `The trailing JSON block in your previous reply did not parse (${brokenDataError}). ` +
                 `Resend just the data block: reply with only one fenced json block carrying the same trailing data ` +
-                `(${[...requestedKeys, "any contribute block"].join(", ")}), with no cards and no prose.`;
+                `(${[...requestedKeys, "any contribute block"].join(", ")}), with no cards and no prose.`,
+                isReplayRunner(this.opts.runner) ? { kind: "reader" } : undefined,
+              );
               ctx.setPromptSnapshot(`${prompt}\n\n--- repair turn ---\n${repairPrompt}`);
               const repair = await timedTurn(ctx, "repair", () =>
                 collectTracked(this.opts.sessions, this.opts.runner, session, repairPrompt, ctx.signal, (d) =>
@@ -2134,14 +2148,19 @@ export class Pipeline {
                 validation.anchor && !validation.anchor.ok
                   ? `\nAnchor problem: ${validation.anchor.reason}. Reply with the same cards and a corrected anchor host (the host block's ID).\n`
                   : "";
-              const repairPrompt =
+              // Issue #417: the repair turn carries the reader replay
+              // marker, so the replay runner resolves it to a recording
+              // instead of the unknown placeholder.
+              const repairPrompt = withReplayMark(
                 `Some citations in your previous reply could not be verified:\n` +
                 validation.tokens
                   .filter((t) => t.status === "unverified")
                   .map((t) => `- ${t.target}: ${t.reason ?? "unknown"}`)
                   .join("\n") +
                 anchorProblem +
-                `\nReply with the same cards and corrected citation tokens. End with the same trailing JSON block.`;
+                `\nReply with the same cards and corrected citation tokens. End with the same trailing JSON block.`,
+                isReplayRunner(this.opts.runner) ? { kind: "reader" } : undefined,
+              );
               // #124: the repair prompt names the failed citations, so keep
               // it on the job's stored prompt — the Debug page then shows
               // what failed (prompt wording, an ID shape, or the validator).
