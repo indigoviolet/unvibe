@@ -351,7 +351,9 @@ describe("CardView immediate feedback", () => {
         />,
         </MemoryRouter>
       );
+      // Issue #418: the button opens the menu; Simplify is today's press.
       fireEvent.click(screen.getByRole("button", { name: "Help me understand" }));
+      fireEvent.click(screen.getByRole("menuitem", { name: "Simplify" }));
       const section = document.getElementById("C-c1");
       expect(section?.className).toMatch(/rewriting/);
       expect(section?.getAttribute("aria-busy")).toBe("true");
