@@ -262,8 +262,12 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
     };
   }, [reviewId, probeHead, probePath]);
 
-  const onUpdated = useCallback(async () => {
+  // Issue #413: the hook already refetched the snapshot; the banner
+  // only clears its local refresh state. The toast fires solely when
+  // the run stored a section — an empty run shows its own status.
+  const onUpdated = useCallback(async (stored: boolean) => {
     clearBanner();
+    if (!stored) return;
     try {
       setSnapshot(await api.review(reviewId));
       toast("Review updated");
@@ -981,7 +985,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
         </div>
       ) : null}
       {bannerCounts ? (
-        <VersionBanner reviewId={reviewId} counts={bannerCounts} onUpdated={() => void onUpdated()} />
+        <VersionBanner reviewId={reviewId} counts={bannerCounts} onUpdated={(stored) => void onUpdated(stored)} />
       ) : null}
       {summaryCounts.missing > 0 ? (
         <div className="dbar dsumbar" role="status">

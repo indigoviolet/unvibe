@@ -32,7 +32,7 @@ import { RealCommandRunner } from "../src/exec/index.js";
 import { JobQueue } from "../src/jobs/index.js";
 import { createApp } from "../src/server.js";
 import { computeSinceHunks, formatSinceContext, matchSinceFeedback, resolveSinceBaseline } from "../src/versions/since.js";
-import { JsonBlockReplyParser } from "../src/versions/explain.js";
+import { buildExplainVariables, JsonBlockReplyParser } from "../src/versions/explain.js";
 
 const real = new RealCommandRunner();
 const authed = { authorization: "Bearer tok" };
@@ -371,5 +371,106 @@ describe("since-B step 1", () => {
     );
     expect(ok.baseline).toEqual({ kind: "commit", sha });
     expect(isSinceBaseline(ok.baseline)).toBe(true);
+  });
+});
+
+describe("explain uses the requested X, not the stored default (#413)", () => {
+  // One-version review: the stored/default baseline is v1, which is the
+  // head. The reviewer requests an older commit X instead.
+  const c1 = "c1".padEnd(40, "0");
+  const headSha = "d4".padEnd(40, "4");
+  function snap(): ReviewSnapshot {
+    return {
+      sinceBaseline: { kind: "version", version: 1 },
+      review: {
+        id: "r-x",
+        currentVersion: 1,
+        versions: [
+          { n: 1, headSha, mergeBaseSha: "m".repeat(40), baseRef: "main", fetchedAt: 2000, idMapping: {} },
+        ],
+      },
+      version: { n: 1, headSha, mergeBaseSha: "m".repeat(40), baseRef: "main", fetchedAt: 2000, idMapping: {} },
+      files: [
+        {
+          fileKey: "a",
+          path: "a.py",
+          category: "source",
+          hunks: [
+            {
+              contentHash: "h1",
+              header: "@@ -1 +1 @@",
+              newStart: 1,
+              newEnd: 1,
+              oldStart: 1,
+              oldEnd: 1,
+              added: 1,
+              removed: 0,
+              lines: [{ kind: "add", text: "x = 2" }],
+            },
+          ],
+        },
+      ],
+      commits: [{ sha: c1, subject: "rework alpha", body: "The reviewer asked for 2.", files: [], hunks: ["h:a:h1"] }],
+      existingComments: [
+        {
+          id: 7,
+          path: "a.py",
+          line: 1,
+          body: "Should return 2 here.",
+          bodyHtml: "Should return 2 here.",
+          author: "reviewer",
+          // Predates the stored v1 window: a version-X prompt would drop
+          // it, but the requested commit X has no lower time bound.
+          createdAt: new Date(1000).toISOString(),
+        },
+      ],
+      pages: [],
+      annotations: [],
+      hunkStates: [],
+      jobs: [],
+      contributions: [],
+      logTail: [],
+      rev: 1,
+      ingest: { status: "ready" },
+    } as unknown as ReviewSnapshot;
+  }
+
+  it("the prompt's Baseline names the requested commit X with its subject", () => {
+    const s = snap();
+    const since = { added: ["h:a:h1"], changed: [] as string[] };
+    const vars = buildExplainVariables(s, since, { baseline: { kind: "commit", sha: c1 } });
+    expect(vars.x_context).toContain(`B is commit ${c1.slice(0, 8)} "rework alpha"`);
+    expect(vars.x_context).not.toContain("B is v1 ");
+    expect(vars.x_hunks).toContain("[[h:a:h1]]");
+  });
+
+  it("the feedback window follows the requested X, not the stored default", () => {
+    const s = snap();
+    const since = { added: ["h:a:h1"], changed: [] as string[] };
+    // Requested commit X: no lower time bound, so the old comment counts.
+    const fbX = matchSinceFeedback(s, since, { kind: "commit", sha: c1 });
+    expect(fbX.baseline).toEqual({ kind: "commit", sha: c1 });
+    expect(fbX.comments.map((c) => c.comment.id)).toEqual([7]);
+    // Stored default v1 (= head): the same comment is out of window.
+    const fbStored = matchSinceFeedback(s, since);
+    expect(fbStored.baseline).toEqual({ kind: "version", version: 1 });
+    expect(fbStored.comments).toEqual([]);
+  });
+
+  it("a requested version X names that version", () => {
+    const s = snap();
+    s.review.versions.push({
+      n: 2,
+      headSha,
+      mergeBaseSha: "m".repeat(40),
+      baseRef: "main",
+      fetchedAt: 3000,
+      idMapping: {},
+    });
+    s.review.currentVersion = 2;
+    s.version = { ...s.version, n: 2, fetchedAt: 3000 };
+    const since = { added: ["h:a:h1"], changed: [] as string[] };
+    const vars = buildExplainVariables(s, since, { baseline: { kind: "version", version: 1 } });
+    expect(vars.x_context).toContain("B is v1");
   });
 });

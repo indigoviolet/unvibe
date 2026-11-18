@@ -97,8 +97,23 @@ describe("explain pass", () => {
         }
       }
 
-      // Fresh review: explain runs (no staleness gate), defaulting X.
+      // One-version review: the default X is the head, so the route
+      // refuses before any agent spend — absent, explicit version, or
+      // explicit head commit alike.
+      const headSha = ctx.reviews.getSnapshot(id)!.version.headSha;
+      for (const payload of [{}, { version: 1 }, { sha: headSha }]) {
+        const refused = await app.inject({ method: "POST", url: `/api/reviews/${id}/explain`, headers: authed, payload });
+        expect(refused.statusCode).toBe(409);
+        expect((refused.json() as { error: string }).error).toMatch(/Nothing to explain/);
+      }
+
+      // A second version makes v1 a real X: explain runs, defaulting to it.
+      fs.writeFileSync(path.join(dir, "a.py"), "x = 1\ny = 2\nz = 4\n");
+      await git(dir, "commit", "-am", "more");
+      const refreshed = await app.inject({ method: "POST", url: `/api/reviews/${id}/refresh`, headers: authed });
+      expect(refreshed.statusCode).toBe(200);
       const before = ctx.reviews.getSnapshot(id)!;
+      expect(before.review.currentVersion).toBe(2);
       const beforePages = JSON.stringify(before.pages);
       (globalThis as { __snap?: ReviewSnapshot }).__snap = before;
 
@@ -124,7 +139,7 @@ describe("explain pass", () => {
       expect(card.blocks.length).toBeGreaterThan(0);
       // The old guide is untouched: same pages, no version-status write.
       expect(JSON.stringify(after.pages)).toBe(beforePages);
-      expect(after.versionStatus).toBe(before.versionStatus);
+      expect(after.versionStatus).toEqual(before.versionStatus);
 
       // An explicit commit X is accepted too.
       const commits = (ctx.reviews.getSnapshot(id)!.commits ?? []);
@@ -141,6 +156,56 @@ describe("explain pass", () => {
     } finally {
       await app.close();
       delete (globalThis as { __snap?: ReviewSnapshot }).__snap;
+    }
+  });
+
+  it("an empty reply stores nothing and still finishes done", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-m5e-"));
+    await git(dir, "init", "-b", "main");
+    await git(dir, "config", "user.email", "t@example.com");
+    await git(dir, "config", "user.name", "T");
+    fs.writeFileSync(path.join(dir, "a.py"), "x = 1\n");
+    await git(dir, "add", ".");
+    await git(dir, "commit", "-m", "base");
+    await git(dir, "checkout", "-b", "feature");
+    fs.writeFileSync(path.join(dir, "a.py"), "x = 1\ny = 2\n");
+    await git(dir, "commit", "-am", "change");
+
+    const queue = new JobQueue();
+    const baseRunner = {
+      runExplainPrompt: async () =>
+        `No delta worth a card.\n\n\`\`\`json\n${JSON.stringify({ baseline: { kind: "version", version: 1 }, sinceSection: { cards: [] } })}\n\`\`\`\n`,
+    };
+    const { app, ctx } = await createApp("tok", { runner: real, jobs: queue, baseRunner, autoPipeline: false });
+    try {
+      const added = await app.inject({ method: "POST", url: "/api/repos", headers: authed, payload: { path: dir } });
+      const repoId = (added.json() as { repos: { id: string }[] }).repos.find((r) => r.id !== "demo")!.id;
+      const created = await app.inject({ method: "POST", url: "/api/reviews", headers: authed, payload: { repoId, branch: "feature" } });
+      const id = (created.json() as ReviewSnapshot).review.id;
+      const start = Date.now();
+      while (Date.now() - start < 15000) {
+        const got = await app.inject({ method: "GET", url: `/api/reviews/${id}`, headers: authed });
+        if (got.statusCode === 200) {
+          const snap = got.json() as ReviewSnapshot;
+          if ((snap.ingest?.status ?? "ready") === "ready" && (snap.version?.n ?? 0) >= 1) break;
+        }
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      // A second version (committed after opening) makes v1 a real X;
+      // the fake reply carries no cards.
+      fs.writeFileSync(path.join(dir, "a.py"), "x = 1\ny = 2\nz = 3\n");
+      await git(dir, "commit", "-am", "more");
+      const refreshed = await app.inject({ method: "POST", url: `/api/reviews/${id}/refresh`, headers: authed });
+      expect((refreshed.json() as { newVersion: boolean }).newVersion).toBe(true);
+      const enq = await app.inject({ method: "POST", url: `/api/reviews/${id}/explain`, headers: authed, payload: {} });      expect(enq.statusCode).toBe(202);
+      await queue.drain(5000);
+      const job = queue.get((enq.json() as { jobId: string }).jobId)!;
+      expect(job.state).toBe("done");
+      // Nothing stored: no section, old guide untouched.
+      const after = ctx.reviews.getSnapshot(id)!;
+      expect(after.sinceSection).toBeUndefined();
+    } finally {
+      await app.close();
     }
   });
 

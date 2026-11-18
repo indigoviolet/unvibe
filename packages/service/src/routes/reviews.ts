@@ -1159,9 +1159,16 @@ export async function registerReviews(
     body: { version?: unknown; sha?: unknown },
   ): Promise<{ baseline: SinceBaseline; since: SinceHunks }> {
     const current = snapshot.review.currentVersion;
+    const headSha = snapshot.version.headSha.toLowerCase();
+    // Issue #413: X = the head is an empty range — refuse before any
+    // agent spend. Explicit picks get 400s for malformed values, but
+    // the head itself is a well-formed, meaningless X (409).
     if (typeof body.sha === "string") {
       if (!isCommitSha(body.sha)) throw new Error("sha must be a commit sha (4-64 hex chars)");
       const sha = body.sha.toLowerCase();
+      if (sha === headSha || headSha.startsWith(sha) || sha.startsWith(headSha)) {
+        throw new Error("Nothing to explain: X is the current head");
+      }
       const row = readReviewRow(ctx.db, reviewId);
       if (!row) throw new Error("unknown review");
       const repo = ctx.repos.get(row.repoId);
@@ -1171,8 +1178,11 @@ export async function registerReviews(
       return { baseline: { kind: "commit", sha }, since };
     }
     if (typeof body.version === "number") {
-      if (!Number.isSafeInteger(body.version) || body.version < 1 || body.version >= current) {
-        throw new Error(`version must be an earlier version (1 to ${current - 1})`);
+      if (!Number.isSafeInteger(body.version) || body.version < 1 || body.version > current) {
+        throw new Error(`version must be a version 1 to ${current}`);
+      }
+      if (body.version === current) {
+        throw new Error("Nothing to explain: X is the current head");
       }
       const bFiles = loadVersionFiles(ctx.db, reviewId, body.version);
       if (!bFiles) throw new Error(`no files stored for version ${body.version}`);
@@ -1234,6 +1244,11 @@ export async function registerReviews(
     void req;
     try {
       const resolved = await resolveExplainBaseline(id, snapshot, body);
+      // The stored/default X can be the head (one-version review with
+      // nothing picked): refuse before any agent spend.
+      if (resolved.baseline.kind === "version" && resolved.baseline.version >= snapshot.review.currentVersion) {
+        return reply.code(409).send({ error: "Nothing to explain: X is the current head" });
+      }
       const job = enqueueExplainPass(
         {
           jobs: deps.jobs,
@@ -1253,6 +1268,7 @@ export async function registerReviews(
     } catch (err) {
       const msg = (err as Error).message;
       if (/no prompts dir/.test(msg)) return reply.code(500).send({ error: msg });
+      if (/^Nothing to explain/.test(msg)) return reply.code(409).send({ error: msg });
       if (/version must be|sha must be|no files stored|couldn't |Couldn't /.test(msg)) {
         const code = /Couldn't find commit/.test(msg) ? 502 : 400;
         return reply.code(code).send({ error: msg });
