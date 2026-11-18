@@ -13,7 +13,7 @@
  *   the full name on hover — the stack badge (#321) sits INSIDE the PR
  *   link right after the PR number — and the Refresh
  *   button next to the link (#241: same handler/check/banner as the diff
- *   toolbar owned, tooltip "Refresh", hidden for document reviews which
+ *   toolbar owned, tooltip "Pull new commits from GitHub" (#420), hidden for document reviews which
  *   never had it),
  *   the version selector next to it (issue #120; hidden for
  *   single-version reviews, the current version annotated in the
@@ -97,7 +97,7 @@ export function ReviewBar({
   const jobsLabel = `${counts.running} running, ${counts.queued} queued`;
   // #241: Refresh lives here now (moved from the diff toolbar). Same
   // handler/check/banner as before; hidden for document reviews, which
-  // never had it. Tooltip is exactly "Refresh".
+  // never had it. Tooltip says it pulls new commits from GitHub (#420).
   const { refreshing, doRefresh } = useRefresh(reviewId);
   const versionParam = useReviewVersion();
   const readOnly =
@@ -208,12 +208,12 @@ export function ReviewBar({
           <button
             className="ib"
             type="button"
-            data-tip="Refresh"
-            aria-label="Refresh"
+            data-tip={refreshing ? "Pulling new commits from GitHub…" : "Pull new commits from GitHub"}
+            aria-label="Pull new commits from GitHub"
             disabled={refreshing || readOnly}
             onClick={() => void doRefresh()}
           >
-            <Icon name="refresh" />
+            <Icon name="pull" />
           </button>
         ) : null}
         <VersionSwitcher />

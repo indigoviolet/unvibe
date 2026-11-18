@@ -89,9 +89,9 @@ describe("ReviewBar", () => {
     expect(debug).toHaveAttribute("href", "/review/r-old/debug");
     expect(debug).toHaveAttribute("title", "Debug");
     // #241: Refresh lives in the bar now (next to the status icon),
-    // tooltip exactly "Refresh".
-    const refresh = screen.getByRole("button", { name: "Refresh" });
-    expect(refresh).toHaveAttribute("data-tip", "Refresh");
+    // tooltip says it pulls new commits from GitHub (#420).
+    const refresh = screen.getByRole("button", { name: "Pull new commits from GitHub" });
+    expect(refresh).toHaveAttribute("data-tip", "Pull new commits from GitHub");
     expect(document.getElementById("reviewbar")).toContainElement(refresh);
     expect(screen.getByRole("button", { name: "Guide" })).toHaveAttribute("aria-pressed", "true");
     expect(document.getElementById("toggleRight")).toHaveTextContent("Source");
@@ -162,7 +162,7 @@ describe("ReviewBar", () => {
 
   it("shows Refresh in the bar, hidden for document reviews (#241)", async () => {
     await renderBar("r-old", "urllib3/urllib3#5011");
-    expect(screen.getByRole("button", { name: "Refresh" })).toHaveAttribute("data-tip", "Refresh");
+    expect(screen.getByRole("button", { name: "Pull new commits from GitHub" })).toHaveAttribute("data-tip", "Pull new commits from GitHub");
     cleanup();
     useReview.getState().clear();
     const snap = await api.review("demo");
@@ -177,7 +177,7 @@ describe("ReviewBar", () => {
       </MemoryRouter>,
     );
     await screen.findByRole("button", { name: "Guide" });
-    expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Pull new commits from GitHub" })).toBeNull();
   });
 
   it("document reviews show a document icon plus the short name, not the first context repo (#254)", async () => {
@@ -204,7 +204,7 @@ describe("ReviewBar", () => {
     expect(docid!.querySelector("svg.ic")).not.toBeNull();
     expect(bar).not.toHaveTextContent("urllib3/urllib3");
     expect(screen.queryByRole("link", { name: "Open PR on GitHub" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Pull new commits from GitHub" })).toBeNull();
     // The browser tab names the document.
     expect(document.title).toBe("Design note");
     cleanup();

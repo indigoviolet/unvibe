@@ -2376,10 +2376,10 @@ test.describe("L3 demo guide reading", () => {
         /^Hiding \d+ of \d+ hunks/,
       );
       // #241: Refresh lives in the review top bar now (next to the status
-      // icon), tooltip exactly "Refresh" — and no longer in the diff toolbar.
-      const refresh = page.locator("#reviewbar").getByRole("button", { name: "Refresh" });
-      await expect.soft(refresh).toHaveAttribute("data-tip", "Refresh");
-      await expect.soft(page.locator(".dtool").getByRole("button", { name: "Refresh" })).toHaveCount(0);
+      // icon), tooltip says it pulls new commits (#420) — and no longer in the diff toolbar.
+      const refresh = page.locator("#reviewbar").getByRole("button", { name: "Pull new commits from GitHub" });
+      await expect.soft(refresh).toHaveAttribute("data-tip", "Pull new commits from GitHub");
+      await expect.soft(page.locator(".dtool").getByRole("button", { name: "Pull new commits from GitHub" })).toHaveCount(0);
 
       // Review filter: funnel icon, action-only tooltip, active dot.
       // (#296: new reviews hide existing GitHub comments by default, so the

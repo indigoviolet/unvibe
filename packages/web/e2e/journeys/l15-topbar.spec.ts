@@ -80,7 +80,7 @@ test.describe("L15 top-bar visual pass", () => {
     // review below).
     for (const [role, name] of [
       ["link", "Back to the start page"],
-      ["button", "Refresh"],
+      ["button", "Pull new commits from GitHub"],
       ["link", "Debug"],
       ["button", "Copy guide as Markdown"],
       ["button", "Collapse threads"],
@@ -258,7 +258,7 @@ test.describe("L15 PR review bar", () => {
     await expect(bar).toBeVisible({ timeout: 30_000 });
     for (const [role, name] of [
       ["link", "Back to the start page"],
-      ["button", "Refresh"],
+      ["button", "Pull new commits from GitHub"],
       ["link", "Debug"],
       ["button", "Re-do guide"],
     ] as const) {
