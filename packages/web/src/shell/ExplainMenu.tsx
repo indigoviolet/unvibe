@@ -118,10 +118,13 @@ export function ExplainMenu({ reviewId }: { reviewId: string }): React.JSX.Eleme
         onClick={() => {
           const rect = btnRef.current?.getBoundingClientRect();
           if (rect) {
+            // The button sits at the bar's left edge, so the wide menu
+            // left-aligns to it (right-aligning would clamp it into the
+            // viewport corner); otherwise the PersonaButton placement.
             const width = 320;
             setPos({
               top: Math.min(rect.bottom + 4, window.innerHeight - 8),
-              left: Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8)),
+              left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
             });
           }
           setOpen((v) => !v);
