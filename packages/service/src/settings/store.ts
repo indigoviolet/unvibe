@@ -60,6 +60,8 @@ export const DEFAULT_SETTINGS: Settings = {
   extensionActiveRepoIds: null,
   /** Issue #322: panel turns default to muse-spark. */
   extensionModel: { provider: "pi", model: "muse-spark-1.3-contributor", effort: "" },
+  /** Issue #422: experimental gates, both off by default. */
+  experimental: { explainTerms: false, markdownDocs: false },
 };
 
 function isModelPick(v: unknown): v is ModelPick {
@@ -165,6 +167,24 @@ export function validateSettings(patch: Record<string, unknown>): string[] {
   if (autoGoDeeper !== undefined && typeof autoGoDeeper !== "boolean") {
     errors.push("autoGoDeeper must be a boolean");
   }
+  // Issue #422: the experimental gates arrive as one object; both
+  // leaves must be booleans when present.
+  const experimental = patch["experimental"];
+  if (experimental !== undefined) {
+    if (typeof experimental !== "object" || experimental === null || Array.isArray(experimental)) {
+      errors.push("experimental must be { explainTerms, markdownDocs } with boolean values");
+    } else {
+      const exp = experimental as Record<string, unknown>;
+      for (const leaf of ["explainTerms", "markdownDocs"] as const) {
+        if (exp[leaf] !== undefined && typeof exp[leaf] !== "boolean") {
+          errors.push(`experimental.${leaf} must be a boolean`);
+        }
+      }
+      for (const key of Object.keys(exp)) {
+        if (key !== "explainTerms" && key !== "markdownDocs") errors.push(`unknown experimental setting: ${key}`);
+      }
+    }
+  }
   const recordTraces = patch["recordTraces"];
   if (recordTraces !== undefined && typeof recordTraces !== "boolean") {
     errors.push("recordTraces must be a boolean");
@@ -201,6 +221,13 @@ export class SettingsStore {
     const out: Settings = structuredClone(DEFAULT_SETTINGS);
     for (const row of rows) {
       if (!(row.key in out)) continue;
+      // Issue #422: a stored partial object (from an older build, or a
+      // partial PUT) merges leaf-wise so one gate never wipes the other.
+      if (row.key === "experimental") {
+        const stored = JSON.parse(row.value) as Partial<Settings["experimental"]>;
+        out.experimental = { ...DEFAULT_SETTINGS.experimental, ...stored };
+        continue;
+      }
       (out as unknown as Record<string, unknown>)[row.key] = JSON.parse(row.value);
     }
     return out;
@@ -227,6 +254,11 @@ export class SettingsStore {
     // turning it on again asks again.
     const effective: Record<string, unknown> = { ...patch };
     if (patch.fullAccess === false) effective["fullAccessAcknowledgedAt"] = null;
+    // Issue #422: a partial experimental update merges over the stored
+    // object, so toggling one gate never resets the other.
+    if (patch.experimental !== undefined) {
+      effective["experimental"] = { ...this.get().experimental, ...patch.experimental };
+    }
     for (const [key, value] of Object.entries(effective)) {
       if (value !== undefined) stmt.run(key, JSON.stringify(value));
     }

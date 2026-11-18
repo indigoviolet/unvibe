@@ -757,6 +757,14 @@ export async function registerReviews(
     // Issue #222: document reviews are created synchronously from the
     // pasted Markdown (no ingest, no pipeline — nothing generated up front).
     if ((raw as { kind?: string }).kind === "document") {
+      // Issue #422: document creation is experimental — refuse while
+      // Markdown docs is off (existing doc reviews stay in storage).
+      if ((deps as RouteDeps).settings?.get().experimental.markdownDocs !== true) {
+        return reply.code(403).send({
+          error:
+            "Markdown docs is an experimental feature — turn it on in Settings → Experimental to create document reviews",
+        });
+      }
       const docBody = raw as CreateDocumentRequest;
       const markdown = typeof docBody.markdown === "string" ? docBody.markdown : "";
       if (markdown.trim() === "") return reply.code(400).send({ error: "paste the document's Markdown first" });
