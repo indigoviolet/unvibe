@@ -11,7 +11,7 @@
  * page, expands its card, scrolls and highlights it.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useLocation, useNavigate, useParams } from "react-router";
+import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { isDocumentReview } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { ErrorBoundary, InlineFallback } from "../components/ErrorBoundary.js";
@@ -76,6 +76,25 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
   // Guide error-state retry (issue #86, finding 14): re-enqueue the
   // unfinished pipeline stages, then converge on the fresh snapshot.
   const [retrying, setRetrying] = useState(false);
+  // Issue #422: Markdown docs is experimental — a document review opened
+  // while the gate is off shows the notice instead (existing doc reviews
+  // stay in storage, just unreachable). Read on mount: a remount (any
+  // navigation) picks up a flipped toggle without a reload.
+  const [docsOn, setDocsOn] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .settings()
+      .then((s) => {
+        if (!cancelled) setDocsOn(s.experimental?.markdownDocs === true);
+      })
+      .catch(() => {
+        if (!cancelled) setDocsOn(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const retryGuide = (): void => {
     setRetrying(true);
     api
@@ -265,6 +284,16 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
 
   // Issue #222: a document review's left pane is the document itself.
   if (isDocumentReview(snapshot)) {
+    if (!docsOn) {
+      return (
+        <div className="doc" data-testid="document-experimental-notice">
+          <p className="hint" role="note">
+            Markdown docs is an experimental feature; turn it on in{" "}
+            <Link to="/settings?tab=experimental">Settings → Experimental</Link>.
+          </p>
+        </div>
+      );
+    }
     return <DocumentView reviewId={reviewId} onOpenPage={onOpenPage} />;
   }
 

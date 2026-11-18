@@ -22,7 +22,7 @@ import { createPortal } from "react-dom";
 import { GuideBlockThreads } from "../comments/GuideThreads.js";
 import { Icon } from "../components/Icon.js";
 import { toast } from "../floating/Toast.js";
-import { friendlyError } from "../api/client.js";
+import { api, friendlyError } from "../api/client.js";
 import { useReview } from "../state/store.js";
 import { performAction, performExplainRewrite, performFollowUp, performInsertAction, personaVariantKey } from "./actions.js";
 import { clearExplainHighlights, unhighlightExplainTerm } from "./explainTerms.js";
@@ -238,11 +238,39 @@ function PersonaButton({
 }
 
 /**
+ * Whether the Explain-terms menu (#418) is on (issue #422): the
+ * experimental flag, read when the button mounts. No subscription — a
+ * remount (any navigation) picks up a flipped toggle without a reload.
+ */
+function useExplainTermsEnabled(): boolean {
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .settings()
+      .then((s) => {
+        if (!cancelled) setOn(s.experimental?.explainTerms === true);
+      })
+      .catch(() => {
+        if (!cancelled) setOn(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return on;
+}
+
+/**
  * Help-me-understand menu (issue #418). The same icon-only button as
  * today's press (no caret); it opens a menu exactly the way
  * PersonaButton does (same `.fmenu` portal menu). Two items:
  * Simplify runs today's press unchanged; Explain terms… puts this card
  * alone into term picking.
+ *
+ * Issue #422: with the Explain-terms gate off the button is a plain
+ * Simplify press again (same icon, same tooltip, one click runs
+ * Simplify, no menu) and term picking is unreachable.
  */
 function UnderstandButton({
   reviewId,
@@ -257,6 +285,7 @@ function UnderstandButton({
   disabled?: boolean;
   busy?: boolean;
 }) {
+  const explainTerms = useExplainTermsEnabled();
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ top: 0, left: 0 });
   const btnRef = useRef<HTMLButtonElement | null>(null);
@@ -277,6 +306,37 @@ function UnderstandButton({
       window.removeEventListener("keydown", onKey);
     };
   }, [open]);
+  // Issue #422: gate off — the plain Simplify press (same icon, same
+  // tooltip, one click runs Simplify, no menu, no term picking).
+  if (!explainTerms) {
+    return (
+      <button
+        className="ib"
+        type="button"
+        data-understand-menu={cardId}
+        data-tip={busy ? "Working…" : "Help me understand"}
+        aria-label={busy ? "Working…" : "Help me understand"}
+        aria-busy={busy || undefined}
+        disabled={disabled || busy}
+        onClick={() => {
+          runCardAction(
+            reviewId,
+            personaId ? { kind: "slower", cardId, personaId } : { kind: "slower", cardId },
+          );
+        }}
+      >
+        {busy ? (
+          <span className="dots" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </span>
+        ) : (
+          <Icon name="slower" />
+        )}
+      </button>
+    );
+  }
   return (
     <>
       <button
