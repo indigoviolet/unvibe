@@ -132,16 +132,18 @@ test("citation hover previews real cited lines", async ({ page }) => {
   expect(violations).toEqual([]);
 });
 
-test("one version, only the head commit: no Explain row (#413)", async ({ page }) => {
+test("one version, only the head commit: no Explain row or menu (#413, #421)", async ({ page }) => {
   const violations = await sameOriginOnly(page);
   await gotoDemo(page);
   await closeSeedCard(page);
   // The demo has one version and its only commit is the head, so there
   // is nothing earlier to explain from: the guide shows no Explain row
-  // (never a picker whose only choice is the head).
+  // (never a picker whose only choice is the head), and the static demo
+  // hides the toolbar Explain menu like the Pull button.
   await expect(page.locator("#page .doc")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId("explain-control")).toHaveCount(0);
   await expect(page.getByTestId("explain-pick")).toHaveCount(0);
+  await expect(page.getByTestId("explain-menu-button")).toHaveCount(0);
   expect(violations).toEqual([]);
 });
 
