@@ -25,6 +25,26 @@ export async function expectRecordedGuide(page: Page, opts: { problem?: RegExp }
 }
 
 /**
+ * Issue #417 (follow-up): a replay-run hunk summary must be a one-line
+ * summary, never a card heading (a reader-shaped reply served as the
+ * summary) or the "[replay placeholder ...]" fallback. Call once the
+ * automatic hunk pass should have landed.
+ */
+export async function expectRealHunkSummaries(page: Page, fileKey: string, expected = 0): Promise<void> {
+  const sums = page.locator(`p[data-hunksum^="${fileKey}:"]`);
+  await expect(sums.first()).toBeVisible({ timeout: 60_000 });
+  if (expected > 0) await expect(sums).toHaveCount(expected, { timeout: 30_000 });
+  const n = await sums.count();
+  expect(n, "no hunk summaries landed").toBeGreaterThan(0);
+  for (let i = 0; i < n; i++) {
+    const text = ((await sums.nth(i).innerText()) ?? "").trim();
+    expect(text.length, `hunk summary ${i} is empty`).toBeGreaterThan(0);
+    expect(text, `hunk summary ${i} looks like a card heading: ${text}`).not.toMatch(/^##\s/);
+    expect(text, `hunk summary ${i} is a replay placeholder`).not.toContain("[replay placeholder");
+  }
+}
+
+/**
  * Stamp a directly-seeded data dir with the current data format (#311).
  * Raw-SQL seeds bypass the service's own stamp-on-create, so without
  * this the service refuses to open the dir and shows the reset notice.

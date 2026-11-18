@@ -24,7 +24,7 @@ import { SERVICE_ENTRY, startService, type RunningService } from "../service-har
 import { tourCombos } from "../tour-matrix.js";
 import { selectText } from "../select-text.js";
 import { fileKeyForPath } from "@unvibe/shared";
-import {apiJson, createScratchReview, expectRecordedGuide, git, makeScratchRepo, realGitPath, writeFakeGitOffline, writeFakeShell, fakeServicePath} from "../journeys/journey-helpers.js";
+import {apiJson, createScratchReview, expectRealHunkSummaries, expectRecordedGuide, git, makeScratchRepo, realGitPath, writeFakeGitOffline, writeFakeShell, fakeServicePath} from "../journeys/journey-helpers.js";
 import { startStaticServer, type StaticServer } from "../static-server.js";
 
 const SHOTS = fileURLToPath(new URL("../../visual-tour", import.meta.url));
@@ -92,6 +92,9 @@ test.describe("tour update banners", () => {
     // Issue #417: the guide renders its scratch recording, never the
     // replay placeholder (the scene used to pass with a broken guide).
     await expectRecordedGuide(page, { problem: /returns 11/ });
+    // Follow-up: the hunk summaries are one-line summaries, never reader
+    // card headings served as summaries.
+    await expectRealHunkSummaries(page, appKey, 2);
 
     const snap = await apiJson(svc, "GET", `/api/reviews/${reviewId}`);
     const files = (snap.json as { files: { path: string; hunks: { contentHash: string }[] }[] }).files;
