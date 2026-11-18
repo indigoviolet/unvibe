@@ -1,4 +1,5 @@
 /** Shared helpers for the #188 journeys (real built service only). */
+import { expect, type Page } from "@playwright/test";
 import { DATA_FORMAT } from "@unvibe/shared";
 import { execFile, execFileSync, execSync } from "node:child_process";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -10,6 +11,18 @@ import { fileURLToPath } from "node:url";
 import type { RunningService } from "../service-harness.js";
 
 const exec = promisify(execFile);
+
+/**
+ * Issue #417: a replay-run guide must render its recording, never the
+ * "[replay placeholder ...]" fallback. Call after the guide lands:
+ * it fails loudly instead of letting a broken guide hide behind
+ * banner-only asserts.
+ */
+export async function expectRecordedGuide(page: Page, opts: { problem?: RegExp } = {}): Promise<void> {
+  await expect(page.locator("#C-problem")).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator("#page")).not.toContainText("[replay placeholder");
+  if (opts.problem) await expect(page.locator("#C-problem")).toContainText(opts.problem, { timeout: 30_000 });
+}
 
 /**
  * Stamp a directly-seeded data dir with the current data format (#311).
