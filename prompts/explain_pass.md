@@ -43,9 +43,13 @@ nothing else: the old guide stays exactly as it is.
    `blocks` and `answers`. `blocks` is the card body as a Markdown
    string with `[[…]]` citations, e.g.
    `"blocks": "Alpha now returns 111. [[h:conn:abc123]]"`
-   (an array of block objects works too). Every card needs a real
-   body: cards without `blocks`, or whose body parses to nothing, are
-   dropped. The prose above carries no cards: prose `##`
+   (an array of block objects works too). Write each body like a
+   guide card: the system instructions' "How to write" and "Make it
+   scan" rules apply here too — short paragraphs, `###` sub-headings
+   when a card runs long, bullets for parts and steps, prose for
+   reasoning (newlines in the string are `\n`). Every card needs a
+   real body: cards without `blocks`, or whose body parses to nothing,
+   are dropped. The prose above carries no cards: prose `##`
    cards are discarded, leaving a title with no body.
 2. **Confirm the range.** A rebase without content changes needs
    nothing: confirm that in one line and stop.
