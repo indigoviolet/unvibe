@@ -2874,11 +2874,15 @@ export class Pipeline {
     const cited = this.isCitedByGuide(reviewId, hunk.contentHash);
     const body = cited ? `${hunkText}\n\nCITED-BY-GUIDE` : hunkText;
     const replayKey = this.replayKeyForHunk(snapshot, file.fileKey, hunk.contentHash);
+    // Issue #417: hunk prompts always carry the marker under replay —
+    // kind-only when no alias key exists (scratch repos). Without it the
+    // kind guess reads "to a reader" in the template and serves the
+    // reader recording as the summary.
     const prompt = withGuideStyleForReview(
       "hunk_pass",
       withReplayMark(
         this.renderFor(reviewId, "hunk_pass", { hunk: body, path: file.path, plotline: this.plotlineForHunk(snapshot, hunk.contentHash), glossary: this.glossaryForPrompt(snapshot) }),
-        isReplayRunner(this.opts.runner) && replayKey ? { kind: "hunk", key: replayKey } : undefined,
+        isReplayRunner(this.opts.runner) ? { kind: "hunk", key: replayKey ?? undefined } : undefined,
       ),
       guide.lens,
       forkGuide,
