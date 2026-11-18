@@ -1933,13 +1933,18 @@ test.describe("L3 demo guide reading", () => {
 
       // The toolbar reveals on card hover (#274): one icon button with
       // the Help-me-understand tooltip (no text label, no level pips).
+      // Issue #418: the button opens the menu; Simplify is today's press.
       await page.locator("#C-central").hover();
       const help = page.locator("#C-central > .chead .ctl").getByRole("button", { name: "Help me understand" });
       await expect.soft(help).toBeVisible({ timeout: 15_000 });
       expect.soft(await help.getAttribute("data-tip")).toBe("Help me understand");
+      const pressSimplify = async (): Promise<void> => {
+        await page.locator("#C-central > .chead .ctl").getByRole("button", { name: "Help me understand" }).click();
+        await page.locator('[data-understand-menu-list="central"]').getByRole("menuitem", { name: "Simplify" }).click();
+      };
 
       // First press rewrites the card more slowly (replay central:1).
-      await help.click();
+      await pressSimplify();
       await expect
         .poll(async () => paraText(), { timeout: 60_000 })
         .toContain("obsolete folded header line");
@@ -1949,7 +1954,7 @@ test.describe("L3 demo guide reading", () => {
 
       // Second press slows the rewrite further (replay central:2).
       await page.locator("#C-central").hover();
-      await page.locator("#C-central > .chead .ctl").getByRole("button", { name: "Help me understand" }).click();
+      await pressSimplify();
       await expect
         .poll(async () => paraText(), { timeout: 60_000 })
         .toContain("Start with what the server sends");
@@ -1986,9 +1991,14 @@ test.describe("L3 demo guide reading", () => {
       // undid once, so the card holds the first rewrite and the press
       // ordinal is 1 — the next press replays central:2 again, then the
       // third press replays central:3).
+      // Issue #418: the button opens the menu; Simplify is today's press.
+      const pressSimplify = async (): Promise<void> => {
+        await page.locator("#C-central > .chead .ctl").getByRole("button", { name: "Help me understand" }).click();
+        await page.locator('[data-understand-menu-list="central"]').getByRole("menuitem", { name: "Simplify" }).click();
+      };
       // Re-apply the second press to reach the two-press state.
       await page.locator("#C-central").hover();
-      await page.locator("#C-central > .chead .ctl").getByRole("button", { name: "Help me understand" }).click();
+      await pressSimplify();
       await expect
         .poll(async () => centralBlocks().then((b) => b.filter((x) => x.type === "paragraph").map((x) => x.text ?? "").join("\n\n")), { timeout: 60_000 })
         .toContain("Start with what the server sends");
@@ -1997,7 +2007,7 @@ test.describe("L3 demo guide reading", () => {
       // list of steps and an example walk-through, each citing its own
       // paragraph — the whole reply becomes the body.
       await page.locator("#C-central").hover();
-      await page.locator("#C-central > .chead .ctl").getByRole("button", { name: "Help me understand" }).click();
+      await pressSimplify();
       await expect
         .poll(async () => page.locator("#C-central").getByText("A slower look at the same change").count(), { timeout: 90_000 })
         .toBeGreaterThan(0);
