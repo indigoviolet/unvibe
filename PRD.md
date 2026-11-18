@@ -60,7 +60,7 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
 3. **Inspect the code.** Use the diff beside the guide: filter files, hide uninteresting hunks, fold, summarize, mark reviewed.
 4. **Get a second opinion** on a card or an agent finding.
 5. **Comment and submit.** Mark comments in the Outbox, edit the drafts, then submit one GitHub review (PR reviews) or copy the Outbox Markdown export (any review). If it's your PR, the description edit goes in the same submit.
-6. **Come back after new commits.** Explain changes since X, and continue.
+6. **Come back after new commits.** Explain changes since a picked commit, and continue.
 
 ---
 
@@ -100,8 +100,8 @@ Reviewing a branch you didn't write is slow. That's more and more often the case
   branch review of the same branch are different). Rows that already
   have a review say so, and clicking one opens it rather than starting
   a new review. When the source has new commits, the existing review
-  opens with the refresh it already offers ("new commits · Explain changes since vN").
-- **reviews you've opened before**, with their new-commits state ("new commits · Explain changes since vN"),
+  opens with the refresh it already offers ("N new commits since the guide was written" plus Explain).
+- **reviews you've opened before**, with their new-commits state ("N new commits since the guide was written" plus Explain),
   ordered by recent activity, unfiltered by the recency filter, outside
   the block.
 - PR rows show the head branch, a relative update time and the diff size
@@ -266,7 +266,7 @@ Every page card has the same controls. Explanation cards (§4.7) carry the same 
 - **Syntax highlighting:** code rows are syntax-coloured after first paint (plain text first, so paint never waits); colours follow the app theme and never change copy-paste. Languages without a shipped grammar stay plain. `?nohl=1` disables it.
 - **Pinned rows (sideways):** hunk headers, hunk cards, line comments and explanation cards are pinned to the pane width, so their controls never scroll out of view. Hidden-hunk rows, folded placeholders, cards and comment threads scroll vertically under the pinned file and hunk headers; they never pin.
 
-**New commits:** a "New commits on this branch · Explain changes since vN" banner. Outdated markers follow §8.
+**New commits:** an "N new commits since the guide was written" banner plus one "Explain changes" button, which explains from the commit the current guide was written at up to the head (the reference follows a Re-do). Outdated markers follow §8.
 
 ### 4.14 Settings page
 - **Models:** one picker per role: main, small, and second opinion. Each lists the provider and the models its ACP adapter offers. A role never explicitly saved takes a live default picked from what the adapters offer, ranked by tier (opus | sol > sonnet | terra > haiku | luna, newest version offered within a tier, never Fable or Astra); second opinion comes from the provider main is not using, and stays unset with one provider. Saved picks always win; defaults are never written into settings. Each role also has an effort control with the thinking levels its adapter offers, Default first (leave the adapter's own setting alone); when the model changes and the saved effort is not offered, it falls back to Default. The small role stays at the adapter default unless changed — its jobs run many times per review.
@@ -429,7 +429,7 @@ ann:<id>#r<n>                               one reply in that thread (stable per
 
 **Explaining is manual.**
 1. Fetching and comparing happen whenever the review is opened, or when the user clicks refresh. They cost no agent time.
-2. **Explain changes since X** runs only when the user clicks Explain, with an X they chose (an earlier version, any PR commit, or their last GitHub review); the end is always the head. It uses a fork of a new base and sees only the X→head hunks. It writes the Changes-since-X section at the top of the guide and leaves the old guide untouched.
+2. **Explain changes since X** runs only when the user picks a commit in the review bar's "Explain changes since…" menu — any PR commit oldest first (the head is shown disabled), or their last GitHub review; X is always the picked commit and the end is always the head. It uses a fork of a new base and sees only the X→head hunks. It writes the Changes section at the top of the guide — one grouped panel with a "Changes `<from>` → `<to>` · `<date>`" header, collapsing to its header — and leaves the old guide untouched. A re-run replaces the panel whole.
 
 Uncommitted local edits can be treated as an extra version.
 
@@ -617,7 +617,7 @@ POST /api/reviews/:id/retry              re-run a failed ingest
 POST /api/reviews/:id/redo               re-do the guide: delete + create in one call (new id, answers the loading snapshot); optional { personaId } re-does with a guide-capable persona and records it, absent re-does with the default guide persona (Settings)
 GET  /api/prompt-forks                   fork status per persona (guide-capable, drifted files)
 POST /api/reviews/:id/refresh            fetch and compare (no agent; 409 while loading/failed)
-POST /api/reviews/:id/explain            explain changes since X: { version } | { sha } | {} (one agent call; replaces the Changes-since-X section, old guide untouched; 409 while loading/failed/empty diff)
+POST /api/reviews/:id/explain            explain changes since X: { version } | { sha } | {} (one agent call; replaces the Changes section, old guide untouched; 409 while loading/failed/empty diff; the toolbar menu sends { sha })
 POST /api/reviews/:id/actions            { kind: explain|ask|note|reply|retry|slower|examples|diagram|undo|
                                             collapse|generate|second_opinion|promote|close|delete|followup|concept, … } (409 while loading/failed)
 PATCH /api/reviews/:id/hunks/:hash       { folded?, reviewed?, summary? } ; POST …/summarize (409 while loading/failed)
