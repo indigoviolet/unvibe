@@ -214,7 +214,12 @@ test.describe("L16 Markdown docs gate", () => {
     await gotoExperimental(page, s);
     await page.getByTestId("experimental-markdown-docs").click();
     await expect(page.getByTestId("experimental-markdown-docs")).toBeChecked({ timeout: 15_000 });
-    // The top-bar link appears; following it is client-side (no reload).
+    // Client-side home (the top bar remounts and picks up the gate),
+    // then the Documents link — still no reload and no fresh goto.
+    await page.getByRole("link", { name: "Unvibe" }).click();
+    // The token lives in localStorage (stripped from the bar), so the
+    // start-page URL carries no query.
+    await page.waitForURL(/\/(\?.*)?$/, { timeout: 30_000 });
     const docsLink = page.getByRole("link", { name: "Documents" });
     await expect(docsLink).toBeVisible({ timeout: 15_000 });
     await docsLink.click();
