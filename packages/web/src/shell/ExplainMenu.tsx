@@ -196,10 +196,10 @@ export function ExplainMenu({ reviewId }: { reviewId: string }): React.JSX.Eleme
               <div className="fgroup" role="presentation">
                 Commits
               </div>
-              {commits.map((c) => {
+              {commits.map((c, idx) => {
                 const isHead = isHeadSha(head, c.sha);
                 const isGuide = guideSha !== "" && isSameSha(c.sha, guideSha);
-                const isNewCommit = guideIdx >= 0 && commits.indexOf(c) > guideIdx;
+                const isNewCommit = guideIdx >= 0 && idx > guideIdx;
                 const isPrior = priorInList && isHeadSha(c.sha, priorPickable.sha);
                 const short = c.sha.slice(0, 8);
                 const text = `${short} ${c.subject}`;
