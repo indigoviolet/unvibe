@@ -2024,6 +2024,20 @@ for (const combo of tourCombos("theme", [
     // Variable is bundled for every theme (main.tsx), so it is the stable
     // reference now (true Nunito/Inter ~0.94, Fira/Inter ~0.91; the tPerEm
     // check above stays the primary mis-shaping guard).
+    // Issue #425: the reference must really be Inter, not the browser's
+    // fallback for an unloaded family. Under studio/console nothing on the
+    // page uses Inter, so the browser never downloads it (before #416 a
+    // default-theme flash, from the 401'd theme-init.js, downloaded it by
+    // accident); load it explicitly so the ratio compares against true
+    // Inter metrics. The assert below keeps the reference from silently
+    // falling back again.
+    const refLoaded = await page.evaluate(async () => {
+      try {
+        await document.fonts.load('13px "Inter Variable"');
+      } catch { /* check below reports it */ }
+      return document.fonts.check('13px "Inter Variable"');
+    });
+    expect(refLoaded, `${combo.name}: reference font Inter Variable loaded`).toBe(true);
     const shaped = await page.evaluate((fam) => {
       const ctx = document.createElement("canvas").getContext("2d");
       if (!ctx) return { tPerEm: 99, theRatio: 99 };
