@@ -622,7 +622,10 @@ textarea { min-width: 120px; max-width: 100%; min-height: 40px; max-height: 320p
    its slot so its box overlaps the actions bar above it — without the
    overlap a 2px seam between the stuck bar and the header shows
    scrolling content (card text) through it. */
-.dsumbar { position: sticky; top: calc(var(--dsumbar-top, 81px) - 2px); left: 0; z-index: 9; background: var(--surface); }
+/* Issue #426: bottom padding (inside the sticky box, so its surface
+   covers the gap) keeps the row off the first file header, the same
+   space as the toolbar row's bottom padding above it. */
+.dsumbar { position: sticky; top: calc(var(--dsumbar-top, 81px) - 2px); left: 0; z-index: 9; background: var(--surface); padding-bottom: var(--space-2); }
 /* Issue #351: the banner stacks as coherent groups — the summary text
    with range-diff always on its own full-width line, then the picker
    with Update left-aligned below — so a narrow pane never strands one
