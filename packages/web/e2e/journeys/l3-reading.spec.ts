@@ -1131,7 +1131,10 @@ test.describe("L3 demo guide reading", () => {
     // steps need the Explain-terms gate on (issue #422).
     await apiJson(svc, "PUT", "/api/settings", {
       autoGoDeeper: true,
-      experimental: { explainTerms: true, markdownDocs: false },
+      // Issue #422: the #418 steps need the Explain-terms gate on, and
+      // the #255 code-comment step creates a document review, so the
+      // Markdown-docs gate goes on too.
+      experimental: { explainTerms: true, markdownDocs: true },
     });
     readReview = await createDemoReview(svc);
     askReview = await createDemoReview(svc);
