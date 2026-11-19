@@ -390,6 +390,7 @@ test.describe("J349b persona versions", () => {
       experimental: { explainTerms: true, markdownDocs: false },
     });
     expect(gate.status).toBe(200);
+  });
 
   test.afterAll(async () => {
     await svc?.stop().catch(() => {});
