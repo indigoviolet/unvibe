@@ -95,8 +95,8 @@ export interface Review {
    * Issue #393: which Guide persona wrote this review. Every main-agent
    * task on the review (reader, go-deeper, depth, examples, diagrams,
    * concept pages, update pass, critic, hunk pass) resolves templates,
-   * model and lens through this persona; card personas (Clarity, Second
-   * opinion) layer their lens on top of its instructions. Required: no
+   * model and lens through this persona; card personas (Second
+   * opinion and custom voices) layer their lens on top of its instructions. Required: no
    * fallback (a review without one needs a data reset). Normal opens
    * stamp the built-in Guide (`guide`); Re-do with stamps the chosen
    * guide-capable persona.

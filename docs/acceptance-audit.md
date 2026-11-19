@@ -4722,3 +4722,33 @@ one grouped panel with a commit-range header.
   `since-menu-groups` + `since-unfetchable-menu`, `367` banner +
   `explain-menu` (all at 1440 light). Fake runner only. Full gates
   not yet run.
+
+## Addendum: #423 — Remove the Clarity persona (branch `fix/remove-clarity-persona`)
+
+Owner decision (2026-11-18): delete the built-in **Clarity** persona.
+The built-ins are Guide and Second opinion.
+
+- **Deleted:** `prompts/personas/clarity/` (`lens.md`, `fork.json`,
+  `evals.jsonl`), `CLARITY_PERSONA` / `CLARITY_PERSONA_ID` and its
+  place in `defaultPersonas()`, `packages/service/test/clarity-359.test.ts`,
+  and the `central:clarity` fixture recording + manifest entry. Every
+  other reference (settings defaults comment, persona colour comment,
+  server prompt-fork comment, web mock + `PersonasSection` copy, journeys,
+  tour, docs) now names only Guide and Second opinion. Persona colours
+  are unchanged (the freed slot stays free).
+- **Stored data:** no `DATA_FORMAT` bump. Settings load merges stored
+  keys over defaults with no shape re-validation, and a stored Clarity
+  entry is still a valid persona shape — so an existing install keeps
+  its Clarity entry as an ordinary user persona. Owner note:
+  existing installs keep a 'Clarity' persona until you delete it in
+  Settings → Personas.
+- **Tests:** `personas.test.ts` seeds exactly `[guide, second-opinion]`;
+  `personas-349.test.ts` asserts the two-seed list; `guide-379.test.ts`
+  runs its followMain case on a custom follower persona (no built-in
+  follows main any more); `guide-forks-393.test.ts`, `j393` and the
+  personas tour/journey scenes run their lens checks on Second opinion;
+  the Clarity follow-main, Clarity-run and Clarity-frame scenes are
+  deleted; Settings → Personas asserts exactly Guide and Second opinion
+  on a fresh install (API ids plus the absent `persona-clarity` row).
+  `snapshot.test.ts` counts 64 recordings (was 65). Fake runner only.
+  Full gates not yet run.

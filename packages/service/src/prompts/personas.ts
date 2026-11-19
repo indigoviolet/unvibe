@@ -164,9 +164,9 @@ export function buildPersonaCardPromptFor(
  * Any template there replaces the shared template of the same name,
  * whole file, for every task that persona's guide runs; templates it
  * does not contain fall back to `prompts/`. No section merging. Files
- * that match no shared template (e.g. Clarity's `lens.md`, `evals.jsonl`)
- * are never templates — the overlay only replaces names the shared
- * library already holds.
+ * that match no shared template (e.g. a persona's `lens.md` notes or
+ * eval files) are never templates — the overlay only replaces names
+ * the shared library already holds.
  */
 
 /** Manifest file inside a fork folder (never a template: not `.md`). */

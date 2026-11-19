@@ -6,7 +6,7 @@
  * resolves templates, model and lens through it. Guards: whole-file
  * overlay (fallback for unforked templates), guide-capable detection,
  * redo-with validation + stamping, fork templates/model/lens on the
- * re-done review (reader, slower, Clarity's base instructions), and
+ * re-done review (reader, slower, Second opinion's base instructions), and
  * the drift warning naming the file.
  *
  * Boots: ONE replay service over a fixture prompt set (a Tutor fork
@@ -194,7 +194,7 @@ test.describe("J393 guide forks", () => {
     });
   });
 
-  test("slower and Clarity resolve through the fork", async () => {
+  test("slower and Second opinion resolve through the fork", async () => {
     test.setTimeout(300_000);
     const s = service();
     const cardId = await firstCardId(s, reviewId);
@@ -209,23 +209,23 @@ test.describe("J393 guide forks", () => {
       expect(prompt.startsWith(`# Writing style\n\n${TUTOR_LENS}\n\n`)).toBe(true);
     });
 
-    await test.step("Clarity layers its lens on the fork instructions", async () => {
+    await test.step("Second opinion layers its lens on the fork instructions", async () => {
       const res = await apiJson(s, "POST", `/api/reviews/${reviewId}/actions`, {
         kind: "persona",
         cardId,
-        personaId: "clarity",
+        personaId: "second-opinion",
       });
       expect(res.status).toBe(200);
       const jobId = (res.json as { jobId: string }).jobId;
       await waitJobDone(s, jobId);
       const prompt = await jobPrompt(s, jobId);
-      expect(prompt).toContain("You are Clarity");
+      expect(prompt).toContain("second reader");
       expect(prompt).not.toContain(TUTOR_LENS);
       const snap = await apiJson(s, "GET", `/api/reviews/${reviewId}`);
       const card = ((snap.json as { pages: { cards: { id: string; variants?: Record<string, { blocks: unknown[] }> }[] }[] }).pages ?? [])
         .flatMap((p) => p.cards)
         .find((c) => c.id === cardId);
-      expect(card?.variants?.["clarity"]?.blocks.length).toBeGreaterThan(0);
+      expect(card?.variants?.["second-opinion"]?.blocks.length).toBeGreaterThan(0);
       const jobs = await jobsFor(s, reviewId);
       const persona = jobs.find((j) => j.id === jobId);
       expect(persona?.provider).toBe("codex");
