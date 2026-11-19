@@ -89,12 +89,28 @@ export interface AddRepoResponse extends ReposResponse {
 }
 
 /**
- * `DELETE /api/repos/:id` response (#27): the repo is forgotten; the local
- * clone is removed only for repos Unvibe cloned (`managed`). Refused (409)
- * while the repo still has reviews — delete those first, never orphaned.
+ * `GET /api/repos/:id/removal` (#428): what removing the repo takes with
+ * it, for the confirm text. Counted when the confirm opens.
+ */
+export interface RepoRemovalPreview {
+  /** Reviews of this repo (removed with it). */
+  reviews: number;
+  /** Unsent Outbox drafts across those reviews (lost with them). */
+  unsentDrafts: number;
+}
+
+/**
+ * `DELETE /api/repos/:id` response (#27, #428): the repo's reviews are
+ * removed first (the start page's Remove for each), then the repo is
+ * forgotten; the local clone is removed only for repos Unvibe cloned
+ * (`managed`). The user's folder is never touched. Refused (409) while
+ * one of its reviews is being submitted. A failure partway keeps the
+ * repo and names how many reviews were removed and how many remain.
  */
 export interface RemoveRepoResponse {
   ok: true;
+  /** Reviews removed with the repo. */
+  reviewsRemoved: number;
   /** True when a managed clone directory was removed from the data dir. */
   removedClone: boolean;
 }

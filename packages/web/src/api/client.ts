@@ -40,6 +40,7 @@ import type {
   ReloadResponse,
   ResumeReviewResponse,
   RemoveRepoResponse,
+  RepoRemovalPreview,
   ResetDataResponse,
   SetSinceBaselineRequest,
   SetSinceBaselineResponse,
@@ -306,6 +307,8 @@ const realApi = {
   repos: (): Promise<ReposResponse> => get("/api/repos"),
   addRepo: (body: AddRepoRequest): Promise<AddRepoResponse> =>
     request("/api/repos", { method: "POST", body: JSON.stringify(body) }),
+  /** #428: what removing the repo takes with it (for the confirm text). */
+  repoRemoval: (id: string): Promise<RepoRemovalPreview> => get(`/api/repos/${encodeURIComponent(id)}/removal`),
   removeRepo: (id: string): Promise<RemoveRepoResponse> =>
     request(`/api/repos/${encodeURIComponent(id)}`, { method: "DELETE" }),
   /** Ask the service to open a native folder dialog (#26). No request body. */

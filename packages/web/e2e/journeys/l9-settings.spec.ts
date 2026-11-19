@@ -386,7 +386,7 @@ test.describe("L9 settings CRUD", () => {
     await expect(page.locator("#model-small")).toContainText("claude-haiku-5-5", { timeout: 15_000 });
   });
 
-  test("repos add/remove + invalid + has-reviews refusal; data reset last", async ({ page }) => {
+  test("repos add/remove + invalid + remove takes its reviews (#428); data reset last", async ({ page }) => {
     test.setTimeout(240_000);
     const s = service();
     await page.goto(`${s.origin}/settings?token=${s.token}`);
@@ -413,15 +413,30 @@ test.describe("L9 settings CRUD", () => {
     await expect(row).toHaveCount(0, { timeout: 15_000 });
     expect(existsSync(path.join(repo2Dir, ".git"))).toBe(true);
 
-    // Removing a repo with reviews is refused inline.
+    // #428: removing a repo with a review removes the review too. The
+    // confirm names the review count; the folder is never touched.
+    const ownName = `local/${path.basename(repoDir)}`;
     const ownRow = section.locator('[data-testid^="repo-"]', { hasText: path.basename(repoDir) }).first();
     await expect(ownRow).toBeVisible();
-    await ownRow.getByRole("button", { name: `Remove local/${path.basename(repoDir)}` }).click();
+    await ownRow.getByRole("button", { name: `Remove ${ownName}` }).click();
+    await expect(ownRow).toContainText(`Remove ${ownName} and its 1 review from Unvibe? ${repoDir} is not touched.`);
     await ownRow.getByRole("button", { name: "Confirm remove repo" }).click();
-    await expect(ownRow.getByRole("alert")).toContainText(/still has 1 review/);
-    await ownRow.getByRole("button", { name: "Cancel" }).click();
-    await expect(ownRow.getByRole("alert")).toHaveCount(0);
-    await expect(ownRow).toBeVisible();
+    await expect(ownRow).toHaveCount(0, { timeout: 15_000 });
+    expect(existsSync(path.join(repoDir, ".git"))).toBe(true);
+    const after = await page.evaluate(async () => {
+      const token = new URLSearchParams(location.search).get("token") ?? "";
+      const h = { authorization: `Bearer ${token}` };
+      const repos = (await (await fetch("/api/repos", { headers: h })).json()) as { repos: { localPath: string }[] };
+      const reviews = (await (await fetch("/api/reviews", { headers: h })).json()) as { reviews: { id: string }[] };
+      return { paths: repos.repos.map((r) => r.localPath), reviewIds: reviews.reviews.map((r) => r.id) };
+    });
+    expect(after.paths).not.toContain(repoDir);
+    expect(after.reviewIds).not.toContain(reviewId);
+    // The start page no longer lists the review.
+    await page.goto(`${s.origin}/?token=${s.token}`);
+    await expect(page.getByRole("heading", { name: "Reviews" })).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator(`[href*="/review/${reviewId}"]`)).toHaveCount(0);
+    await page.goto(`${s.origin}/settings?tab=repositories&token=${s.token}`);
 
     // Data reset (runs last on this service): Cancel first does nothing,
     // then confirm removes the review but keeps settings and repos.

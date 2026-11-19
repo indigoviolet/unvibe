@@ -66,12 +66,12 @@ import { dispatchAction } from "../pipeline/actions/dispatcher.js";
 import type { Pipeline } from "../pipeline/index.js";
 import {
   deleteAllReviewRows,
-  deleteReviewLocal,
   listReviewIds,
   listReviewSummaries,
   touchReviewOpened,
 } from "../reviews/index.js";
 import { registerExtensionRoutes } from "./extension.js";
+import { createReviewRemover } from "./review-remover.js";
 import { hasAnySubmitLease } from "../update/index.js";
 import { fetchExistingComments, fetchLatestUserReview, fetchPrConversation } from "../submit/index.js";
 import { readSubmitLease } from "../submit/lease.js";
@@ -676,58 +676,9 @@ export async function registerReviews(
 
   // Front screen "Remove": archive/delete the review's local data only.
   // Never touches GitHub or the user's checkout; removes the managed
-  // worktree. Confirm in the UI before calling.
-  const removeReview = async (id: string): Promise<boolean> => {
-    const jobs = (deps as { jobs?: { listByReview: (id: string) => { id: string; state: string }[]; cancel: (id: string) => void; dropReview: (id: string) => void } }).jobs;
-    const result = await deleteReviewLocal({
-      db: ctx.db,
-      runner: ctx.runner,
-      dataDir: ctx.dataDir,
-      ...(jobs
-        ? {
-            cancelJobs: (reviewId: string) => {
-              try {
-                for (const j of jobs.listByReview(reviewId)) {
-                  if (j.state !== "done" && j.state !== "error" && j.state !== "cancelled") {
-                    try {
-                      jobs.cancel(j.id);
-                    } catch {
-                      // Best effort.
-                    }
-                  }
-                }
-              } catch {
-                // Ignore.
-              }
-            },
-          }
-        : {}),
-    }, id);
-    if (!result.deleted) return false;
-    // #115: finished jobs outlive the delete (their rows are gone but the
-    // queue still lists them), so drop the review's entries too — a review
-    // added again for the same change starts with no jobs.
-    try {
-      jobs?.dropReview(id);
-    } catch {
-      // Best effort: the rows are already gone.
-    }
-    // Close the review's agent sessions (base + conversations) so a review
-    // added again for the same change starts from new ones.
-    try {
-      await (deps as RouteDeps).sessions?.closeReview(id);
-    } catch {
-      // Best effort: the sessions also close on idle.
-    }
-    // The review's agent sessions are gone: its MCP secrets die with it, so
-    // a stale agent URL can never reach another review's data.
-    try {
-      (deps as RouteDeps).mcp?.revokeForReview(id);
-    } catch {
-      // Best effort: secrets are process-local and die on restart anyway.
-    }
-    return true;
-  };
+  // worktree. Confirm in the UI before calling. The same remover runs
+  // for Reset data and (#428) for removing a repo with its reviews.
+  const removeReview = createReviewRemover(ctx, deps as RouteDeps);
 
   app.delete("/api/reviews/:id", async (req, reply) => {
     const { id } = req.params as { id: string };
