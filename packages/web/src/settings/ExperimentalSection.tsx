@@ -12,7 +12,7 @@
  */
 import { useState } from "react";
 import type { ExperimentalSettings, Settings } from "@unvibe/shared";
-import { api, friendlyError } from "../api/client.js";
+import { api } from "../api/client.js";
 import { Card, Checkbox, Field as UiField } from "../ui/index.js";
 import { putErrors } from "./LimitsSection.js";
 
