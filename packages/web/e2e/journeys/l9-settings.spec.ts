@@ -268,16 +268,18 @@ test.describe("L9 settings CRUD", () => {
     await expect(page.getByTestId("doctor-path")).toContainText("effective");
     await expect(page.getByTestId("doctor-tool-claude")).toBeVisible();
     await expect(page.getByRole("button", { name: "Copy diagnostics" })).toBeVisible();
-    // #238: the Documents icon sits next to the Unvibe home link on the
-    // left, before the breadcrumb, badge, update and Settings controls.
+    // #422: Markdown docs is experimental and off by default, so the top
+    // bar has no Documents link: the breadcrumb follows the Unvibe home
+    // link, and Settings stays on the bar.
     const barOrder = await page.evaluate(() =>
       [...(document.querySelector("header.top")?.children ?? [])].map(
         (el) => el.getAttribute("aria-label") ?? el.textContent?.trim() ?? "",
       ),
     );
     expect(barOrder[0]).toBe("Unvibe");
-    expect(barOrder[1]).toBe("Documents");
-    expect(barOrder.indexOf("Documents")).toBeLessThan(barOrder.indexOf("Settings"));
+    expect(barOrder[1]).toBe("Breadcrumb");
+    expect(barOrder).not.toContain("Documents");
+    expect(barOrder).toContain("Settings");
 
     // Model pickers show display names on the real service (static
     // fallback carries names even with no agent). Models holds only the
