@@ -29,7 +29,6 @@ import { linkCardBlocks } from "../guide/glossary.js";
 import { busyForCard, inflightLabel } from "../guide/inflight.js";
 import { useReview } from "../state/store.js";
 import { Button } from "../ui/index.js";
-import { isReadOnlyVersionNow } from "./readOnly.js";
 import { revealThreadAnchor } from "./revealAnchor.js";
 import { isNoAgentMessage, NO_AGENT_COPY } from "../guide/expansions/expansionUtils.js";
 import { useProvisionalBlocks } from "../guide/expansions/streamedAnswer.js";
@@ -565,7 +564,6 @@ export function ThreadCollapsedRow({
 interface Props {
   reviewId: string;
   thread: Thread;
-  readOnly?: boolean;
   lookupPage?: (pageId: string) => { id: string } | undefined;
   onOpenPage?: (pageId: string) => void;
   onFollowUp?: (cardId: string, blockId: string, index: number) => void;
@@ -573,7 +571,7 @@ interface Props {
   onExpand?: () => void;
 }
 
-export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage, onFollowUp, collapsed, onExpand }: Props) {
+export function ThreadView({ reviewId, thread, lookupPage, onOpenPage, onFollowUp, collapsed, onExpand }: Props) {
   const snapshot = useReview((s) => s.snapshot);
   const inflight = useReview((s) => s.inflight);
   const storeCollapseAll = useReview((s) => s.collapseAll);
@@ -589,7 +587,6 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
     const onRequest = (e: Event): void => {
       const req = (e as CustomEvent<NewThreadRequest>).detail;
       if (req.threadId !== thread.id) return;
-      if (isReadOnlyVersionNow()) return;
       setQuoteChip({ quote: req.quote, ...(req.sourceReplyId ? { sourceReplyId: req.sourceReplyId } : {}) });
       // Focus the Reply box so the quote can be answered at once.
       window.setTimeout(() => {
@@ -632,7 +629,7 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
     onExpand ??
     (() => {
       storeSetExpanded(thread.id, true);
-      if (!thread.open && !readOnly) {
+      if (!thread.open) {
         api.updateComment(reviewId, thread.id, { open: true }).catch((err: unknown) => {
           toast(`Couldn't open the thread: ${friendlyError(err)}`);
         });
@@ -769,17 +766,16 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
           <button
             className="ib pr"
             type="button"
-            data-tip={readOnly ? "Viewing an older version · read-only" : thread.post ? "Remove from the Outbox" : "Add to Outbox"}
+            data-tip={thread.post ? "Remove from the Outbox" : "Add to Outbox"}
             aria-label={thread.post ? "Remove from the Outbox" : "Add to Outbox"}
             aria-pressed={thread.post}
             data-post={thread.id}
-            disabled={readOnly}
             onClick={togglePost}
           >
             <Icon name="send" />
           </button>
         ) : null}
-        {!isNew && !readOnly ? (
+        {!isNew ? (
           <button
             className="ib"
             type="button"
@@ -791,11 +787,11 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
             <Icon name="open" />
           </button>
         ) : null}
-        <button className="ib" type="button" data-tip={readOnly ? "Viewing an older version · read-only" : "Delete thread"} aria-label="Delete thread" data-remove={thread.id} disabled={readOnly} onClick={onDelete}>
+        <button className="ib" type="button" data-tip="Delete thread" aria-label="Delete thread" data-remove={thread.id} onClick={onDelete}>
           <Icon name="trash" />
         </button>
         {isNew ? null : (
-          <button className="ib" type="button" data-tip={readOnly ? "Viewing an older version · read-only" : "Close"} aria-label="Close" data-closethr={thread.id} disabled={readOnly} onClick={onClose}>
+          <button className="ib" type="button" data-tip="Close" aria-label="Close" data-closethr={thread.id} onClick={onClose}>
             <Icon name="x" />
           </button>
         )}
@@ -829,7 +825,7 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
         // Posted threads never lose replies to GitHub; a filling reply
         // can't go either (a landing job must find its turn).
         const filling = r.jobId !== undefined || (r.working ?? null) !== null;
-        const deleteDisabled = readOnly || posted || filling;
+        const deleteDisabled = posted || filling;
         const onDeleteReply = (): void => {
           api.deleteReply(reviewId, thread.id, r.id).catch((err: unknown) => {
             toast(`Couldn't delete the reply: ${friendlyError(err)}`);
@@ -855,7 +851,6 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
                   type="button"
                   className="tombstone-undo"
                   data-undelete={r.id}
-                  disabled={readOnly}
                   onClick={() => {
                     api.undeleteReply(reviewId, thread.id, r.id).catch((err: unknown) => {
                       toast(`Couldn't restore the reply: ${friendlyError(err)}`);
@@ -927,9 +922,7 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
           ) : null}
         </div>
       ) : null}
-      {readOnly ? (
-        <div className="hint">Viewing an older version · read-only</div>
-      ) : suggested && !quoteChip ? null : !firstAnswerArrived && replies.some((r) => r.kind !== "comment") ? null : isNew ? (
+      {suggested && !quoteChip ? null : !firstAnswerArrived && replies.some((r) => r.kind !== "comment") ? null : isNew ? (
         <ReplyBox
           reviewId={reviewId}
           annotationId={thread.id}
@@ -971,7 +964,7 @@ export function ThreadView({ reviewId, thread, readOnly, lookupPage, onOpenPage,
           onRemoveQuoteChip={() => setQuoteChip(null)}
         />
       )}
-      {pendingExplain && !hasOpenCard && !readOnly ? <WorkingPlaceholder label={inflightLabel(pendingExplain[1].kind)} /> : null}
+      {pendingExplain && !hasOpenCard ? <WorkingPlaceholder label={inflightLabel(pendingExplain[1].kind)} /> : null}
     </section>
   );
 }

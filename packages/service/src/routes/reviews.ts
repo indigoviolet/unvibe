@@ -7,8 +7,7 @@
  * - `POST /api/reviews/:id/retry` — re-run a failed ingest (#92).
  * - `POST /api/reviews/:id/redo` — re-do the guide: delete + create in
  *   one call, answering with the new review's loading snapshot (#115).
- * - `GET /api/reviews/:id[?version=n]` — current snapshot (with live jobs
- *   merged in), or an older version's `version` + `files` swapped in.
+ * - `GET /api/reviews/:id` — current snapshot (with live jobs merged in).
  * - `POST /api/reviews/:id/refresh` — fetch and compare (no agent time).
  * - `POST /api/reviews/:id/explain` — explain changes since X (one agent
  *   call, via the pipeline's ExplainBaseRunner by default).
@@ -1021,16 +1020,15 @@ export async function registerReviews(
 
   app.get("/api/reviews/:id", async (req, reply) => {
     const { id } = req.params as { id: string };
-    const query = req.query as { version?: string };
     const snapshot = ctx.reviews.getSnapshot(id);
     if (!snapshot) return reply.code(404).send({ error: "unknown review" });
     // Opening a review marks it recently opened for the front-screen list
-    // (most recent first). Version views don't reorder the list.
-    if (query.version === undefined) touchReviewOpened(ctx.db, id);
+    // (most recent first).
+    touchReviewOpened(ctx.db, id);
     // Issue #356: review-open-to-first-card — watch for the first guide
-    // content when the opened review has no cards yet (version views and
-    // already-guided opens return below without watching).
-    if (query.version === undefined && !hasGuideCards(snapshot)) {
+    // content when the opened review has no cards yet (already-guided
+    // opens return below without watching).
+    if (!hasGuideCards(snapshot)) {
       try {
         watchOpenToFirstCard(ctx.bus, id);
       } catch {
@@ -1041,35 +1039,7 @@ export async function registerReviews(
     // waiting for a patch event.
     const jobs = (deps as RouteDeps).jobs;
     const withJobs: ReviewSnapshot = jobs ? { ...snapshot, jobs: jobs.listByReview(id) } : snapshot;
-    if (query.version === undefined) return withJobs;
-
-    // #92: loading/failed reviews have no versions yet — serve the status.
-    if (!isReadySnapshot(snapshot)) return withJobs;
-
-    const n = Number(query.version);
-    if (!Number.isSafeInteger(n) || n < 1) {
-      return reply.code(400).send({ error: `bad ?version=${query.version}` });
-    }
-    if (n === snapshot.version.n) return withJobs;
-    const vrow = ctx.db
-      .prepare(
-        "SELECT n, head_sha AS headSha, merge_base_sha AS mergeBaseSha, base_ref AS baseRef, fetched_at AS fetchedAt, id_mapping AS idMapping FROM versions WHERE review_id = ? AND n = ?",
-      )
-      .get(id, n) as
-      | { n: number; headSha: string; mergeBaseSha: string; baseRef: string; fetchedAt: number; idMapping: string }
-      | undefined;
-    if (!vrow) return reply.code(404).send({ error: `unknown version ${n}` });
-    const files = loadVersionFiles(ctx.db, id, n);
-    if (!files) return reply.code(404).send({ error: `no files stored for version ${n}` });
-    const version: Version = {
-      n: vrow.n,
-      headSha: vrow.headSha,
-      mergeBaseSha: vrow.mergeBaseSha,
-      baseRef: vrow.baseRef,
-      fetchedAt: vrow.fetchedAt,
-      idMapping: JSON.parse(vrow.idMapping) as Record<string, string>,
-    };
-    return { ...withJobs, version, files };
+    return withJobs;
   });
 
   app.post("/api/reviews/:id/refresh", async (req, reply) => {

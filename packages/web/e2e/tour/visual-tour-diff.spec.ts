@@ -382,10 +382,8 @@ test.describe("J242 plotlines card", () => {
     await checkLayout(page, "j242-plotlines-reviewed");
   });
 
-  // #343: on an older version the checkboxes disable with the usual
-  // read-only tooltip. The demo has a single version; `beforeAll`
-  // stamps the stored snapshot as having a newer current version, so
-  // `?version=1` reads as an older version with real plotlines.
+  // #343: plotline checkboxes stay enabled — there are no read-only
+  // older versions anymore.
 });
 
 

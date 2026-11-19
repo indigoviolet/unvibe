@@ -27,7 +27,6 @@ import { api, friendlyError } from "../../api/client.js";
 import { clearMarks, placeAnchorSpot, retryUntilSettled, spotFromAnchor, withPreservedSelection } from "../../comments/anchor.js";
 import { NewThreadComposer } from "../../comments/NewThreadComposer.js";
 import { ThreadMarginOverlay } from "../../comments/ThreadMarginOverlay.js";
-import { isReadOnlyVersionNow, useIsReadOnlyVersion } from "../../comments/readOnly.js";
 import { showGuidePane } from "../../shell/panes.js";
 import { ThreadView } from "../../comments/ThreadView.js";
 import { useViewer } from "../../comments/viewer.js";
@@ -73,7 +72,6 @@ function makeMark(threadId: string): HTMLElement {
 export function DescriptionView({ reviewId, editor }: Props) {
   const description = useReview((s) => s.snapshot?.description);
   const annotations = useReview((s) => s.snapshot?.annotations);
-  const readOnlyVersion = useIsReadOnlyVersion();
   const viewer = useViewer();
   const [editing, setEditing] = useState(false);
   const [pending, setPending] = useState<NewThreadRequest | null>(null);
@@ -122,12 +120,10 @@ export function DescriptionView({ reviewId, editor }: Props) {
         const commentId = req.anchor.commentId;
         const comment = useReview.getState().snapshot?.annotations.find((a) => a.id === commentId);
         if (!comment || comment.anchor.host.kind !== "description") return;
-        if (isReadOnlyVersionNow()) return;
         setPending(req);
         return;
       }
       if (req.anchor.where !== "description") return;
-      if (isReadOnlyVersionNow()) return;
       setPending(req);
     };
     window.addEventListener(NEW_THREAD_EVENT, onRequest);
@@ -143,7 +139,7 @@ export function DescriptionView({ reviewId, editor }: Props) {
   }
 
   const canEdit =
-    canEditDescription(description, viewer === undefined ? null : viewer) && !readOnlyVersion;
+    canEditDescription(description, viewer === undefined ? null : viewer);
 
   const startEditing = (): void => {
     draftRef.current = innerOfDesc(displayHtml);
@@ -245,7 +241,6 @@ export function DescriptionView({ reviewId, editor }: Props) {
           orphans={orphans}
           pending={pending}
           setPending={setPending}
-          readOnly={readOnlyVersion}
         />
       )}
     </>
@@ -259,11 +254,10 @@ interface BodyProps {
   orphans: Thread[];
   pending: NewThreadRequest | null;
   setPending: (req: NewThreadRequest | null) => void;
-  readOnly: boolean;
 }
 
 const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function DescriptionBody(
-  { reviewId, segments, byPara, orphans, pending, setPending, readOnly },
+  { reviewId, segments, byPara, orphans, pending, setPending },
   ref,
 ) {
   const innerRef = useRef<HTMLDivElement | null>(null);
@@ -338,10 +332,6 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
   }, [byPara, segments]);
 
   const openThread = (id: string): void => {
-    if (readOnly) {
-      toast("Viewing an older version · read-only");
-      return;
-    }
     api.updateComment(reviewId, id, { open: true }).catch((err: unknown) => {
       toast(`Couldn't open the comment: ${friendlyError(err)}`);
     });
@@ -378,7 +368,7 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
       }}
     >
       {/* Issue #364: one margin icon per thread — on its highlight's first line, else its paragraph's first line. */}
-      <ThreadMarginOverlay threads={descThreads} readOnly={readOnly} />
+      <ThreadMarginOverlay threads={descThreads} />
       {segments.map((seg, i) => {
         const threads = (seg.id && byPara.get(seg.id)) || [];
         // Collapse-all renders every thread under the paragraph as a row,
@@ -394,7 +384,7 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
             <div className="dseg-body" dangerouslySetInnerHTML={{ __html: seg.html }} />
             {open.map((t) => (
               <div className="dann" key={t.id}>
-                <ThreadView reviewId={reviewId} thread={t} readOnly={readOnly} />
+                <ThreadView reviewId={reviewId} thread={t} />
               </div>
             ))}
             {seg.id ? (
@@ -411,7 +401,7 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
               // a placeholder where the expansion will land (issue #46) —
               // until the expansion itself is in the snapshot (issue #97),
               // so the two never stack.
-              if (!seg.id || readOnly) return null;
+              if (!seg.id) return null;
               const incoming = inflightForAnchor(inflight, {
                 where: "description",
                 paragraphId: seg.id,
@@ -431,7 +421,7 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
                 </div>
               );
             })()}
-            {showPending && pending && !readOnly ? (
+            {showPending && pending ? (
               <div className="dann">
                 <NewThreadComposer
               key="pending"
@@ -453,7 +443,7 @@ const DescriptionBody = forwardRef<HTMLDivElement, BodyProps>(function Descripti
           {orphans
             .filter((t) => t.open || collapseAll)
             .map((t) => (
-              <ThreadView key={t.id} reviewId={reviewId} thread={t} readOnly={readOnly} />
+              <ThreadView key={t.id} reviewId={reviewId} thread={t} />
             ))}
         </div>
       ) : null}

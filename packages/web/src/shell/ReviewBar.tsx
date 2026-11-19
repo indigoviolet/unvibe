@@ -12,16 +12,12 @@
  *   `DocumentContent.title`; no filename is stored) with an ellipsis and
  *   the full name on hover — the stack badge (#321) sits INSIDE the PR
  *   link right after the PR number — and the Refresh
- *   button next to the link (#241: same handler/check/banner as the diff
+ *   button next to the link (#241: same handler/check as the diff
  *   toolbar owned, tooltip "Pull new commits from GitHub" (#420), hidden for document reviews which
  *   never had it), the Explain menu next to it (#421: icon-only
  *   history button, tooltip "Explain changes since…", opening the
- *   shared `.fmenu` portal menu of all PR commits plus the last
- *   GitHub review; hidden wherever Pull hides, on old versions, and
- *   with nothing pickable),
- *   the version selector next to it (issue #120; hidden for
- *   single-version reviews, the current version annotated in the
- *   dropdown, an older shown version flagged with a warning border),
+ *   shared `.fmenu` portal timeline menu; hidden wherever Pull hides,
+ *   and with nothing pickable),
  *   and Debug as an icon button (hidden until the review finishes
  *   opening, issue #92), Re-do guide as an icon button (#345, moved
  *   from the Debug page; hidden for the demo and for failed/empty
@@ -47,12 +43,8 @@ import { Icon } from "../components/Icon.js";
 import { api } from "../api/client.js";
 import { toast } from "../floating/Toast.js";
 import { useReview } from "../state/store.js";
-import { VersionSwitcher } from "../versions/VersionSwitcher.js";
-import { comparisonToBanner } from "../versions/VersionBanner.js";
-import { useRefreshState } from "../versions/refreshStore.js";
 import { useRefresh } from "../versions/useRefresh.js";
 import { refreshErrorNotice } from "../versions/versionUtils.js";
-import { useReviewVersion } from "../versions/useReviewVersion.js";
 import { PrBadges } from "../ui/index.js";
 import { StackBadge } from "../start/StackBadge.js";
 import type { PrStackInfo } from "@unvibe/shared";
@@ -104,17 +96,14 @@ export function ReviewBar({
   // handler/check/banner as before; hidden for document reviews, which
   // never had it. Tooltip says it pulls new commits from GitHub (#420).
   const { refreshing, doRefresh } = useRefresh(reviewId);
-  const versionParam = useReviewVersion();
-  const readOnly =
-    versionParam !== undefined && snapshot !== null && versionParam !== snapshot.review.currentVersion;
   const isDocument = snapshot ? isDocumentReview(snapshot) : false;
   // Refresh on open: a cheap fetch-and-compare, no agent time (PRD §8).
-  // Skipped while viewing an older version, and a no-op for reviews with
-  // no git source (demo) or document reviews. Check-only: new commits
-  // surface as the banner (never auto-applied, no jobs start); PR state
-  // and decision update silently through the snapshot WS patch (#230).
-  // No polling. The guard keeps StrictMode/remounts to one call per
-  // review open.
+  // A no-op for reviews with no git source (demo) or document reviews.
+  // Check-only: new commits are picked up into the snapshot (never
+  // auto-applied, no jobs start); PR state and decision update silently
+  // through the snapshot WS patch (#230). The history menu's dot reads
+  // the new commits off the snapshot. No polling. The guard keeps
+  // StrictMode/remounts to one call per review open.
   const sourceRepoId = snapshot?.review.repoId;
   const stackRepoId = snapshot?.review.repoId;
   const stackPrNumber = snapshot?.review.prNumber;
@@ -127,7 +116,7 @@ export function ReviewBar({
   }, [stackRepoId, stackPrNumber]);
   const autoRefreshKey = useRef<string | null>(null);
   useEffect(() => {
-    if (versionParam !== undefined || !sourceRepoId || sourceRepoId === "demo") return;
+    if (!sourceRepoId || sourceRepoId === "demo") return;
     if (snapshot && isDocumentReview(snapshot)) return;
     const key = `${reviewId}@${sourceRepoId}`;
     if (autoRefreshKey.current === key) return;
@@ -137,11 +126,9 @@ export function ReviewBar({
       .refresh(reviewId)
       .then((r) => {
         if (cancelled) return;
-        if (r.newVersion && r.comparison) {
-          const snap = useReview.getState().snapshot;
-          const current = snap?.review.currentVersion ?? r.comparison.newVersion;
-          useRefreshState.getState().setBanner(reviewId, comparisonToBanner(r.comparison, current));
-        }
+        if (r.newVersion) void api.review(reviewId).then((snap) => {
+          if (!cancelled) useReview.getState().setSnapshot(snap);
+        }).catch(() => {});
       })
       .catch((err: unknown) => {
         if (!cancelled) toast(refreshErrorNotice(err));
@@ -149,8 +136,7 @@ export function ReviewBar({
     return () => {
       cancelled = true;
     };
-  }, [reviewId, versionParam, sourceRepoId, snapshot]);
-  useEffect(() => () => useRefreshState.getState().clearReview(reviewId), [reviewId]);
+  }, [reviewId, sourceRepoId, snapshot]);
   // #254: the browser tab names the document on a document review. PR and
   // branch reviews keep today's title ("Unvibe").
   useEffect(() => {
@@ -215,7 +201,7 @@ export function ReviewBar({
             type="button"
             data-tip={refreshing ? "Pulling new commits from GitHub…" : "Pull new commits from GitHub"}
             aria-label="Pull new commits from GitHub"
-            disabled={refreshing || readOnly}
+            disabled={refreshing}
             onClick={() => void doRefresh()}
           >
             <Icon name="pull" />
@@ -225,7 +211,6 @@ export function ReviewBar({
             like Pull, hidden wherever Pull hides (plus old versions
             and with nothing pickable). */}
         <ExplainMenu reviewId={reviewId} />
-        <VersionSwitcher />
         {ingestReady && !STATIC_DEMO ? (
           <Link
             className="ib"

@@ -33,7 +33,6 @@ import { anchorHostExists, anchorScope, clearMarks, highlightAnchorInRoot, probe
 import { hostLabel, recordUnplacedAnchors } from "../guide/unplacedAnchors.js";
 import { NEW_THREAD_EVENT, type NewThreadRequest } from "../floating/SelectionToolbar.js";
 import { NewThreadComposer } from "./NewThreadComposer.js";
-import { isReadOnlyVersionNow, useIsReadOnlyVersion } from "./readOnly.js";
 import { ThreadView } from "./ThreadView.js";
 
 function makeMark(commentId: string): HTMLElement {
@@ -58,10 +57,6 @@ export function GuideThreadHooks() {
       onOpenBlockThread((commentId, _blockId, opts) => {
         const reviewId = useReview.getState().snapshot?.review.id;
         if (!reviewId) return;
-        if (isReadOnlyVersionNow()) {
-          toast("Viewing an older version · read-only");
-          return;
-        }
         api.updateComment(reviewId, commentId, { open: true }).catch((err: unknown) => {
           toast(`Couldn't open the comment: ${friendlyError(err)}`);
         });
@@ -80,10 +75,6 @@ export function GuideThreadHooks() {
       onCloseBlockThread((commentId) => {
         const reviewId = useReview.getState().snapshot?.review.id;
         if (!reviewId) return;
-        if (isReadOnlyVersionNow()) {
-          toast("Viewing an older version · read-only");
-          return;
-        }
         api.updateComment(reviewId, commentId, { open: false }).catch((err: unknown) => {
           toast(`Couldn't close the comment: ${friendlyError(err)}`);
         });
@@ -235,7 +226,7 @@ export function GuideThreadHooks() {
           const snap = useReview.getState().snapshot;
           const reviewId = snap?.review.id;
           const thread = snap?.annotations.find((a) => a.id === id);
-          if (!reviewId || !thread || !thread.replies.some((r) => r.kind === "comment") || isReadOnlyVersionNow()) return;
+          if (!reviewId || !thread || !thread.replies.some((r) => r.kind === "comment")) return;
           if (!thread.open) {
             api.updateComment(reviewId, id, { open: true }).catch(() => {});
           }
@@ -247,10 +238,6 @@ export function GuideThreadHooks() {
       const reviewId = snap?.review.id;
       const thread = snap?.annotations.find((a) => a.id === id);
       if (!reviewId || !thread || !thread.replies.some((r) => r.kind === "comment")) return;
-      if (isReadOnlyVersionNow()) {
-        toast("Viewing an older version · read-only");
-        return;
-      }
       api.updateComment(reviewId, id, { open: !thread.open }).catch((err: unknown) => {
         toast(`Couldn't open the comment: ${friendlyError(err)}`);
       });
@@ -307,7 +294,6 @@ interface BlockProps {
 export function GuideBlockThreads({ reviewId, cardId, blockId, personaId }: BlockProps) {
   const annotations = useReview((s) => s.snapshot?.annotations);
   const inflight = useReview((s) => s.inflight);
-  const readOnly = useIsReadOnlyVersion();
   const [pending, setPending] = useState<NewThreadRequest | null>(null);
 
   useEffect(() => {
@@ -327,13 +313,11 @@ export function GuideBlockThreads({ reviewId, cardId, blockId, personaId }: Bloc
         const comment = useReview.getState().snapshot?.annotations.find((a) => a.id === commentId);
         if (!comment || comment.anchor.host.kind !== "block") return;
         if (!anchorMatchesBlock(comment.anchor.host.blockId, cardId, blockId)) return;
-        if (isReadOnlyVersionNow()) return;
         setPending(req);
         return;
       }
       if (req.anchor.where !== "block") return;
       if (!anchorMatchesBlock(req.anchor.blockId, cardId, blockId)) return;
-      if (isReadOnlyVersionNow()) return;
       setPending(req);
     };
     window.addEventListener(NEW_THREAD_EVENT, onRequest);
@@ -360,7 +344,7 @@ export function GuideBlockThreads({ reviewId, cardId, blockId, personaId }: Bloc
   // stack. The card carries the working state from then on. An Ask
   // keeps its composer as the placeholder until the card lands, so ask
   // entries are skipped here.
-  const incoming = !readOnly ? inflightForBlock(inflight, cardId, blockId) : undefined;
+  const incoming = inflightForBlock(inflight, cardId, blockId);
   const arrived = (annotations ?? []).some(
     (a) =>
       a.type === "thread" &&
@@ -375,10 +359,10 @@ export function GuideBlockThreads({ reviewId, cardId, blockId, personaId }: Bloc
   return (
     <>
       {threads.map((t) => (
-        <ThreadView key={t.id} reviewId={reviewId} thread={t} readOnly={readOnly} />
+        <ThreadView key={t.id} reviewId={reviewId} thread={t} />
       ))}
       {placeholder ? <WorkingPlaceholder label={inflightLabel(placeholder.kind)} /> : null}
-      {pending && !readOnly ? (
+      {pending ? (
         <NewThreadComposer
               key="pending"
           reviewId={reviewId}

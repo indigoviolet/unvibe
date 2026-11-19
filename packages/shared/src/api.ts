@@ -882,7 +882,7 @@ export interface RefreshResponse {
   /**
    * M5: hunk-level summary of what the fetch found (present when
    * `newVersion` is true). `versionStatus` on the snapshot carries the
-   * same counts for the banner; `rangeDiff` is display-only.
+   * same counts.
    */
   comparison?: import("./versions.js").VersionComparisonSummary;
   /** M5: new version number (equals `review.currentVersion` when created). */

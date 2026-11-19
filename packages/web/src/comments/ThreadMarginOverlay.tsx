@@ -29,7 +29,6 @@ import { useReview } from "../state/store.js";
 interface Props {
   /** Threads to mark (one pill per block — see below). */
   threads: Thread[];
-  readOnly?: boolean;
   /**
    * A collapsed card shows exactly one pill carrying every thread:
    * per-block pills would all stack on the same line and only the
@@ -134,7 +133,7 @@ export function marginLabel(n: number): string {
   return n === 1 ? "1 thread" : `${n} threads`;
 }
 
-export function ThreadMarginOverlay({ threads, readOnly, minTop = 0, singleBucket = false }: Props) {
+export function ThreadMarginOverlay({ threads, minTop = 0, singleBucket = false }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const [tops, setTops] = useState<Record<string, number>>({});
 
@@ -185,7 +184,7 @@ export function ThreadMarginOverlay({ threads, readOnly, minTop = 0, singleBucke
   // scrolls into view. The tooltip names the count ("3 threads").
   const onToggleBucket = (bucket: Bucket): void => {
     const reviewId = useReview.getState().snapshot?.review.id;
-    if (!reviewId || readOnly) return;
+    if (!reviewId) return;
     const snap = useReview.getState().snapshot;
     const liveOf = (id: string): Thread | undefined => snap?.annotations.find((a) => a.id === id) as Thread | undefined;
     const allOpen = bucket.threads.length > 0 && bucket.threads.every((t) => liveOf(t.id)?.open ?? t.open);

@@ -31,7 +31,6 @@ import { blockThreads } from "./annotations.js";
 import { BlockView } from "./BlockView.js";
 import { linkCardBlocks } from "./glossary.js";
 import { ThreadMarginOverlay } from "../comments/ThreadMarginOverlay.js";
-import { useIsReadOnlyVersion } from "../comments/readOnly.js";
 import { SinceAnswers } from "./SinceAnswers.js";
 import { copyContextFor, copyMarkdownText, useGithubRepo } from "./copyAsMarkdown.js";
 import { CorrectionSuggestion } from "./expansions/CorrectionSuggestion.js";
@@ -611,7 +610,6 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
   // and the active tab. The tab is UI state: a persona run never yanks
   // the reader off the Guide version.
   const personas = useEnabledPersonas();
-  const readOnlyCard = useIsReadOnlyVersion();
   // Issue #377: the review's repo for permalink citations (null for
   // local reviews → plain path:lines). Fetched once per review.
   const githubRepo = useGithubRepo();
@@ -738,7 +736,6 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
             (its threads anchor in the hidden body, so it sits at the top). */}
         <ThreadMarginOverlay
           threads={cardThreads}
-          readOnly={readOnlyCard}
           minTop={8}
           singleBucket
         />
@@ -812,7 +809,6 @@ export function CardView({ reviewId, card, lookupPage, onOpenPage, onFollowUp }:
           highlight's first line, else its paragraph's first line. */}
       <ThreadMarginOverlay
         threads={cardThreads}
-        readOnly={readOnlyCard}
       />
       <CardHeader className="chead">
         <ControlButton

@@ -5,11 +5,10 @@
  * 1. `resolveHead` (fetch, best effort) → new head SHA.
  * 2. Same head → `{ moved: false }`, snapshot untouched.
  * 3. New head → new merge-base + local diff → parse/classify/hash →
- *    hunk-by-hunk comparison + `git range-diff` (display only) → one
+ *    hunk-by-hunk comparison → one
  *    `ReviewStore.mutate` applying the PRD §8 table (hunk state, annotations,
  *    cards, findings, pins, threads log, review-level `versionStatus`).
- * 4. Persist the `versions` row + per-version files (migration 003) so
- *    older versions stay viewable, and bump `reviews.current_version`.
+ * 4. Persist the `versions` row + per-version files (migration 003) for carry-over, and bump `reviews.current_version`.
  *
  * Uncommitted local edits as an extra version (PRD §8 last line) is a
  * documented seam: not implemented here. A future `dirty-worktree` version
@@ -50,7 +49,6 @@ import { compareHunks, compareVersions } from "./compare.js";
 import { computeSinceHunks, diffFilesAtCommit } from "./since.js";
 import { cardCitations, remapCardCitations } from "./citations.js";
 import { loadVersionFiles, saveVersionFiles } from "./files.js";
-import { getRangeDiff } from "./rangeDiff.js";
 
 export interface RefreshRow {
   repoId: string;
@@ -355,17 +353,6 @@ export async function refreshReview(
   );
 
   const cmp = compareHunks(oldFiles, newFiles);
-  const rangeStep: TimedStep = { label: "Range diff", startedAt: Date.now() };
-  steps.push(rangeStep);
-  const rangeDiff = await getRangeDiff(
-    deps.runner,
-    repoPath,
-    oldVersion.mergeBaseSha,
-    oldVersion.headSha,
-    newBaseSha,
-    head.headSha,
-  );
-  rangeStep.finishedAt = Date.now();
   const comparison = compareVersions({
     oldFiles,
     newFiles,
@@ -373,9 +360,7 @@ export async function refreshReview(
     newVersion: oldVersion.n + 1,
     oldHeadSha: oldVersion.headSha,
     newHeadSha: head.headSha,
-    rangeDiff,
   });
-  void cmp;
 
   const now = Date.now();
   const idMapping: Record<string, string> = {};
@@ -403,7 +388,6 @@ export async function refreshReview(
     renamedFiles: summary.renames,
     changedOldIds: summary.changedOldIds,
     changedNewIds: summary.changedNewIds,
-    rangeDiff,
     fetchedAt: now,
     ...(isEmpty ? { empty: true } : {}),
   };

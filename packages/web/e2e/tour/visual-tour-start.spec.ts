@@ -1009,7 +1009,7 @@ test.describe("J245 PR review bar frames (boxed link, icon inside)", () => {
           ["home", 'a[aria-label="Back to the start page"]'],
           ["github", 'a[title="Open PR on GitHub"]'],
           ["refresh", 'button[aria-label="Pull new commits from GitHub"]'],
-          ["version", '[data-testid="version-switcher"] .ui-select'],
+          ["history", '#reviewbar [data-testid="explain-menu-button"]'],
           ["debug", 'a[aria-label="Debug"]'],
           ["panes", ".seg"],
           ["comments", '[data-cm=""]'],

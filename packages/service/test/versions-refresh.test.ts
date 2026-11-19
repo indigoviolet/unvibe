@@ -8,7 +8,7 @@
  * (c) new commit adding a file + shifting lines → anchors moved by offsets.
  * (d) file rename → anchors/citations follow the rename.
  * (e) force-push dropping a commit → dropped hunks removed, survivors kept.
- * Old versions stay retrievable via `GET ?version=n`.
+ * Version files stay stored for carry-over (`files` per version).
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -130,10 +130,11 @@ describe("refresh integration", () => {
       expect(ann.outdated).not.toBe(true);
       expect("stale" in (after.pages.flatMap((p) => p.cards).find((c) => c.id === "c1") ?? {})).toBe(false);
 
-      // Old version stays retrievable.
-      const old = await app.inject({ method: "GET", url: `/api/reviews/${id}?version=1`, headers: authed });
-      expect(old.statusCode).toBe(200);
-      expect((old.json() as ReviewSnapshot).version.n).toBe(1);
+      // Unknown versions are not served (no old-version views): the
+      // current snapshot answers, with the new version's number.
+      const again = await app.inject({ method: "GET", url: `/api/reviews/${id}?version=1`, headers: authed });
+      expect(again.statusCode).toBe(200);
+      expect((again.json() as ReviewSnapshot).version.n).toBe(2);
     } finally {
       await app.close();
     }

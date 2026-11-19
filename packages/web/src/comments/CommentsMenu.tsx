@@ -43,7 +43,6 @@ import { revealSource } from "../source/reveal.js";
 import { showGuidePane } from "../shell/panes.js";
 import { useReview } from "../state/store.js";
 import { descriptionPaneName } from "../source/description/paneName.js";
-import { useIsReadOnlyVersion } from "./readOnly.js";
 import { Badge, Button, ListRow } from "../ui/index.js";
 import { threadPostText } from "./threads.js";
 import { groupGithubComments, isOutdatedComment, requestGithubThread, type GithubThread } from "./GithubThreads.js";
@@ -246,11 +245,9 @@ export function whereLabel(snapshot: ReviewSnapshot, thread: Thread): string {
 function DraftArea({
   reviewId,
   thread,
-  readOnly,
 }: {
   reviewId: string;
   thread: Thread;
-  readOnly: boolean;
 }) {
   const serverDraft = thread.draft ?? threadPostText(thread);
   const [value, setValue] = useState(serverDraft);
@@ -284,8 +281,6 @@ function DraftArea({
       id={`ob-${thread.id}`}
       aria-label="Outbox draft"
       value={value}
-      readOnly={readOnly}
-      title={readOnly ? "Viewing an older version · read-only" : undefined}
       onChange={(e) => {
         setValue(e.target.value);
         window.clearTimeout(timer.current);
@@ -307,7 +302,6 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
   // GitHub" section and the Submit-drafts line); #226's menu rework
   // honours the same flag.
   const isDocument = snapshot ? isDocumentReview(snapshot) : false;
-  const readOnly = useIsReadOnlyVersion();
   const [open, setOpen] = useState(false);
   // #236: the menu has two tabs — Comments (This review + On GitHub) and
   // the Outbox. Opening the menu shows the first tab.
@@ -587,7 +581,7 @@ export function CommentsMenu({ reviewId }: { reviewId: string }) {
     return (
       <span className="cm-entry" key={thread.id}>
         {row}
-        <DraftArea reviewId={reviewId} thread={thread} readOnly={readOnly} />
+        <DraftArea reviewId={reviewId} thread={thread} />
       </span>
     );
   };

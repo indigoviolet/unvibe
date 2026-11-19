@@ -49,7 +49,6 @@ import { githubFileUrl } from "@unvibe/shared";
 import { api, apiErrorCode, friendlyError } from "../api/client.js";
 import { Icon } from "../components/Icon.js";
 import { selectionOffsetsIn } from "../comments/anchor.js";
-import { isReadOnlyVersionNow, useIsReadOnlyVersion } from "../comments/readOnly.js";
 import { parseLineElementId, snapWordOffsets, normalizeQuote, MAX_QUOTE_CHARS } from "../comments/selection.js";
 import { performAction } from "../guide/actions.js";
 import { highlightExplainTerm } from "../guide/explainTerms.js";
@@ -580,7 +579,6 @@ export function SelectionToolbar() {
   // Over-cap selections show a plain note in the bar instead of the
   // bar silently never appearing.
   const [notice, setNotice] = useState<string | null>(null);
-  const readOnly = useIsReadOnlyVersion();
   const snapshot = useReview((s) => s.snapshot);
   const navigate = useNavigate();
   const barRef = useRef<HTMLDivElement>(null);
@@ -641,8 +639,7 @@ export function SelectionToolbar() {
       if (
         pickingCardId !== null &&
         (e.target as Element | null)?.closest?.(`#C-${CSS.escape(pickingCardId)}`) !== null &&
-        (e.target as Element | null)?.closest?.("button, input, textarea") == null &&
-        !isReadOnlyVersionNow()
+        (e.target as Element | null)?.closest?.("button, input, textarea") == null
       ) {
         window.setTimeout(() => {
           const sel = window.getSelection();
@@ -656,8 +653,7 @@ export function SelectionToolbar() {
       const scope = (e.target as Element | null) !== null && inSelectionScope(e.target as Element);
       if (
         !scope ||
-        (e.target as Element | null)?.closest?.("button, a, input, textarea") ||
-        isReadOnlyVersionNow()
+        (e.target as Element | null)?.closest?.("button, a, input, textarea")
       ) {
         hide();
         return;
@@ -977,7 +973,7 @@ export function SelectionToolbar() {
   };
 
   return (
-    <div id="selbar" ref={barRef} hidden={(pending === null && notice === null) || readOnly}>
+    <div id="selbar" ref={barRef} hidden={pending === null && notice === null}>
       {notice !== null ? (
         <span className="sel-note">{notice}</span>
       ) : (

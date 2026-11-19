@@ -11,7 +11,6 @@ import type { DocumentBlock } from "@unvibe/shared";
 import { DOCUMENT_CARD_ID } from "@unvibe/shared";
 import { GuideBlockThreads } from "../comments/GuideThreads.js";
 import { ThreadMarginOverlay } from "../comments/ThreadMarginOverlay.js";
-import { useIsReadOnlyVersion } from "../comments/readOnly.js";
 import { useReview } from "../state/store.js";
 import { blockThreads } from "./annotations.js";
 import { BlockView } from "./BlockView.js";
@@ -43,7 +42,6 @@ export function DocumentView({ reviewId, onOpenPage }: Props) {
   const doc = snapshot?.document;
   const annotations = snapshot?.annotations ?? [];
   const contextRepos = snapshot?.contextRepos ?? [];
-  const readOnlyDoc = useIsReadOnlyVersion();
   if (!doc) {
     return (
       <div className="doc">
@@ -69,7 +67,6 @@ export function DocumentView({ reviewId, onOpenPage }: Props) {
     <div className="doc gutter" data-testid="document-view">
       <ThreadMarginOverlay
         threads={docThreads}
-        readOnly={readOnlyDoc}
       />
       {titleBlock ? (
         <h1 className="title sel" id={`B-${titleBlock.id}`} data-top={titleBlock.id}>

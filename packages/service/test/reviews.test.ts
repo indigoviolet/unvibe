@@ -231,10 +231,11 @@ describe("review routes", () => {
       expect((snap.json() as ReviewSnapshot).version.n).toBe(2);
       expect(hasNewCommits((snap.json() as ReviewSnapshot).versionStatus)).toBe(true);
 
-      // The old version stays viewable.
+      // Old-version views are gone: extra query params don't change the
+      // current snapshot.
       const old = await app.inject({ method: "GET", url: `/api/reviews/${id}?version=1`, headers: authed });
       expect(old.statusCode).toBe(200);
-      expect((old.json() as ReviewSnapshot).version.n).toBe(1);
+      expect((old.json() as ReviewSnapshot).version.n).toBe(2);
     } finally {
       await app.close();
     }

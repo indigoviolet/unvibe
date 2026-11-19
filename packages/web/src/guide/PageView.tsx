@@ -10,7 +10,6 @@ import { Fragment, useEffect, useRef, useState, type KeyboardEvent, type ReactNo
 import type { Card, Page, Plotline } from "@unvibe/shared";
 import { DEFAULT_GUIDE_TITLE, isDefaultGuideTitle, PLOTLINE_OTHER_ID } from "@unvibe/shared";
 import { api } from "../api/client.js";
-import { useIsReadOnlyVersion } from "../comments/readOnly.js";
 import { ErrorBoundary, InlineFallback } from "../components/ErrorBoundary.js";
 import { toast } from "../floating/Toast.js";
 import { Icon } from "../components/Icon.js";
@@ -114,9 +113,6 @@ function PlotName({ name }: { name: string }): ReactNode {
 
 function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
   const snapshot = useReview((s) => s.snapshot);
-  // Issue #343: older versions are view-only — the checkbox disables
-  // with the usual tooltip, like the diff's other read-only controls.
-  const readOnly = useIsReadOnlyVersion();
   const plotlines: Plotline[] = snapshot?.plotlines ?? [];
   if (plotlines.length === 0) return null;
   const files = snapshot?.files ?? [];
@@ -156,10 +152,6 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
   // them) or unmark them all — the same per-hunk path as the diff's
   // per-file mark-all, so one request goes out per hunk.
   const markPlotline = (plotId: string, target: boolean): void => {
-    if (readOnly) {
-      toast("Viewing an older version · read-only");
-      return;
-    }
     const hashes: string[] = [];
     for (const f of files) {
       for (const h of f.hunks) {
@@ -265,12 +257,10 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
           const reviewState = plotlineReviewedState(r.reviewed, r.count);
           const plotChecked = reviewState === "checked";
           const plotPartial = reviewState === "partial";
-          const plotDisabled = readOnly || r.count === 0;
-          const plotLabel = readOnly
-            ? "Viewing an older version · read-only"
-            : plotChecked
-              ? "Mark plotline unreviewed"
-              : "Mark plotline reviewed";
+          const plotDisabled = r.count === 0;
+          const plotLabel = plotChecked
+            ? "Mark plotline unreviewed"
+            : "Mark plotline reviewed";
           return (
             <li key={r.id}>
               <ListRow

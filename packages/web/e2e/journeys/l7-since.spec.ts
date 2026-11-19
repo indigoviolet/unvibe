@@ -1,28 +1,29 @@
 /**
  * L7 — Versions, explain-since-X and refresh (#413 package D, #421
- * toolbar entry).
+ * toolbar entry, #427 timeline menu).
  *
  * The explain lifecycle in usage order: an existing review gains
  * commits and Explain writes the Changes panel (the old guide
- * byte-for-byte, no addenda); the toolbar menu lists every commit
- * oldest first with the head disabled, and picking one runs Explain
- * at once (re-run replaces the panel; a later Pull notes newer
- * commits in the header); the no-review-yet offer on a real PR
- * (prior GitHub review → one guide run with the commit baseline and
- * the delta hunk set, offer gone once the guide lands, gone commit
- * fails loudly, the prior review as a menu row writes the panel);
- * the banner counts new commits since the guide was written, offers
- * Explain from the guide's commit, and stays after the run; refresh banners counts with
- * reviewed clearing only on the changed hunk and the old version
- * read-only; cards, comments and reviewed state surviving a refresh
- * with the changed hunk reopening (#194's terminal explain-pass plus
- * the Debug refresh steps and job times); a code citation outside the
- * diff re-anchored after refresh (#112); and the Version settings tab
- * (fake channels list, 409 switch refusal from a source checkout, the
- * update icon states, the previews toggle, the failed-check panel,
- * the data-format warn line).
+ * byte-for-byte, no addenda); the timeline menu leads with Explain
+ * from the guide's commit and lists every commit oldest first with
+ * guide/new/latest hints and the head disabled, and picking one runs
+ * Explain at once (re-run replaces the panel; a later Pull notes newer
+ * commits in the header); the history icon dots and counts new commits
+ * since the guide was written (cleared by a Re-do); the no-review-yet
+ * offer on a real PR (prior GitHub review → one guide run with the
+ * commit baseline and the delta hunk set, offer gone once the guide
+ * lands, gone commit fails loudly, the prior review as a menu row
+ * writes the panel); refresh recounts the dot with reviewed clearing
+ * only on the changed hunk; cards, comments and reviewed state
+ * surviving a refresh with the changed hunk reopening (#194's terminal
+ * explain-pass plus the Debug refresh steps and job times); a code
+ * citation outside the diff re-anchored after refresh (#112); and the
+ * Version settings tab (fake channels list, 409 switch refusal from a
+ * source checkout, the update icon states, the previews toggle, the
+ * failed-check panel, the data-format warn line). No version switcher,
+ * no banner, no old-version views anywhere.
  *
- * Boots: five scratch-repo services (since replay, since-commit
+Boots: five scratch-repo services (since replay, since-commit
  * replay, explain replay, refresh none, carry-over replay) plus
  * one agent:none + fake-updater settings service for the version tab.
  *
@@ -34,8 +35,10 @@
  * Guards kept: #413 (Changes section, citation reveal with the whole
  * diff shown, re-run replacement, old guide untouched, no stale
  * markers anywhere); #421 (toolbar menu with the head disabled,
- * grouped Changes panel with a commit-range header, banner counting
- * from the guide's commit, no in-guide picker rows, no versions);
+ * grouped Changes panel with a commit-range header, no in-guide
+ * picker rows, no versions); #427 (timeline menu with the guide
+ * entry and guide/new/latest hints, dot with counting tooltip,
+ * no switcher, no banner, no old-version views);
  * #351 (commit baseline +
  * delta hunk set, prior-review offer); #368 (the header chip's shared
  * gap — asserted, not framed); #112 (citation re-anchor); #194
@@ -44,13 +47,12 @@
  * separate Installed line, no "Releases always listed" hint);
  * #233/#229 (compact version rows, toggle alignment); #330
  * (per-channel Notes buttons); the 409 switch refusal from source
- * checkouts (real rollback covered by service units); #258 (read-only
- * older version); #256 (versions-refresh flow inside J12).
+ * checkouts (real rollback covered by service units); #256
+ * (versions-refresh flow inside J12).
  *
- * Frames removed (tour owns them; package D re-adds in
- * `e2e/tour/visual-tour-system.spec.ts`): j367's stale-banner,
- * hunk-header-chip and updated-banner shots. No `shot()`/`screenshot`
- * lines remain in the gate.
+ * Frames removed (tour owns them; re-added in
+ * `e2e/tour/visual-tour-system.spec.ts`): j367's dot/menu shots. No
+ * `shot()`/`screenshot` lines remain in the gate.
  *
  * Brittleness fixed here (#363 §4): none of these files used fixed
  * sleeps for state (the polling loops below are state polls, not
@@ -63,7 +65,6 @@ import type { Page } from "@playwright/test";
 import { expect, test } from "../network-guard.js";
 import { cpuThrottleFromEnv } from "../cpu-throttle.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
-import { openPopup } from "../select.js";
 import { fileKeyForPath, type ReviewSnapshot } from "@unvibe/shared";
 import {apiJson, createScratchReview, git, realGitPath, writeFakeGitOffline, writeFakeShell, fakeServicePath} from "./journey-helpers.js";
 
@@ -183,18 +184,20 @@ test.describe("L7 explain-since (was j351 step 1)", () => {
     await git(repoDir, "add", "d.py");
     await git(repoDir, "commit", "--amend", "--no-edit");
     await page.locator("#reviewbar").getByRole("button", { name: "Pull new commits from GitHub", exact: true }).click();
-    const banner = page.locator('[data-testid="stale-banner"]');
-    await expect(banner).toContainText(/2 new commits since the guide was written/, { timeout: 60_000 });
-    await expect(banner).toContainText("1 changed · 1 new · 0 removed hunks");
-    // No Update and no picker in the banner: one plain button, X fixed
-    // to the commit the guide was written at.
-    await expect(banner.getByRole("button", { name: "Update", exact: true })).toHaveCount(0);
-    await expect(page.getByTestId("explain-pick")).toHaveCount(0);
-    await expect(banner.getByRole("button", { name: "Explain changes", exact: true })).toBeVisible();
+    // #427: no Source-pane banner — the history icon dots and counts the
+    // new commits since the guide, and its menu explains from them.
+    const menuBtn = page.locator('#reviewbar [data-testid="explain-menu-button"]');
+    await expect(menuBtn).toHaveAttribute("aria-label", "2 new commits since the guide was written", { timeout: 60_000 });
+    await expect(menuBtn.locator("[data-new-commits]")).toBeVisible();
+    await expect(page.getByTestId("stale-banner")).toHaveCount(0);
+    await menuBtn.click();
+    const guideMenu = page.getByTestId("explain-menu");
+    await expect(guideMenu.getByRole("menuitem", { name: "Explain changes since the guide" })).toBeVisible();
+    await expect(guideMenu.locator(`[data-explain-commit="${v1Head}"]`)).toContainText("guide");
     // Unchanged hunks keep reviewed state through the refresh.
     await expect(page.locator(appFile).locator(".revc")).toContainText("1/2", { timeout: 30_000 });
 
-    await banner.getByRole("button", { name: "Explain changes", exact: true }).click();
+    await guideMenu.getByRole("menuitem", { name: "Explain changes since the guide" }).click();
     await waitForExplainPass(svc, reviewId);
 
     // The Changes panel, expanded with its cards: one grouped inset box
@@ -247,21 +250,24 @@ test.describe("L7 explain-since (was j351 step 1)", () => {
     await expect(page.locator('[data-filterchip="since"]')).toHaveCount(0);
     expect(((await apiJson(svc, "GET", `/api/reviews/${reviewId}`)).json as { diffFilter?: unknown }).diffFilter).toBeUndefined();
 
-    // A re-run from the toolbar menu (the middle commit) replaces the
+    // A re-run from the timeline menu (the middle commit) replaces the
     // panel whole: still one card, header naming the new range. The
-    // menu button is a borderless bar icon; the menu is the shared
-    // `.fmenu` portal.
-    const menuBtn = page.locator('#reviewbar [data-testid="explain-menu-button"]');
+    // menu button is a borderless bar icon carrying the dot; the menu
+    // is the shared `.fmenu` portal.
     await expect(menuBtn).toBeVisible();
     await expect(menuBtn).toHaveClass(/\bib\b/);
+    await expect(menuBtn).toHaveClass(/\bhist\b/);
     await menuBtn.click();
     const menu = page.getByTestId("explain-menu");
     await expect(menu).toHaveClass(/fmenu/);
-    // Every commit oldest first; the head row is disabled with a quiet
-    // "latest" hint.
+    // The guide entry leads; every commit oldest first with its hints;
+    // the head row is disabled with a quiet "latest" hint.
+    await expect(menu.getByRole("menuitem", { name: "Explain changes since the guide" })).toBeVisible();
     const rows = menu.locator("[data-explain-commit]");
     await expect(rows).toHaveCount(3);
     await expect(rows.first()).toContainText(v1Short);
+    await expect(rows.first()).toContainText("guide");
+    await expect(rows.nth(1)).toContainText("new");
     const headRow = menu.locator(`[data-explain-commit="${head3}"]`);
     await expect(headRow).toBeDisabled();
     await expect(headRow).toContainText("latest");
@@ -277,16 +283,18 @@ test.describe("L7 explain-since (was j351 step 1)", () => {
     await waitForExplainPass(svc, reviewId);
     await expect(since).toContainText(new RegExp(`Changes ${h2Short} → ${h3Short}`), { timeout: 30_000 });
     await expect(since.locator('[id^="C-since-"]')).toHaveCount(1);
-    // The banner keeps offering Explain after the run.
-    await expect(banner.getByRole("button", { name: "Explain changes", exact: true })).toBeVisible();
+    // The guide entry stays in the menu after the run.
+    await menuBtn.click();
+    await expect(page.getByTestId("explain-menu").getByRole("menuitem", { name: "Explain changes since the guide" })).toBeVisible();
+    await page.keyboard.press("Escape");
 
     // A Pull that adds commits past the section's head notes it in the
-    // panel header and recounts the banner from the guide's commit.
+    // panel header and recounts the dot from the guide's commit.
     writeFileSync(path.join(repoDir, "src-app.py"), V_ALPHA2.replace("    return 111", "    return 1111"));
     await git(repoDir, "add", "src-app.py");
     await git(repoDir, "commit", "-m", "rework alpha again");
     await page.locator("#reviewbar").getByRole("button", { name: "Pull new commits from GitHub", exact: true }).click();
-    await expect(banner).toContainText(/3 new commits since the guide was written/, { timeout: 60_000 });
+    await expect(menuBtn).toHaveAttribute("aria-label", "3 new commits since the guide was written", { timeout: 60_000 });
     await expect(since.getByTestId("since-newer")).toContainText("1 newer commit since this was written", { timeout: 30_000 });
   });
 
@@ -308,20 +316,27 @@ test.describe("L7 explain-since (was j351 step 1)", () => {
     const since = page.locator('[data-testid="since-section"]');
     await expect(since).toBeVisible({ timeout: 60_000 });
 
-    // The menu button is a borderless bar icon with the shared tooltip.
+    // The menu button is a borderless bar icon with the dot and a
+    // counting tooltip: the guide is at the oldest commit, so every
+    // other commit is new.
     const menuBtn = page.locator('#reviewbar [data-testid="explain-menu-button"]');
     await expect(menuBtn).toBeVisible();
     await expect(menuBtn).toHaveClass(/\bib\b/);
-    await expect(menuBtn).toHaveAttribute("aria-label", "Explain changes since…");
+    const newer = before.commits.length - 1;
+    await expect(menuBtn).toHaveAttribute("aria-label", `${newer} new commits since the guide was written`);
+    await expect(menuBtn.locator("[data-new-commits]")).toBeVisible();
     await menuBtn.click();
     const menu = page.getByTestId("explain-menu");
     await expect(menu).toHaveClass(/fmenu/);
     await expect(menu).toHaveAttribute("role", "menu");
-    // One row per commit, oldest first, as `<sha8> <subject>` — no
-    // versions anywhere, and no prior-review row on a review without one.
+    // The guide entry leads; one row per commit, oldest first, as
+    // `<sha8> <subject>` — no versions anywhere, and no prior-review
+    // row on a review without one.
+    await expect(menu.getByRole("menuitem", { name: "Explain changes since the guide" })).toBeVisible();
     const rows = menu.locator("[data-explain-commit]");
     await expect(rows).toHaveCount(before.commits.length);
     await expect(rows.first()).toContainText(`${short} ${older.subject}`);
+    await expect(rows.first()).toContainText("guide");
     await expect(menu).not.toContainText("Versions");
     await expect(menu.locator("[data-explain-prior]")).toHaveCount(0);
     // The head is shown disabled with a quiet "latest" hint (an empty
@@ -525,7 +540,7 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
 // One update-state model (j367).
 // ---------------------------------------------------------------------------
 
-test.describe("L7 explain banner; no stale anywhere", () => {
+test.describe("L7 new-commits dot; no stale anywhere", () => {
   let repoDir = "", dataDir = "";
   let svc: RunningService | null = null;
   let reviewId = "";
@@ -543,7 +558,7 @@ test.describe("L7 explain banner; no stale anywhere", () => {
     rmSync(dataDir, { recursive: true, force: true });
   });
 
-  test("banner offers Explain; after Explain the old guide is untouched and nothing is stale", async ({ page }) => {
+  test("the dot offers Explain from the guide; after Explain the old guide is untouched and nothing is stale", async ({ page }) => {
     test.setTimeout(240_000);
     if (!svc) throw new Error("no service");
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -563,24 +578,27 @@ test.describe("L7 explain banner; no stale anywhere", () => {
     await git(repoDir, "commit", "-m", "rework alpha");
     await page.locator("#reviewbar").getByRole("button", { name: "Pull new commits from GitHub", exact: true }).click();
 
-    // New-commits state: one model — "N new commits since the guide
-    // was written (…)" plus Explain.
-    const banner = page.locator('[data-testid="stale-banner"]');
-    await expect(banner).toContainText(/1 new commit since the guide was written/, { timeout: 60_000 });
-    await expect(banner).toContainText(/1 changed/);
-    await expect(banner.getByRole("button", { name: "Update", exact: true })).toHaveCount(0);
-    await expect(banner.getByRole("button", { name: "Explain changes", exact: true })).toBeVisible();
+    // New-commits state: the history icon dots with "N new commits
+    // since the guide was written", and the menu's first item explains
+    // from the guide's commit. No banner anywhere.
+    const menuBtn = page.locator('#reviewbar [data-testid="explain-menu-button"]');
+    await expect(menuBtn).toHaveAttribute("aria-label", "1 new commit since the guide was written", { timeout: 60_000 });
+    await expect(menuBtn.locator("[data-new-commits]")).toBeVisible();
+    await expect(page.getByTestId("stale-banner")).toHaveCount(0);
 
     // #368: the header chip sits off the diff stat with the shared gap.
     await expect(page.locator(appFile).getByText("changed since reviewed")).toHaveCount(1);
     await expect(page.locator(appFile).locator(".prtag").first()).toHaveCSS("margin-left", "6px");
 
-    // Explain: the section lands, the banner keeps offering, nothing stale.
-    await banner.getByRole("button", { name: "Explain changes", exact: true }).click();
+    // Explain from the guide: the section lands, the guide entry stays,
+    // nothing stale.
+    await menuBtn.click();
+    await page.getByTestId("explain-menu").getByRole("menuitem", { name: "Explain changes since the guide" }).click();
     await waitForExplainPass(svc, reviewId);
     await expect(page.locator('[data-testid="since-section"]')).toContainText(/Changes [0-9a-f]{8} → [0-9a-f]{8}/, { timeout: 60_000 });
-    await expect(banner).toContainText(/1 new commit since the guide was written/);
-    await expect(banner.getByRole("button", { name: "Explain changes", exact: true })).toBeVisible();
+    await menuBtn.click();
+    await expect(page.getByTestId("explain-menu").getByRole("menuitem", { name: "Explain changes since the guide" })).toBeVisible();
+    await page.keyboard.press("Escape");
 
     // No stale markers anywhere: no card badges, no Update buttons.
     await expect(page.locator("#page .stale")).toHaveCount(0);
@@ -596,8 +614,8 @@ test.describe("L7 explain banner; no stale anywhere", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Refresh (j12): banner counts, reviewed clears on the changed hunk only,
-// the old version is read-only; #112 re-anchor.
+// Refresh (j12): dot recount, reviewed clears on the changed hunk only;
+// #112 re-anchor.
 // ---------------------------------------------------------------------------
 
 test.describe("L7 refresh with new commits", () => {
@@ -628,7 +646,7 @@ test.describe("L7 refresh with new commits", () => {
     rmSync(dataDir, { recursive: true, force: true });
   });
 
-  test("refresh banners counts, reviewed clears only on the changed hunk, old version read-only", async ({ page }) => {
+  test("refresh recounts the dot, reviewed clears only on the changed hunk", async ({ page }) => {
     test.setTimeout(240_000);
     if (!svc) throw new Error("no service");
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
@@ -657,13 +675,17 @@ test.describe("L7 refresh with new commits", () => {
     await git(repoDir, "commit", "--amend", "--no-edit");
 
     await page.locator("#reviewbar").getByRole("button", { name: "Pull new commits from GitHub", exact: true }).click();
-    const banner = page.locator('[data-testid="stale-banner"]');
-    await expect(banner).toContainText(/2 new commits since the guide was written/, { timeout: 60_000 });
-    await expect(banner).toContainText("1 changed · 1 new · 0 removed hunks");
-    // The toolbar Explain menu is offered on the current version.
-    await expect(page.locator('#reviewbar [data-testid="explain-menu-button"]')).toBeVisible();
-    await banner.getByText("range-diff").click();
-    await expect(page.locator('[data-testid="range-diff"]')).not.toBeEmpty();
+    // #427: no banner, no switcher — the history icon dots and counts
+    // the new commits, and its menu explains from the guide's commit.
+    const menuBtn = page.locator('#reviewbar [data-testid="explain-menu-button"]');
+    await expect(menuBtn).toHaveAttribute("aria-label", "2 new commits since the guide was written", { timeout: 60_000 });
+    await expect(menuBtn.locator("[data-new-commits]")).toBeVisible();
+    await expect(page.locator("#version-pick")).toHaveCount(0);
+    await expect(page.getByTestId("stale-banner")).toHaveCount(0);
+    await menuBtn.click();
+    const rmenu = page.getByTestId("explain-menu");
+    await expect(rmenu.getByRole("menuitem", { name: "Explain changes since the guide" })).toBeVisible();
+    await page.keyboard.press("Escape");
 
     // Reviewed cleared only on the changed hunk: alpha carries the stale
     // marker with the new code, beta keeps its reviewed state.
@@ -672,36 +694,16 @@ test.describe("L7 refresh with new commits", () => {
     await expect(page.locator(appFile).getByText("return 111")).toBeVisible({ timeout: 30_000 });
     await expect(page.locator(appFile).getByText(/return 11\b/)).toHaveCount(0);
 
-    // Older version stays viewable, read-only, with the pre-refresh code.
-    await page.locator("#version-pick").click();
-    await openPopup(page).getByRole("option", { name: /^v1 / }).click();
-    await expect(page).toHaveURL(/version=1/);
-    await expect(page.locator(appFile).getByText(/return 11\b/)).toBeVisible({ timeout: 30_000 });
-    await expect(page.locator(appFile).getByText("return 111")).toHaveCount(0);
-    await expect(page.locator('[data-testid="stale-banner"]')).toHaveCount(0, { timeout: 15_000 });
-    // The toolbar Explain menu hides on the old version (read-only).
-    await expect(page.locator('[data-testid="explain-menu-button"]')).toHaveCount(0);
-    // The switcher flags the older version read-only (trigger names it,
-    // no back button, read-only hint).
-    await expect(page.locator('[data-testid="version-switcher"]')).toHaveAttribute("data-ro", "1");
-    await expect(page.locator("#version-pick")).toContainText("v1");
-    await expect(page.getByRole("button", { name: "Back to current" })).toHaveCount(0);
-    await expect(page.getByText("read-only", { exact: false }).first()).toBeVisible();
-    // On the older version diff line clicks refuse with a toast and open no composer.
+    // Old-version viewing is gone: the pre-refresh code is not reachable
+    // through any version UI, and diff line clicks open the composer.
     await page.locator(`${appFile} td.n.new`).first().click();
-    await expect(page.locator("#toast")).toContainText(/read-only/i, { timeout: 5_000 });
-    await expect(page.locator(`${appFile} .ithread[data-pending-thread]`)).toHaveCount(0);
+    await expect(page.locator(`${appFile} .ithread[data-pending-thread]`)).toBeVisible({ timeout: 15_000 });
 
-    // Choosing the current version (annotated in the dropdown) is the way
-    // back; the banner returns, and Explain reports plainly without an
-    // agent runner (501) instead of hanging.
-    await page.locator("#version-pick").click();
-    const options = openPopup(page).getByRole("option");
-    await expect(options.last()).toContainText("current");
-    await options.last().click();
-    await expect(banner).toBeVisible();
-    await banner.getByRole("button", { name: "Explain changes", exact: true }).click();
-    await expect(banner.getByTestId("explain-error")).toContainText("no agent configured", { timeout: 30_000 });
+    // Explain reports plainly without an agent runner (the explain-pass
+    // job fails with the none-runner message) instead of hanging.
+    await menuBtn.click();
+    await page.getByTestId("explain-menu").getByRole("menuitem", { name: "Explain changes since the guide" }).click();
+    await expect(page.locator("#toast")).toContainText("no agent configured", { timeout: 30_000 });
   });
 
   test("#112 a code citation outside the diff is re-anchored after refresh", async ({ page }) => {
@@ -1014,7 +1016,7 @@ test.describe("L7 refresh carry-over", () => {
     await git(repoDir, "add", "src-app.py");
     await git(repoDir, "commit", "-m", "rework alpha");
     await page.locator("#reviewbar").getByRole("button", { name: "Pull new commits from GitHub", exact: true }).click();
-    await expect(page.locator('[data-testid="stale-banner"]')).toContainText(/1 changed/, { timeout: 60_000 });
+    await expect(page.locator('#reviewbar [data-testid="explain-menu-button"]')).toHaveAttribute("aria-label", "1 new commit since the guide was written", { timeout: 60_000 });
 
     // Carried over: guide cards, the comment, and the unchanged reviewed state.
     await expect(page.locator("#page .doc h1.title")).toHaveText(guideText, { timeout: 30_000 });
@@ -1023,7 +1025,9 @@ test.describe("L7 refresh carry-over", () => {
     await expect(page.locator(appFile).getByText("return 111")).toBeVisible({ timeout: 30_000 });
 
     // #194: the explain pass finishes terminally either way under replay.
-    await page.locator('[data-testid="stale-banner"]').getByRole("button", { name: "Explain changes", exact: true }).click();
+    const carryMenuBtn = page.locator('#reviewbar [data-testid="explain-menu-button"]');
+    await carryMenuBtn.click();
+    await page.getByTestId("explain-menu").getByRole("menuitem", { name: "Explain changes since the guide" }).click();
     const jobDeadline = Date.now() + 90_000;
     let explainJob: { id: string; kind: string; state: string; finishedAt?: number } | undefined;
     for (;;) {
@@ -1040,7 +1044,7 @@ test.describe("L7 refresh carry-over", () => {
     await page.goto(`${svc.origin}/review/${reviewId}/debug?token=${svc.token}`);
     const steps = page.locator('[data-testid="refresh-steps"]');
     await expect(steps).toBeVisible({ timeout: 30_000 });
-    for (const label of ["Fetch", "Building the new version", "Range diff", "Remapping anchors", "Remapping citations", "Remapping pins"]) {
+    for (const label of ["Fetch", "Building the new version", "Remapping anchors", "Remapping citations", "Remapping pins"]) {
       await expect(steps).toContainText(label);
     }
     await expect(steps).toContainText("started");

@@ -367,8 +367,8 @@ const realApi = {
   goBackDataFormat: (): Promise<DataFormatGoBackResponse> => post("/api/data-format/go-back"),
   readiness: (force?: boolean): Promise<ReadinessResponse> =>
     get(`/api/readiness${force ? "?force=1" : ""}`),
-  review: (id: string, version?: number): Promise<ReviewSnapshot> =>
-    get(`/api/reviews/${encodeURIComponent(id)}${version !== undefined ? `?version=${version}` : ""}`),
+  review: (id: string): Promise<ReviewSnapshot> =>
+    get(`/api/reviews/${encodeURIComponent(id)}`),
   refresh: (id: string): Promise<RefreshResponse> => post(`/api/reviews/${encodeURIComponent(id)}/refresh`),
   /** Re-enqueue the pipeline stages that never finished (guide error-state Retry). */
   resume: (id: string): Promise<ResumeReviewResponse> => post(`/api/reviews/${encodeURIComponent(id)}/resume`),

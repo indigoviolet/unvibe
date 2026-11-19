@@ -20,12 +20,10 @@ import { toast } from "../floating/Toast.js";
 import { refreshErrorNotice } from "../versions/versionUtils.js";
 import { useViewer } from "../comments/viewer.js";
 import { pendingCount } from "../comments/threads.js";
-import { useIsReadOnlyVersion } from "../comments/readOnly.js";
 import { useReview } from "../state/store.js";
 import { DEMO_SUBMIT_DISABLED_REASON, STATIC_DEMO } from "../demo.js";
 import { Badge, Button } from "../ui/index.js";
 
-const READ_ONLY_REASON = "Viewing an older version · read-only · back to current to submit";
 
 function locationLabel(comment: SubmitPreview["comments"][number]): string {
   const loc = comment.location;
@@ -51,29 +49,15 @@ type PanelState =
 
 export function SubmitPanel({ reviewId, primary }: { reviewId: string; primary?: boolean }) {
   const snapshot = useReview((s) => s.snapshot);
-  const readOnly = useIsReadOnlyVersion();
   const viewer = useViewer();
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<PanelState>({ status: "loading" });
 
-  const count = readOnly ? 0 : pendingCount(snapshot);
+  const count = pendingCount(snapshot);
   const submitLabel = viewer ? `Submit as ${viewer}` : "Submit review";
 
   useEffect(() => {
     if (!open) return;
-    if (readOnly) {
-      setState({
-        status: "ready",
-        preview: {
-          comments: [],
-          alreadyPosted: [],
-          reviewBody: "",
-          commitId: "",
-          disabledReason: READ_ONLY_REASON,
-        },
-      });
-      return;
-    }
     setState({ status: "loading" });
     let cancelled = false;
     api
@@ -102,7 +86,7 @@ export function SubmitPanel({ reviewId, primary }: { reviewId: string; primary?:
     return () => {
       cancelled = true;
     };
-  }, [open, reviewId, readOnly]);
+  }, [open, reviewId]);
 
   // A successful post flips threads to posted through a patch; refresh the
   // preview when reopened. Live counts on the button follow the store.

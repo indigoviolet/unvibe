@@ -23,7 +23,6 @@ import { useReview } from "../state/store.js";
 import { NEW_THREAD_EVENT, type NewThreadRequest } from "../floating/SelectionToolbar.js";
 import { hunkCommentAnchor } from "../source/diff/hunkAnchor.js";
 import { NewThreadComposer } from "./NewThreadComposer.js";
-import { isReadOnlyVersionNow, useIsReadOnlyVersion } from "./readOnly.js";
 import { ThreadView } from "./ThreadView.js";
 
 export { slotKey };
@@ -61,7 +60,6 @@ export function useDiffCommentBindings(reviewId: string): {
   const annotations = useReview((s) => s.snapshot?.annotations);
   const inflight = useReview((s) => s.inflight);
   const collapseAll = useReview((s) => s.collapseAll);
-  const readOnly = useIsReadOnlyVersion();
   const [pending, setPending] = useState<Pending | null>(null);
 
   useEffect(() => {
@@ -74,7 +72,7 @@ export function useDiffCommentBindings(reviewId: string): {
       if (req.anchor.where === "hunk") {
         // Issue #138: Ask on a hunk summary. The composer sits on the
         // hunk's first changed line; the send keeps the hunk anchor.
-        if (req.kind !== "ask" || isReadOnlyVersionNow()) return;
+        if (req.kind !== "ask") return;
         const mapped = hunkCommentAnchor(useReview.getState().snapshot, {
           fileKey: req.anchor.fileKey,
           contentHash: req.anchor.contentHash,
@@ -93,7 +91,7 @@ export function useDiffCommentBindings(reviewId: string): {
       }
       if (req.anchor.where === "comment") {
         // Issue #214: Ask on a comment; composer sits on the comment's line.
-        if (req.kind !== "ask" || isReadOnlyVersionNow()) return;
+        if (req.kind !== "ask") return;
         const commentId = req.anchor.commentId;
         const comment = useReview.getState().snapshot?.annotations.find((a) => a.id === commentId);
         if (!comment || comment.anchor.host.kind !== "diff-line") return;
@@ -109,7 +107,6 @@ export function useDiffCommentBindings(reviewId: string): {
         return;
       }
       if (req.anchor.where !== "diff-line") return;
-      if (isReadOnlyVersionNow()) return;
       setPending({
         fileKey: req.anchor.fileKey,
         line: req.anchor.line,
@@ -141,10 +138,6 @@ export function useDiffCommentBindings(reviewId: string): {
 
   const onLineClick = useCallback(
     (fileKey: string, line: number) => {
-      if (isReadOnlyVersionNow()) {
-        toast("Viewing an older version · read-only");
-        return;
-      }
       const key = slotKey(fileKey, line);
       const existing = byLine.get(key) ?? [];
       const snap = useReview.getState().snapshot;
@@ -179,9 +172,9 @@ export function useDiffCommentBindings(reviewId: string): {
       slots[key] = (
         <>
           {shown.map((t) => (
-            <ThreadView key={t.id} reviewId={reviewId} thread={t} readOnly={readOnly} />
+            <ThreadView key={t.id} reviewId={reviewId} thread={t} />
           ))}
-          {pending && !readOnly && slotKey(pending.fileKey, pending.line) === key ? (
+          {pending && slotKey(pending.fileKey, pending.line) === key ? (
             <NewThreadComposer
               key="pending"
               reviewId={reviewId}
@@ -197,7 +190,7 @@ export function useDiffCommentBindings(reviewId: string): {
         </>
       );
     }
-    if (pending && !readOnly && !slots[slotKey(pending.fileKey, pending.line)]) {
+    if (pending && !slots[slotKey(pending.fileKey, pending.line)]) {
       slots[slotKey(pending.fileKey, pending.line)] = (
         <NewThreadComposer
               key="pending"
@@ -217,7 +210,7 @@ export function useDiffCommentBindings(reviewId: string): {
     // until the card arrives; retargeted entries vanish from the anchor
     // key, so an arrived card never doubles with its placeholder — and a
     // card that lands before the response hides it too (issue #97).
-    if (!readOnly) {
+    {
       const arrived = new Set<string>();
       for (const a of annotations ?? []) {
         if (a.type !== "thread" || !a.open) continue;
@@ -233,7 +226,7 @@ export function useDiffCommentBindings(reviewId: string): {
       }
     }
     return slots;
-  }, [annotations, byLine, pending, reviewId, readOnly, inflight, collapseAll]);
+  }, [annotations, byLine, pending, reviewId, inflight, collapseAll]);
 
   const commentedLines = useMemo<ReadonlySet<string>>(() => new Set(byLine.keys()), [byLine]);
 

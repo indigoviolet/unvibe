@@ -1481,7 +1481,7 @@ test.describe("L6 demo diff work", () => {
     }
   });
 
-  test("plotlines read as chips, filter, review and disable on old versions (#242, #324, #343)", async ({ page }) => {
+  test("plotlines read as chips, filter and review (#242, #324, #343)", async ({ page }) => {
     test.setTimeout(240_000);
     const s = service();
     if (!s) throw new Error("no service");
@@ -1609,18 +1609,6 @@ test.describe("L6 demo diff work", () => {
       await expect.soft(page.getByRole("progressbar")).toHaveAttribute("aria-label", "0 of 8 hunks reviewed");
 
       await checkLayout(page, "j242-plotlines-reviewed");
-    });
-
-    await test.step("plotline reviewed checkboxes disable on older versions (#343)", async () => {
-      await page.goto(`${s.origin}/review/${plotReview}?token=${s.token}&version=1`);
-      await expect.soft(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
-      const box = page.locator(".plotlines");
-      await expect.soft(box).toBeVisible({ timeout: 15_000 });
-      for (const id of ["obs-fold-unfolding"]) {
-        const control = box.locator(`[data-plotreviewed="${id}"]`);
-        await expect.soft(control).toBeDisabled();
-        await expect.soft(control).toHaveAttribute("aria-label", "Viewing an older version · read-only");
-      }
     });
   });
 

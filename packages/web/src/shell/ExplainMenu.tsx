@@ -1,37 +1,43 @@
 /**
- * Explain menu (issue #421): the review bar's entry point for
+ * Explain menu (issues #421, #427): the review bar's entry point for
  * Explain-since-X. An icon-only borderless `button.ib` (Tabler
- * `history`) right after the Pull button, tooltip and aria-label
- * "Explain changes since…". It opens the same `.fmenu` portal menu
- * PersonaButton uses — no hand-rolled popover:
+ * `history`) right after the Pull button. It opens the same `.fmenu`
+ * portal menu PersonaButton uses — no hand-rolled popover:
  *
- * - **Commits:** all the PR's commits oldest first as
- *   `<sha8> <subject>`, with the head commit shown disabled ("latest"
- *   hint — explaining from it is an empty range the route refuses).
- * - **Your last GitHub review:** when one exists and isn't the head —
- *   a named row even when its commit is also listed above.
+ * - **Dot:** when the PR has commits newer than the commit the current
+ *   guide was written at (`guideHead`), the button carries the diff
+ *   filter chip's dot (`.fdot`) and the tooltip/aria-label read "N new
+ *   commit(s) since the guide was written"; otherwise "Explain changes
+ *   since…".
+ * - **First item,** only with new commits: "Explain changes since the
+ *   guide" — runs Explain from the guide's commit.
+ * - **Commits group,** oldest first, each as `<sha8> <subject>` with
+ *   the hints that apply (`guide`, `new`, `your last review`,
+ *   `latest` — a commit can carry several, rendered as the existing
+ *   `cnt` hint spans). The head is disabled (`latest` — explaining
+ *   from it is an empty range the route refuses). Picking any enabled
+ *   commit runs Explain from it.
+ * - **Your last GitHub review** stays a separate row only when its
+ *   commit isn't in the list (already there via `priorInList`).
  *
  * No versions anywhere. Picking an item runs Explain at once through
  * the existing explain route (one agent call); the button shows the
  * busy state while it runs. Failures and the empty result toast — the
  * toolbar sits above both panes, so a toast reaches the reader
- * wherever they are (the section/banner inline slots may be on the
- * other pane or off-screen).
+ * wherever they are.
  *
  * Hidden wherever the Pull button hides (document reviews, the static
- * demo) plus on old versions (read-only) and when nothing is pickable
- * (one commit, no earlier review).
+ * demo) and when nothing is pickable (one commit, no earlier review).
  */
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { isDocumentReview } from "@unvibe/shared";
+import { isDocumentReview, newerCommitsSince } from "@unvibe/shared";
 import { Icon } from "../components/Icon.js";
 import { STATIC_DEMO } from "../demo.js";
 import { toast } from "../floating/Toast.js";
 import { useReview } from "../state/store.js";
 import { priorReviewDate, usePriorGithubReview } from "../guide/usePriorGithubReview.js";
 import { useExplainPass } from "../guide/useExplainPass.js";
-import { useReviewVersion } from "../versions/useReviewVersion.js";
 
 /** True when a sha names the head (exact or unambiguous prefix). Pure. */
 function isHeadSha(head: string, sha: string): boolean {
@@ -40,18 +46,22 @@ function isHeadSha(head: string, sha: string): boolean {
   return s === h || h.startsWith(s) || s.startsWith(h);
 }
 
+/** True for the same commit (exact, case-insensitive). Pure. */
+function isSameSha(a: string, b: string): boolean {
+  return a.toLowerCase() === b.toLowerCase();
+}
+
 export function ExplainMenu({ reviewId }: { reviewId: string }): React.JSX.Element | null {
   const snapshot = useReview((s) => s.snapshot);
   const prior = usePriorGithubReview(reviewId);
-  const versionParam = useReviewVersion();
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ top: 0, left: 0 });
   const btnRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   // The run toasts (failures and the empty result use the existing
-  // messages); a stored run toasts like the banner's does. The ref
-  // keeps a terminal phase from toasting twice across re-renders.
+  // messages). The ref keeps a terminal phase from toasting twice
+  // across re-renders.
   const toasted = useRef<string | null>(null);
   const { phase, start } = useExplainPass(reviewId, (stored) => {
     if (stored) toast("Review updated");
@@ -88,12 +98,19 @@ export function ExplainMenu({ reviewId }: { reviewId: string }): React.JSX.Eleme
   }, [open ]);
 
   if (!snapshot || STATIC_DEMO || isDocumentReview(snapshot)) return null;
-  if (versionParam !== undefined && versionParam !== snapshot.review.currentVersion) return null;
   // The route refuses Explain while the review is still opening.
   if ((snapshot.ingest.status ?? "ready") !== "ready") return null;
 
   const commits = snapshot.commits ?? [];
   const head = snapshot.version.headSha;
+  // The guide's commit: the range start for the dot, the first item and
+  // the hints. Empty before the reader lands (no guide yet).
+  const guideSha = snapshot.guideHead.sha;
+  const guideIdx = guideSha === "" ? -1 : commits.findIndex((c) => isSameSha(c.sha, guideSha));
+  // A rewrite may have moved the guide's commit out of the list — then
+  // the whole listed range counts (the old banner's fallback).
+  const newer = guideSha === "" ? 0 : (guideIdx >= 0 ? (newerCommitsSince(commits, guideSha) ?? 0) : commits.length);
+  const hasNew = newer > 0;
   const earlier = commits.filter((c) => !isHeadSha(head, c.sha));
   const priorPickable =
     prior !== undefined && prior !== null && !isHeadSha(head, prior.sha) ? prior : null;
@@ -106,11 +123,13 @@ export function ExplainMenu({ reviewId }: { reviewId: string }): React.JSX.Eleme
     priorPickable !== null && commits.some((c) => isHeadSha(c.sha, priorPickable.sha));
 
   const busy = phase.name === "explaining";
-  const label = "Explain changes since…";
+  const label = hasNew
+    ? `${newer} new commit${newer === 1 ? "" : "s"} since the guide was written`
+    : "Explain changes since…";
   return (
     <>
       <button
-        className="ib"
+        className="ib hist"
         type="button"
         ref={btnRef}
         data-testid="explain-menu-button"
@@ -143,7 +162,10 @@ export function ExplainMenu({ reviewId }: { reviewId: string }): React.JSX.Eleme
             <i />
           </span>
         ) : (
-          <Icon name="history" />
+          <>
+            <Icon name="history" />
+            {hasNew ? <span className="fdot" data-new-commits="" aria-hidden="true" /> : null}
+          </>
         )}
       </button>
       {open
@@ -156,14 +178,36 @@ export function ExplainMenu({ reviewId }: { reviewId: string }): React.JSX.Eleme
               style={{ position: "fixed", top: pos.top, left: pos.left, width: 320 }}
               data-testid="explain-menu"
             >
+              {hasNew ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  data-explain-guide={guideSha}
+                  title={`Explain changes since ${guideSha.slice(0, 8)} (the guide's commit)`}
+                  onClick={() => {
+                    setOpen(false);
+                    start({ sha: guideSha });
+                  }}
+                >
+                  <span className="lbl">Explain changes since the guide</span>
+                </button>
+              ) : null}
               <div className="fgroup" role="presentation">
                 Commits
               </div>
-              {commits.map((c) => {
+              {commits.map((c, idx) => {
                 const isHead = isHeadSha(head, c.sha);
+                const isGuide = guideSha !== "" && isSameSha(c.sha, guideSha);
+                const isNewCommit = guideIdx >= 0 && idx > guideIdx;
                 const isPrior = priorInList && isHeadSha(c.sha, priorPickable.sha);
                 const short = c.sha.slice(0, 8);
                 const text = `${short} ${c.subject}`;
+                const hints = [
+                  ...(isGuide ? ["guide"] : []),
+                  ...(isNewCommit ? ["new"] : []),
+                  ...(isPrior ? ["your last review"] : []),
+                  ...(isHead ? ["latest"] : []),
+                ];
                 return (
                   <button
                     key={c.sha}
@@ -172,7 +216,7 @@ export function ExplainMenu({ reviewId }: { reviewId: string }): React.JSX.Eleme
                     data-explain-commit={c.sha}
                     disabled={isHead}
                     aria-disabled={isHead || undefined}
-                    title={isHead ? `${text} (latest)` : isPrior ? `${text} (your last review)` : text}
+                    title={hints.length > 0 ? `${text} (${hints.join(", ")})` : text}
                     onClick={
                       isHead
                         ? undefined
@@ -183,8 +227,10 @@ export function ExplainMenu({ reviewId }: { reviewId: string }): React.JSX.Eleme
                     }
                   >
                     <span className="lbl">{text}</span>
-                    {isHead ? <span className="cnt">latest</span> : null}
+                    {isGuide ? <span className="cnt">guide</span> : null}
+                    {isNewCommit ? <span className="cnt">new</span> : null}
                     {isPrior ? <span className="cnt">your last review</span> : null}
+                    {isHead ? <span className="cnt">latest</span> : null}
                   </button>
                 );
               })}
