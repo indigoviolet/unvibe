@@ -1373,7 +1373,7 @@ test.describe("L1 start page PR lists (service)", () => {
             ["home", 'a[aria-label="Back to the start page"]'],
             ["github", 'a[title="Open PR on GitHub"]'],
             ["refresh", 'button[aria-label="Pull new commits from GitHub"]'],
-            ["version", '[data-testid="version-switcher"] .ui-select'],
+            ["history", '#reviewbar [data-testid="explain-menu-button"]'],
             ["debug", 'a[aria-label="Debug"]'],
             ["panes", ".seg"],
             ["comments", '[data-cm=""]'],

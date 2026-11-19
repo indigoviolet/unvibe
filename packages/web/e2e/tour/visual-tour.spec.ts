@@ -4551,14 +4551,18 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       // The label text toggles the box too (native `label` behaviour).
       await offer.getByText(`You reviewed this at ${c1short}`).click();
       await expect(box).toHaveAttribute("aria-checked", "true", { timeout: 15_000 });
-      // The range-diff toggle never breaks over lines: one line high
-      // and fully visible (no clipped overflow).
-      const rangeDiff = page.locator('[data-testid="stale-banner"] summary');
-      await expect(rangeDiff).toBeVisible({ timeout: 15_000 });
-      const rdBox = await rangeDiff.boundingBox();
-      expect(rdBox?.height ?? 999).toBeLessThanOrEqual(20);
-      const rdScroll = await rangeDiff.evaluate((el) => el.scrollWidth);
-      expect((rdBox?.width ?? 0) + 1).toBeGreaterThanOrEqual(rdScroll);
+      // No banner anywhere: the history menu is the Explain entry on
+      // this page — no guide yet, so no dot and no guide item, with
+      // the listed commit marked as the last review.
+      await expect(page.getByTestId("stale-banner")).toHaveCount(0);
+      const offerMenuBtn = page.locator('#reviewbar [data-testid="explain-menu-button"]');
+      await expect(offerMenuBtn).toBeVisible({ timeout: 15_000 });
+      await expect(offerMenuBtn).toHaveAttribute("aria-label", "Explain changes since…");
+      await offerMenuBtn.click();
+      const offerMenu = page.getByTestId("explain-menu");
+      await expect(offerMenu.locator(`[data-explain-commit="${c1}"]`)).toContainText("your last review", { timeout: 15_000 });
+      await expect(offerMenu.locator("[data-explain-guide]")).toHaveCount(0);
+      await page.keyboard.press("Escape");
       await stepChecks(page, "since-offer-checked");
       await page.mouse.move(20, 20);
       await shot(page, "since-offer-checked", suffix, `You reviewed this at ${c1short}`);
@@ -4573,10 +4577,11 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       const offer = page.getByTestId("prior-review-offer");
       await expect(offer).toBeVisible({ timeout: 60_000 });
       await expect(offer).toContainText(`You reviewed this at ${goneShort}`);
-      // The banner carries no picker: the only Explain entry on this
-      // page is the plain banner button.
+      // No banner, no in-guide picker: the history menu is the only
+      // Explain entry on this page.
       await expect(page.getByTestId("explain-pick")).toHaveCount(0);
-      await expect(page.locator('[data-testid="stale-banner"]').getByRole("button", { name: "Explain changes", exact: true })).toBeVisible();
+      await expect(page.getByTestId("stale-banner")).toHaveCount(0);
+      await expect(page.locator('#reviewbar [data-testid="explain-menu-button"]')).toBeVisible();
       await page.getByTestId("prior-review-checkbox").click();
       // The failure leaves a persistent inline message under the
       // offer until the baseline changes — and no toast for this case.
@@ -4614,10 +4619,14 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       // would flag.
       const menuBtn = page.locator('#reviewbar [data-testid="explain-menu-button"]');
       await expect(menuBtn).toBeVisible();
+      // No guide on this review yet: no dot, no guide entry — commits
+      // plus the separate last-review row.
+      await expect(menuBtn).toHaveAttribute("aria-label", "Explain changes since…");
       await stepChecks(page, "since-menu-groups");
       await menuBtn.click();
       const menu = page.getByTestId("explain-menu");
       await expect(menu).toContainText("Commits", { timeout: 15_000 });
+      await expect(menu.locator("[data-explain-guide]")).toHaveCount(0);
       const priorRow = menu.locator("[data-explain-prior]");
       await expect(priorRow).toContainText("Your last GitHub review");
       await expect(priorRow).toContainText(goneShort);

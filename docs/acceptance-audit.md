@@ -143,9 +143,9 @@ UI); nothing below was edited by this pass.
   full-width source per #83, Comments + primary Submit; at narrow widths
   the title gives way first and the selector never truncates; no Settings
   gear) — met
-  (`ReviewBar.tsx`, `VersionSwitcher.tsx`, `AppShell.test.tsx`,
-  `journeys/j245-reviewbar-pr.spec.ts` (+ `journeys/j12-refresh.spec.ts`
-  for the older-version read-only side); `docs/screenshots/55-review.png`,
+  (`ReviewBar.tsx`, `AppShell.test.tsx`,
+  `journeys/j245-reviewbar-pr.spec.ts`; old-version viewing removed in
+  #427; `docs/screenshots/55-review.png`,
   `55-review-800px.png`, `55-review-dark.png`,
   `83-source-full-width.png`, `120-wide-light.png`,
   `120-narrow-light.png`, `120-wide-dark.png`, `120-narrow-dark.png`,
@@ -241,8 +241,7 @@ UI); nothing below was edited by this pass.
   note once above the lists.
 - Authoring / review-requested / branches / prior reviews with
   unread+stale (“new commits · Update”) — met (`repos/changes.ts`,
-  `reviews/list.ts`, `e2e/start.spec.ts`, `settings-versions-service.spec.ts`
-  refresh banner counts).
+  `reviews/list.ts`, `e2e/start.spec.ts`).
 - Reviews-list statuses fresh on load/Refresh (#298) — met
   (`repos/review-statuses.ts`: one batched GraphQL query per repo
   covers every PR-backed review — state, displayed decision and head
@@ -1075,8 +1074,8 @@ needed (that deviation is closed, not added).
   (lazy Shiki core/engine/grammars, class-based theme colours, content-hash
   cache); unshipped languages stay plain — met
   (`source/diff/highlight/*.test.ts(x)`, `e2e/shiki-highlight.spec.ts`).
-- New-commits banner; stale/outdated per §8 — met
-  (`settings-versions-service.spec.ts` “refresh banners counts”).
+- Timeline menu per §8 (dot + counting tooltip, guide entry,
+  guide/new/latest hints) — met (`e2e/journeys/l7-since.spec.ts`).
 - Expand beyond hunks, by lines (issue #133, stage 1) — met:
   `GET /api/reviews/:id/file` serves raw ranges at a commit through the
   shared `readCodeSlice` source with a per-request cap
@@ -1394,13 +1393,11 @@ needed (that deviation is closed, not added).
   reviews, ask-about, follow-ups, hunk cards, suggestions) place by text
   match as before; no migration — reset for exact anchors on old
   reviews.
-- New head SHA → version + ID mapping; old versions viewable — met
-  (`versions/refresh.ts`, `review_version_files`, `GET ?version=n`,
-  the selector rendered once in the review bar per #120 with the current
-  version annotated in the dropdown, `versions-refresh.test.ts`,
-  `settings-versions-service.spec.ts` “v1 viewable”).
-- Rebase-vs-branch by content hash + `range-diff` — met
-  (`versions/compare.ts`, `rangeDiff.ts`; refresh test (a): rebase
+- New head SHA → version + ID mapping — met
+  (`versions/refresh.ts`, `review_version_files` for carry-over,
+  `versions-refresh.test.ts`).
+- Rebase-vs-branch by content hash — met
+  (`versions/compare.ts`; refresh test (a): rebase
   no-conflicts → “no change”, state preserved — ran).
 - Hunk state kept by hash / cleared+regen+note-kept — met (test (b)).
 - Code comments moved vs outdated (+snippet + new-code link) — met
@@ -1818,7 +1815,7 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
 - One-review submit (`gh api …/reviews event=COMMENT`) + `gh pr edit
   --body-file` — met (`submit/submit.ts:232`, exact-payload test).
 - `git worktree add <managed-path> <head>` — met (`ingest/source.ts:198`).
-- `range-diff` rebase comparison — met (`versions/rangeDiff.ts`).
+- Content-hash rebase comparison — met (`versions/compare.ts`).
 - Description round-trip (unedited paragraphs byte-identical) — met
   (`submit/description.ts` + goldens).
 - `GITHUB_TOKEN` unset for all `gh` — met (`exec/gh.ts:12`,
@@ -1921,8 +1918,9 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
   issue #32).
 - M4 comments/submit — met (threads ×3, Comments menu + Outbox drafts,
   suggested comments, author-gated description edit, one-review submit).
-- M5 versions — met (refresh mapping, new-commits banner, hash-preserved
-  hunk state, explain-since-X pass, rebase-no-change test (a)).
+- M5 versions — met (refresh mapping, the #427 timeline menu,
+  hash-preserved hunk state, explain-since-X pass, rebase-no-change
+  test (a)).
 - M6 second opinion + settings — met (blind/check, models/prompt-
   templates/limits settings page; jobs + expanded prompts + usage on the
   per-review debug page, issue #32; isolation e2e on the real prompt).
@@ -2439,7 +2437,7 @@ those tools are manager shims (the command runner spawns whatever
 - Checkout/clone cwd, load-bearing: ingest (`git fetch`,
   `worktree add/remove`, `gh pr view` — throws), submit (`gh pr …`
   posts), repos/refresh (`git merge-base`, `rev-list`, `show`,
-  `range-diff`, `gh api`). Unvibe-managed clones
+  `gh api`). Unvibe-managed clones
   (`<dataDir>/repos/<owner>/<name>`) hold the reviewed repo's config,
   untrusted like the worktree; user checkouts hold the user's own
   (trusted) config.
@@ -2716,7 +2714,7 @@ hunk coverage) is reported for a separate issue, not fixed here.
   Retry (re-ingest) and Remove work as for #92's failed state, and the
   start page shows the message with a "no changes" tag. A refresh that
   empties the diff records `versionStatus.empty`, shows the same message
-  in the banner and diff (no Explain offered), and the explain route refuses
+  in the diff and guide empty states (no Explain offered), and the explain route refuses
   with 409 so no agent time is spent. Evidence:
   `test/reviews-empty-diff.test.ts`, `GuideLoading.test.tsx` (EmptyOpen),
   `e2e/journeys/j18-empty-diff.spec.ts`.
@@ -3205,8 +3203,8 @@ hunk coverage) is reported for a separate issue, not fixed here.
   bottoms within 2px + `checkLayout`).
 - **#241 (Refresh moves to the review top bar):** Refresh moved from the
   diff toolbar to the review bar next to the status icon, bottom-aligned
-  (`ib bd`), tooltip exactly "Refresh". Same handler/check/banner UI via
-  shared `refreshStore.ts` + `useRefresh.ts`; removed from the toolbar;
+  (`ib bd`), tooltip exactly "Refresh". Same handler/check via shared
+  `useRefresh.ts`; removed from the toolbar;
   hidden for document reviews. Evidence: `ReviewBar.test.tsx`,
   `journeys/j245-reviewbar-pr.spec.ts`, `diff.spec.ts`, J12/J16/J18/J230/settings-versions
   (Refresh in `#reviewbar`), J225 (tooltip "Refresh").

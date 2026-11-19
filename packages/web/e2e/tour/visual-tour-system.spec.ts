@@ -2,12 +2,13 @@
  * Tour: system (package D frames for the on-demand visual tour).
  *
  * On-demand only (`mise run visual-tour`): the system states the owner
- * reviews as frames — the new-commits banner with the #368 header
- * chip, the document review bar across themes, the extension button +
- * confirm + conversation header + side panel, and the static demo
- * guide/explain/install/outbox/settings states. Behaviour for the
- * banner lives in `e2e/journeys/l7-since.spec.ts`; this file keeps
- * just enough asserts to prove each framed state.
+ * reviews as frames — the timeline menu (dot + open menu with hints)
+ * with the #368 header chip, the document review bar across themes,
+ * the extension button + confirm + conversation header + side panel,
+ * and the static demo guide/explain/install/outbox/settings states.
+ * Behaviour for the timeline menu lives in
+ * `e2e/journeys/l7-since.spec.ts`; this file keeps just enough asserts
+ * to prove each framed state.
  *
  * Slim set: 1440px light Default plus the `tour-matrix.ts` named keeps;
  * the full matrix runs with `UNVIBE_TOUR_MATRIX=full`.
@@ -42,7 +43,7 @@ const V1 = [
 ].join("\n");
 
 // ---------------------------------------------------------------------------
-// Update banners (j367 states reframed for the owner).
+// Timeline menu (j367 states reframed for the owner).
 // ---------------------------------------------------------------------------
 
 test.describe("tour update banners", () => {
@@ -83,7 +84,7 @@ test.describe("tour update banners", () => {
     rmSync(dataDir, { recursive: true, force: true });
   });
 
-  test("new-commits banner with the header chip; Explain writes the panel; the menu", async ({ page }) => {
+  test("new-commits dot with the header chip; Explain writes the panel; the menu", async ({ page }) => {
     test.setTimeout(240_000);
     if (!svc) throw new Error("no service");
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -107,12 +108,23 @@ test.describe("tour update banners", () => {
     await git(repoDir, "commit", "-m", "rework alpha");
     await page.locator("#reviewbar").getByRole("button", { name: "Pull new commits from GitHub", exact: true }).click();
 
-    const banner = page.locator('[data-testid="stale-banner"]');
-    await expect(banner).toContainText(/1 new commit since the guide was written/, { timeout: 60_000 });
-    await page.screenshot({ path: path.join(SHOTS, "367", "stale-banner-1440-light.png") });
+    // #427: the history icon dots with a counting tooltip — no banner.
+    const menuBtn = page.locator('#reviewbar [data-testid="explain-menu-button"]');
+    await expect(menuBtn).toHaveAttribute("aria-label", "1 new commit since the guide was written", { timeout: 60_000 });
+    await page.screenshot({ path: path.join(SHOTS, "367", "timeline-dot-1440-light.png") });
     await page.locator(appFile).locator(".dhunk").first().screenshot({ path: path.join(SHOTS, "367", "hunk-header-chip-1440-light.png") });
 
-    await banner.getByRole("button", { name: "Explain changes", exact: true }).click();
+    // The menu opens with the guide entry and hints; the frame shows it.
+    await menuBtn.click();
+    const menu = page.getByTestId("explain-menu");
+    await expect(menu.getByRole("menuitem", { name: "Explain changes since the guide" })).toBeVisible({ timeout: 15_000 });
+    await expect(menu).toContainText("Commits", { timeout: 15_000 });
+    await page.screenshot({ path: path.join(SHOTS, "367", "timeline-menu-1440-light.png") });
+    await page.keyboard.press("Escape");
+
+    // Explaining from the guide writes the panel.
+    await menuBtn.click();
+    await page.getByTestId("explain-menu").getByRole("menuitem", { name: "Explain changes since the guide" }).click();
     const jobDeadline = Date.now() + 90_000;
     for (;;) {
       const res = await apiJson(svc, "GET", `/api/jobs?review=${reviewId}`);
@@ -130,20 +142,7 @@ test.describe("tour update banners", () => {
     const to8 = headNow.version.headSha.slice(0, 8);
     const since = page.locator('[data-testid="since-section"]');
     await expect(since).toContainText(new RegExp(`Changes ${from8} → ${to8}`), { timeout: 60_000 });
-    await page.screenshot({ path: path.join(SHOTS, "367", "explained-banner-1440-light.png") });
-
-    // The toolbar Explain menu, open: Commits oldest first, head disabled.
-    const menuBtn = page.locator('#reviewbar [data-testid="explain-menu-button"]');
-    await expect(menuBtn).toBeVisible();
-    await menuBtn.click();
-    const menu = page.getByTestId("explain-menu");
-    await expect(menu).toContainText("Commits", { timeout: 15_000 });
-    // Two commits past the base, oldest first; the head is disabled.
-    await expect(menu.locator("[data-explain-commit]")).toHaveCount(2);
-    await expect(menu.locator(`[data-explain-commit="${headNow.version.headSha}"]`)).toBeDisabled();
-    await page.mouse.move(20, 20);
-    await page.screenshot({ path: path.join(SHOTS, "367", "explain-menu-1440-light.png") });
-    await page.keyboard.press("Escape");
+    await page.screenshot({ path: path.join(SHOTS, "367", "explained-section-1440-light.png") });
   });
 });
 
