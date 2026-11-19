@@ -36,6 +36,7 @@ import type {
   ReadinessResponse,
   RefreshResponse,
   RemoveRepoResponse,
+  RepoRemovalPreview,
   ResetDataResponse,
   ResumeReviewResponse,
   Repo,
@@ -2227,25 +2228,27 @@ export const mockApi = {
     return { repos: getRepos() };
   },
 
+  repoRemoval: async (id: string): Promise<RepoRemovalPreview> => {
+    // #428: mirror the service — the repo's reviews go with it.
+    return { reviews: mockSummaries().filter((r) => r.repoId === id).length, unsentDrafts: 0 };
+  },
+
   removeRepo: async (id: string): Promise<RemoveRepoResponse> => {
-    // #27: mirror the service — refuse while mock reviews reference the
-    // repo (the seed urllib3 repo has sessions, so removing it 409s).
-    const reviews = mockSummaries();
-    const n = reviews.filter((r) => r.repoId === id).length;
-    if (n > 0) {
-      const repo = getRepos().find((r) => r.id === id);
-      const label = repo ? `${repo.owner}/${repo.name}` : id;
-      throw new Error(
-        `DELETE /api/repos/${id}: 409 ${JSON.stringify({ error: `repo ${label} still has ${n} review${n === 1 ? "" : "s"} — delete ${n === 1 ? "it" : "them"} first, then remove the repo` })}`,
-      );
+    // #428: mirror the service — the repo's reviews are removed with it.
+    let reviewsRemoved = 0;
+    for (let i = mockReviewList.length - 1; i >= 0; i -= 1) {
+      if (mockReviewList[i].repoId === id) {
+        mockReviewList.splice(i, 1);
+        reviewsRemoved += 1;
+      }
     }
     try {
       const added = readJson<Repo[]>(ADDED_KEY, []);
       const found = added.find((r) => r.id === id);
       localStorage.setItem(ADDED_KEY, JSON.stringify(added.filter((r) => r.id !== id)));
-      return { ok: true as const, removedClone: found?.managed === true };
+      return { ok: true as const, reviewsRemoved, removedClone: found?.managed === true };
     } catch {
-      return { ok: true as const, removedClone: false };
+      return { ok: true as const, reviewsRemoved, removedClone: false };
     }
   },
 

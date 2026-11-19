@@ -98,6 +98,11 @@ export class RepoStore {
     return row?.n ?? 0;
   }
 
+  /** Ids of a repo's reviews (#428: removed with the repo). Throws on query errors. */
+  reviewIds(repoId: string): string[] {
+    return (this.db.prepare("SELECT id FROM reviews WHERE repo_id = ? ORDER BY id").all(repoId) as { id: string }[]).map((r) => r.id);
+  }
+
   /** Forget a repo (the row only; clone deletion is the caller's job). */
   remove(id: string): boolean {
     const res = this.db.prepare("DELETE FROM repos WHERE id = ?").run(id) as unknown as {

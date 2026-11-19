@@ -218,8 +218,8 @@ UI); nothing below was edited by this pass.
 - Repos are added in Settings — met (`RepositoriesSection.tsx`:
   remembered repos with owner/name + path, add-by-path input with an
   empty-field hint; `#repositories` anchor; repos add/remove covered in
-  `journeys/j11-settings-combos.spec.ts` (invalid inline, refused while
-  reviews exist).
+  `journeys/j11-settings-combos.spec.ts` (invalid inline); removing a
+  repo removes its reviews too (#428, `l9-settings`).
   Remove is covered by the #27 bullet below (`DELETE /api/repos/:id` +
   per-kind confirms in the same section).
 - Add by GitHub URL (#27, complete) — met end to end: `POST /api/repos`
@@ -230,7 +230,7 @@ UI); nothing below was edited by this pass.
   `managed`, reuses it on repeat adds (lowercase-canonical, one row per
   spelling), and refuses/degrades distinctly (400/404/403/gh-login/502);
   `DELETE /api/repos/:id` forgets the repo and deletes the clone for
-  managed repos only (guarded, refused while reviews exist).
+  managed repos only (guarded); its reviews are removed first (#428).
   UI: Settings → Repositories has a separate add-by-URL row (client-side
   validation with the same parser, "Cloning owner/name…" busy state,
   service errors via toast), marks managed clones ("Cloned by Unvibe",
@@ -1789,7 +1789,8 @@ needed (that deviation is closed, not added).
 
 `GET/POST /api/repos` ✓, `DELETE /api/repos/:id` ✓ (new, #27: forgets the
 row; deletes the clone directory for managed repos only, guarded to
-`<dataDir>/repos`, refused while reviews exist), `GET /api/repos/:id/changes` ✓,
+`<dataDir>/repos`; #428: removes the repo's reviews first, refused only while one
+is being submitted), `GET /api/repos/:id/removal` ✓ (#428), `GET /api/repos/:id/changes` ✓,
 `POST /api/reviews` ✓, `GET /api/reviews/:id` (+`?version=n`) ✓,
 `POST …/refresh` ✓, `POST …/update` ✓, `POST …/actions` ✓,
 `PATCH …/hunks/:hash` ✓, `POST …/hunks/:hash/summarize` ✓,
@@ -4758,3 +4759,25 @@ The built-ins are Guide and Second opinion.
   on a fresh install (API ids plus the absent `persona-clarity` row).
   `snapshot.test.ts` counts 64 recordings (was 65). Fake runner only.
   Full gates not yet run.
+
+### #428: removing a repo removes its reviews — met (ran)
+
+- Settings → Repos → Remove no longer refuses a repo with reviews. The
+  confirm (shared `InlineConfirm`) names what goes, counted by
+  `GET /api/repos/:id/removal` when Remove is clicked: "Remove <repo> and
+  its N review(s) from Unvibe? <path> is not touched." (review clause
+  dropped at 0; a managed clone says its clone is deleted), plus "N unsent
+  draft(s) will be lost" when those reviews hold Outbox drafts.
+- `DELETE /api/repos/:id` does the cascade service-side: each review goes
+  through the start page's Remove path (`routes/review-remover.ts`: rows,
+  managed worktree, jobs, sessions, MCP secrets; never the user's folder),
+  then the repo. Refused (409, nothing removed) while one of its reviews
+  is being submitted. Each review delete is its own transaction; a
+  failure partway keeps the repo and names how many reviews were removed
+  and how many remain, so a retry finishes.
+- Tests: `repos-url.test.ts`, `repos-review-fixes.test.ts` (cascade for
+  managed and path repos, folder untouched, submit-lease refusal),
+  `removeDetail.test.ts` (confirm text), journey `l9-settings` (a repo
+  with one review → confirm names it → repo and review gone from
+  Settings, the API and the start page; folder intact).
+
