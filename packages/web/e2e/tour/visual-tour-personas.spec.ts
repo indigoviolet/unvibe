@@ -384,7 +384,12 @@ test.describe("J349b persona versions", () => {
     dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j349b-data-"));
     reviewId = createSeededDemoReview(dataDir, "j349b-seed");
     svc = await startService(dataDir, { agent: "replay" });
-  });
+    // Issue #422: the persona-run frame presses Simplify through the
+    // #418 menu, so the Explain-terms gate goes on.
+    const gate = await apiJson(svc, "PUT", "/api/settings", {
+      experimental: { explainTerms: true, markdownDocs: false },
+    });
+    expect(gate.status).toBe(200);
 
   test.afterAll(async () => {
     await svc?.stop().catch(() => {});

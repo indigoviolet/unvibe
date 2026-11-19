@@ -161,6 +161,11 @@ test.describe("tour document review bar", () => {
     repoDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tourdoc-repo-"));
     await makeScratchRepo(repoDir);
     svc = await startService(dataDir, { agent: "replay", label: "tourdoc" });
+    // Issue #422: creating the document review needs the Markdown-docs gate on.
+    const gate = await apiJson(svc, "PUT", "/api/settings", {
+      experimental: { explainTerms: false, markdownDocs: true },
+    });
+    expect(gate.status).toBe(200);
     const added = await apiJson(svc, "POST", "/api/repos", { path: repoDir });
     expect(added.status).toBe(200);
     repoId = (added.json as { repos: { id: string; localPath: string }[] }).repos.find(

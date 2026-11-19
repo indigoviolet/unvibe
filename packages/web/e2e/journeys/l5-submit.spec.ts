@@ -1368,6 +1368,12 @@ test.describe("L5 inline confirm removes reviews and documents", () => {
       label: "l5confirm",
       extraEnv: { SHELL: fakeShell, PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ""}` },
     });
+    // Issue #422: this suite creates a document review through the UI,
+    // so the Markdown-docs gate goes on.
+    const gate = await apiJson(svc, "PUT", "/api/settings", {
+      experimental: { explainTerms: false, markdownDocs: true },
+    });
+    expect(gate.status).toBe(200);
     const added = await apiJson(svc, "POST", "/api/repos", { path: repoDir });
     expect(added.status).toBe(200);
     repoId = (added.json as { repos: { id: string; localPath: string }[] }).repos.find(
