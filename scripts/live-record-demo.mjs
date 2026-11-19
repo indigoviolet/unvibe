@@ -238,7 +238,8 @@ async function phaseAuto(token) {
     const r = await api("PUT", "/api/settings", patch, token);
     return { ok: r.code === 200, status: r.code, detail: (r.json?.errors ?? [r.raw.slice(0, 200)]).join("; "), body: r.json };
   };
-  await selectLiveModel(put, { provider: live.provider, model: live.model }, ["main", "small"]);
+  const get = async () => (await api("GET", "/api/settings", undefined, token)).json;
+  await selectLiveModel(put, { provider: live.provider, model: live.model }, ["main", "small"], get);
   const eff = (await api("GET", "/api/settings", undefined, token)).json;
   console.log(`effective settings: main=${eff.main.provider}/${eff.main.model} small=${eff.small.provider}/${eff.small.model}`);
 

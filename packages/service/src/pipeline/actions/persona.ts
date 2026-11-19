@@ -132,7 +132,7 @@ export function personaVariantPromptText(snapshot: ReviewSnapshot, cardId: strin
     if (!card) continue;
     const head = card.title ?? "(untitled)";
     const body = variant.blocks.map((b) => blockPlainText(b)).join("\n\n");
-    return `### ${head} [[card:${card.id}]] (level: ${variant.level}, revision ${variant.revision})\n\n${body}`;
+    return `### ${head} [[card:${card.id}]] (revision ${variant.revision})\n\n${body}`;
   }
   throw new Error(`unknown card ${cardId}`);
 }
@@ -186,7 +186,6 @@ export async function personaAction(
     target.variants[personaId] = {
       personaId,
       blocks: prev && isCardVariant(prev) ? prev.blocks : [],
-      level: (prev && isCardVariant(prev) ? prev.level : card.level) ?? "standard",
       revision: (prev && isCardVariant(prev) ? prev.revision : 0) ?? 0,
       undoStack: (prev && isCardVariant(prev) ? prev.undoStack : []) ?? [],
       ...(prev && isCardVariant(prev) && prev.sessionId ? { sessionId: prev.sessionId } : {}),
@@ -240,7 +239,6 @@ export async function personaAction(
               ctx,
               {
                 card: cardPromptText(getSnapshotOrThrow(reviews, reviewId), cardId),
-                level: card.level,
                 dedupeAnchor: `persona:${cardId}:${personaId}`,
                 requestKind: "persona-diagram-repair",
                 cardId,
@@ -291,17 +289,12 @@ export async function personaAction(
         if (!target?.variants?.[personaId]) return;
         const prev = target.variants[personaId];
         const prevBlocks = prev && isCardVariant(prev) ? prev.blocks : [];
-        const prevLevel = prev && isCardVariant(prev) ? prev.level : card.level;
         const prevStack = prev && isCardVariant(prev) ? prev.undoStack : [];
         target.variants[personaId] = {
           personaId,
           blocks: stored,
-          level: prevLevel ?? "standard",
           revision: (prev && isCardVariant(prev) ? prev.revision : 0) + 1,
-          undoStack:
-            prevBlocks.length > 0
-              ? [...prevStack, { blocks: prevBlocks, level: prevLevel ?? "standard" }]
-              : prevStack,
+          undoStack: prevBlocks.length > 0 ? [...prevStack, { blocks: prevBlocks }] : prevStack,
           ...(sessionId ? { sessionId } : prev && isCardVariant(prev) && prev.sessionId ? { sessionId: prev.sessionId } : {}),
           working: null,
           error: null,

@@ -9,8 +9,7 @@ function commentReply(who: "you" | "agent", text: string, opts?: { suggested?: b
     seq: 1,
     who,
     question: null,
-    blocks: [{ type: "paragraph", id: "b1", text: { standard: text }, citations: [] }],
-    level: "standard",
+    blocks: [{ type: "paragraph", id: "b1", text: text, citations: [] }],
     revision: 1,
     undoStack: [],
     ...(opts?.suggested ? { suggested: true } : {}),
@@ -24,8 +23,7 @@ function agentReply(question: string): Reply {
     seq: 1,
     who: "agent",
     question,
-    blocks: [{ type: "paragraph", id: "b1", text: { standard: "answer" }, citations: [] }],
-    level: "standard",
+    blocks: [{ type: "paragraph", id: "b1", text: "answer", citations: [] }],
     revision: 1,
     undoStack: [],
   };
@@ -45,8 +43,10 @@ function thread(partial: Partial<Thread> & { id: string }): Thread {
 
 function snapshot(annotations: Thread[]): ReviewSnapshot {
   return {
-    review: { id: "r1", repoId: "repo", branch: "feature", versions: [], currentVersion: 1, createdAt: 0 },
+    review: { id: "r1", repoId: "repo", branch: "feature", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: 0 },
     version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
+    // Issue #421: the fixture guide describes this head.
+    guideHead: { version: 1, sha: "abc" },
     files: [
       { fileKey: "fk1", path: "src/app.py", category: "source", hunks: [] },
       { fileKey: "fk2", path: "src/util.py", category: "source", hunks: [] },

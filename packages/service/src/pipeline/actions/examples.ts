@@ -14,7 +14,6 @@ import {
   recordInteraction,
   setTargetContent,
   targetBlocks,
-  targetLevel,
   findCardTarget,
 } from "../../interaction/index.js";
 import { answerEchoTitle, cardTitle, storedCardTitle } from "./events.js";
@@ -57,8 +56,7 @@ export async function examplesAction(
     return { cardId, reused: true };
   }
 
-  const level = targetLevel(target);
-  const variables = { card: cardPromptText(snapshot, cardId), level };
+  const variables = { card: cardPromptText(snapshot, cardId) };
   const capture = captureJobId();
   const replay = isReplayRunner(pipeline.runner) ? { kind: "examples", key: cardId } : undefined;
   // Issue #50: reply prose must not open by repeating the card title
@@ -92,9 +90,8 @@ export async function examplesAction(
         const current = targetBlocks(t) as Block[];
         const out = insertExamples(current, collected);
         if (out.added === 0) return;
-        const from = targetLevel(t);
-        pushUndo(t, [...current], from);
-        setTargetContent(t, out.blocks, from);
+        pushUndo(t, [...current]);
+        setTargetContent(t, out.blocks);
         markStaleAnchors(draft, cardId);
         mirrorPromotedAnswer(draft, cardId);
         added = out.added;
@@ -182,7 +179,7 @@ async function examplesOnVariant(
   if (examplesSaturated(variant.blocks)) {
     return { cardId, reused: true };
   }
-  const variables = { card: personaVariantPromptText(snapshot, cardId, personaId), level: variant.level };
+  const variables = { card: personaVariantPromptText(snapshot, cardId, personaId) };
   const capture = captureJobId();
   const replay = isReplayRunner(pipeline.runner) ? { kind: "examples", key: cardId } : undefined;
   const echoTitle = storedCardTitle(snapshot, cardId) ?? answerEchoTitle(snapshot, cardId);
@@ -218,7 +215,7 @@ async function examplesOnVariant(
         if (!targetCard || !v || !isCardVariant(v)) return;
         const out = insertExamples(v.blocks as Block[], collected);
         if (out.added === 0) return;
-        v.undoStack.push({ blocks: [...v.blocks], level: v.level });
+        v.undoStack.push({ blocks: [...v.blocks] });
         v.blocks = out.blocks;
         v.revision += 1;
         if (sessionId) v.sessionId = sessionId;

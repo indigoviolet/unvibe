@@ -1,25 +1,30 @@
 /**
- * L7 — Versions, Since and refresh (#363 package D).
+ * L7 — Versions, explain-since-X and refresh (#413 package D, #421
+ * toolbar entry, #427 timeline menu).
  *
- * The update lifecycle in usage order: an existing review gains commits
- * and Update writes the Since-B section with an addendum (plotlines and
- * the Since filter follow); the picker offers versions and commits and
- * picking a commit re-baselines; the no-review-yet offer on a real PR
- * (prior GitHub review → one guide run with the commit baseline and the
- * delta hunk set, offer gone once the guide lands, gone commit fails
- * loudly); one update-state model after Update (stale banner offers
- * Update, current banner reads current with no card banner, a further
- * update 409s); refresh banners counts with reviewed clearing only on
- * the changed hunk and the old version read-only; cards, comments and
- * reviewed state surviving a refresh with the changed hunk reopening
- * (#194's terminal update-pass plus the Debug refresh steps and job
- * times); a code citation outside the diff re-anchored after refresh
- * (#112); and the Version settings tab (fake channels list, 409 switch
- * refusal from a source checkout, the update icon states, the previews
- * toggle, the failed-check panel, the data-format warn line).
+ * The explain lifecycle in usage order: an existing review gains
+ * commits and Explain writes the Changes panel (the old guide
+ * byte-for-byte, no addenda); the timeline menu leads with Explain
+ * from the guide's commit and lists every commit oldest first with
+ * guide/new/latest hints and the head disabled, and picking one runs
+ * Explain at once (re-run replaces the panel; a later Pull notes newer
+ * commits in the header); the history icon dots and counts new commits
+ * since the guide was written (cleared by a Re-do); the no-review-yet
+ * offer on a real PR (prior GitHub review → one guide run with the
+ * commit baseline and the delta hunk set, offer gone once the guide
+ * lands, gone commit fails loudly, the prior review as a menu row
+ * writes the panel); refresh recounts the dot with reviewed clearing
+ * only on the changed hunk; cards, comments and reviewed state
+ * surviving a refresh with the changed hunk reopening (#194's terminal
+ * explain-pass plus the Debug refresh steps and job times); a code
+ * citation outside the diff re-anchored after refresh (#112); and the
+ * Version settings tab (fake channels list, 409 switch refusal from a
+ * source checkout, the update icon states, the previews toggle, the
+ * failed-check panel, the data-format warn line). No version switcher,
+ * no banner, no old-version views anywhere.
  *
- * Boots: five scratch-repo services (since-B replay, since-commit
- * replay, update-state replay, refresh none, carry-over replay) plus
+Boots: five scratch-repo services (since replay, since-commit
+ * replay, explain replay, refresh none, carry-over replay) plus
  * one agent:none + fake-updater settings service for the version tab.
  *
  * Absorbs: `j351-since-b` (both), `j351-since-commit` (all 4),
@@ -27,23 +32,27 @@
  * the version-picker/update-icon/warn-line parts of
  * `j5-settings-versions` (settings halves live in L9).
  *
- * Guards kept: #351 (Since-B section + addendum, plotlines, Since
- * filter, commit baseline + delta hunk set, prior-review offer);
- * #367 (one update-state model, no card banner, 409 on a second
- * Update); #368 (the header chip's shared gap — asserted, not framed);
- * #112 (citation re-anchor); #194 (terminal update-pass, refresh
- * steps); #249 (release row shows its version, previews keep short
- * sha); #246 (Installed badge, no separate Installed line, no
- * "Releases always listed" hint); #233/#229 (compact version rows,
- * toggle alignment); #330 (per-channel Notes buttons); the 409 switch
- * refusal from source checkouts (real rollback covered by service
- * units); #258 (read-only older version); #256 (versions-refresh flow
- * inside J12).
+ * Guards kept: #413 (Changes section, citation reveal with the whole
+ * diff shown, re-run replacement, old guide untouched, no stale
+ * markers anywhere); #421 (toolbar menu with the head disabled,
+ * grouped Changes panel with a commit-range header, no in-guide
+ * picker rows, no versions); #427 (timeline menu with the guide
+ * entry and guide/new/latest hints, dot with counting tooltip,
+ * no switcher, no banner, no old-version views);
+ * #351 (commit baseline +
+ * delta hunk set, prior-review offer); #368 (the header chip's shared
+ * gap — asserted, not framed); #112 (citation re-anchor); #194
+ * (terminal explain-pass, refresh steps); #249 (release row shows its
+ * version, previews keep short sha); #246 (Installed badge, no
+ * separate Installed line, no "Releases always listed" hint);
+ * #233/#229 (compact version rows, toggle alignment); #330
+ * (per-channel Notes buttons); the 409 switch refusal from source
+ * checkouts (real rollback covered by service units); #256
+ * (versions-refresh flow inside J12).
  *
- * Frames removed (tour owns them; package D re-adds in
- * `e2e/tour/visual-tour-system.spec.ts`): j367's stale-banner,
- * hunk-header-chip and updated-banner shots. No `shot()`/`screenshot`
- * lines remain in the gate.
+ * Frames removed (tour owns them; re-added in
+ * `e2e/tour/visual-tour-system.spec.ts`): j367's dot/menu shots. No
+ * `shot()`/`screenshot` lines remain in the gate.
  *
  * Brittleness fixed here (#363 §4): none of these files used fixed
  * sleeps for state (the polling loops below are state polls, not
@@ -56,7 +65,6 @@ import type { Page } from "@playwright/test";
 import { expect, test } from "../network-guard.js";
 import { cpuThrottleFromEnv } from "../cpu-throttle.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
-import { openPopup } from "../select.js";
 import { fileKeyForPath, type ReviewSnapshot } from "@unvibe/shared";
 import {apiJson, createScratchReview, git, realGitPath, writeFakeGitOffline, writeFakeShell, fakeServicePath} from "./journey-helpers.js";
 
@@ -101,18 +109,18 @@ async function waitForGuideCards(svc: RunningService, reviewId: string, timeoutM
   }
 }
 
-async function waitForUpdatePass(svc: RunningService, reviewId: string, timeoutMs = 90_000): Promise<void> {
+async function waitForExplainPass(svc: RunningService, reviewId: string, timeoutMs = 90_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
-  let updateJob: { id: string; kind: string; state: string } | undefined;
+  let explainJob: { id: string; kind: string; state: string } | undefined;
   for (;;) {
     const res = await apiJson(svc, "GET", `/api/jobs?review=${reviewId}`);
     const jobs = (res.json as { jobs: { id: string; kind: string; state: string }[] }).jobs ?? [];
-    updateJob = jobs.find((j) => j.kind === "update-pass");
-    if (updateJob && (updateJob.state === "done" || updateJob.state === "error" || updateJob.state === "cancelled")) break;
-    if (Date.now() > deadline) throw new Error(`update-pass job never finished: ${JSON.stringify(updateJob)}`);
+    explainJob = jobs.find((j) => j.kind === "explain-pass");
+    if (explainJob && (explainJob.state === "done" || explainJob.state === "error" || explainJob.state === "cancelled")) break;
+    if (Date.now() > deadline) throw new Error(`explain-pass job never finished: ${JSON.stringify(explainJob)}`);
     await new Promise((r) => setTimeout(r, 500));
   }
-  expect(updateJob?.state).toBe("done");
+  expect(explainJob?.state).toBe("done");
 }
 
 const appKey = fileKeyForPath("src-app.py");
@@ -122,7 +130,7 @@ const appFile = `[id="F-${appKey}"]`;
 // Since-B update over a scratch review.
 // ---------------------------------------------------------------------------
 
-test.describe("L7 since-B update (j351 step 1)", () => {
+test.describe("L7 explain-since (was j351 step 1)", () => {
   let repoDir = "", dataDir = "";
   let svc: RunningService | null = null;
   let reviewId = "";
@@ -140,7 +148,7 @@ test.describe("L7 since-B update (j351 step 1)", () => {
     rmSync(dataDir, { recursive: true, force: true });
   });
 
-  test("Update writes the Since-B section and an addendum; plotlines and the Since-B filter follow", async ({ page }) => {
+  test("Explain writes the Changes panel; citation opens the range diff; a menu re-run replaces it", async ({ page }) => {
     test.setTimeout(240_000);
     if (!svc) throw new Error("no service");
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
@@ -149,92 +157,205 @@ test.describe("L7 since-B update (j351 step 1)", () => {
 
     // Mark both hunks reviewed; the v2 commit touches alpha only.
     const snap = await apiJson(svc, "GET", `/api/reviews/${reviewId}`);
-    const files = (snap.json as { files: { path: string; hunks: { contentHash: string }[] }[] }).files;
-    const app = files.find((f) => f.path === "src-app.py");
+    const snapJson = snap.json as {
+      files: { path: string; hunks: { contentHash: string }[] }[];
+      commits: { sha: string; subject: string }[];
+      version: { headSha: string };
+    };
+    const app = snapJson.files.find((f) => f.path === "src-app.py");
     expect(app?.hunks).toHaveLength(2);
     for (const h of app!.hunks) await apiJson(svc, "PATCH", `/api/reviews/${reviewId}/hunks/${h.contentHash}`, { reviewed: true });
     await expect(page.locator(appFile).locator(".revc")).toContainText("2/2", { timeout: 30_000 });
+    // The guide was written at the v1 head: the banner counts from it.
+    // (The base commit is outside the merge-base..head range, so the
+    // menu lists from the v1 head on.)
+    const v1Head = snapJson.version.headSha;
+    const v1Short = v1Head.slice(0, 8);
 
+    // A new commit touching only the alpha hunk, plus a commit adding a file
+    // that is then amended (two pickable commits past the guide's).
     writeFileSync(path.join(repoDir, "src-app.py"), V_ALPHA2);
     await git(repoDir, "add", "src-app.py");
     await git(repoDir, "commit", "-m", "rework alpha");
-    await page.locator("#reviewbar").getByRole("button", { name: "Refresh", exact: true }).click();
-    await expect(page.locator('[data-testid="stale-banner"]')).toContainText(/1 changed/, { timeout: 60_000 });
-    // The unchanged hunk keeps reviewed; the changed one reopens.
+    writeFileSync(path.join(repoDir, "d.py"), "D = 1\n");
+    await git(repoDir, "add", "d.py");
+    await git(repoDir, "commit", "-m", "add d");
+    writeFileSync(path.join(repoDir, "d.py"), "D = 1\nD2 = 2\n");
+    await git(repoDir, "add", "d.py");
+    await git(repoDir, "commit", "--amend", "--no-edit");
+    await page.locator("#reviewbar").getByRole("button", { name: "Pull new commits from GitHub", exact: true }).click();
+    // #427: no Source-pane banner — the history icon dots and counts the
+    // new commits since the guide, and its menu explains from them.
+    const menuBtn = page.locator('#reviewbar [data-testid="explain-menu-button"]');
+    await expect(menuBtn).toHaveAttribute("aria-label", "2 new commits since the guide was written", { timeout: 60_000 });
+    await expect(menuBtn.locator("[data-new-commits]")).toBeVisible();
+    await expect(page.getByTestId("stale-banner")).toHaveCount(0);
+    await menuBtn.click();
+    const guideMenu = page.getByTestId("explain-menu");
+    await expect(guideMenu.getByRole("menuitem", { name: "Explain changes since the guide" })).toBeVisible();
+    await expect(guideMenu.locator(`[data-explain-commit="${v1Head}"]`)).toContainText("guide");
+    // Unchanged hunks keep reviewed state through the refresh.
     await expect(page.locator(appFile).locator(".revc")).toContainText("1/2", { timeout: 30_000 });
-    // The baseline picker defaults to the version last opened.
-    await expect(page.locator('[data-testid="since-pick"]')).toContainText("v1 ·", { timeout: 30_000 });
 
-    await page.locator('[data-testid="stale-banner"]').getByRole("button", { name: "Update" }).click();
-    await waitForUpdatePass(svc, reviewId);
+    await guideMenu.getByRole("menuitem", { name: "Explain changes since the guide" }).click();
+    await waitForExplainPass(svc, reviewId);
 
-    // The dated Since-B section, expanded with its cards.
+    // The Changes panel, expanded with its cards: one grouped inset box
+    // whose header names the commit range. No in-guide picker rows.
+    const afterPull = (await apiJson(svc, "GET", `/api/reviews/${reviewId}`)).json as {
+      commits: { sha: string; subject: string }[];
+      version: { headSha: string };
+    };
+    expect(afterPull.commits).toHaveLength(3);
+    const h2Short = afterPull.commits[1].sha.slice(0, 8);
+    const head3 = afterPull.version.headSha;
+    const h3Short = head3.slice(0, 8);
     const since = page.locator('[data-testid="since-section"]');
     await expect(since).toBeVisible({ timeout: 30_000 });
-    await expect(since).toContainText(/Since v1 → v2/);
-    await expect(since.getByRole("button", { name: /Collapse changes since v1/ })).toBeVisible();
-    // Collapse it, then expand it again: the cards come and go.
-    await since.getByRole("button", { name: /Collapse changes since v1/ }).click();
+    await expect(since).toContainText(new RegExp(`Changes ${v1Short} → ${h3Short}`));
+    await expect(page.getByTestId("explain-pick")).toHaveCount(0);
+    await expect(page.getByTestId("explain-control")).toHaveCount(0);
+    await expect(since.getByRole("button", { name: /Collapse changes/ })).toBeVisible();
+    // Collapse it, then expand it again: the panel folds to its header,
+    // the cards come and go.
+    await since.getByRole("button", { name: /Collapse changes/ }).click();
     await expect(since.locator('[id^="C-since-"]')).toHaveCount(0);
-    await since.getByRole("button", { name: /Expand changes since v1/ }).click();
+    await since.getByRole("button", { name: /Expand changes/ }).click();
     await expect(since.locator('[id^="C-since-"]')).toHaveCount(1);
+    // Issue #411: every Since card, expanded, shows body text — never a
+    // title with only an Answers line and no body.
+    const sinceCount = await since.locator('[id^="C-since-"]').count();
+    expect(sinceCount).toBeGreaterThan(0);
+    for (let i = 0; i < sinceCount; i++) {
+      const body = since.locator('[id^="C-since-"]').nth(i).locator("p.prose").first();
+      await expect(body).toBeVisible();
+      expect((((await body.textContent()) ?? "").trim().length)).toBeGreaterThan(0);
+    }
+    await expect(since.locator('[id^="C-since-"]').first()).toContainText(/Alpha now returns 111/);
 
-    // The card addendum: old text unchanged, addendum appended.
+    // The old guide is untouched: no addendum anywhere.
     const central = page.locator("#page #C-problem");
-    await expect(central).toContainText(/Updated since v1/, { timeout: 30_000 });
-    await expect(central.locator("[data-addendum]")).toBeVisible();
+    await expect(central).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator("#page [data-addendum]")).toHaveCount(0);
 
-    // Plotlines: the new thread reads new since B, with its +N.
-    const plotlines = page.locator('.plotlines[aria-label="Plotlines"]');
-    await expect(plotlines.getByText("new since v1")).toBeVisible({ timeout: 30_000 });
-    await expect(plotlines.getByText("+1 since v1")).toHaveCount(0);
-
-    // The diff: the Since-B filter shows only the delta.
+    // #413: a section citation reveals and highlights its hunk like any
+    // other citation; the diff keeps every hunk, and there is no Since
+    // filter chip.
     await page.locator('#right [role="tab"]').getByText("Diff").click();
     await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
     await expect(page.locator(appFile).locator(".dhunk")).toHaveCount(2);
-    await page.locator("#right").getByRole("button", { name: "Show only hunks changed since v1" }).click();
-    await expect(page.locator('[data-filterchip="since"]')).toContainText("Since v1 · 1 hidden");
-    await expect(page.locator(appFile).locator(".dhunk")).toHaveCount(1);
-    await expect(page.locator(appFile).locator(".dhunk").first()).toContainText("return 111");
-    // Unchanged hunks keep reviewed state through the pass.
-    await expect(page.locator(appFile).locator(".revc")).toContainText("1/2");
-    await page.locator('[data-filterchip="since"]').click();
+    await since.locator('[id^="C-since-"]').first().locator(".lk").first().click();
+    await expect(page.locator(appFile).getByText("return 111")).toBeVisible({ timeout: 30_000 });
     await expect(page.locator(appFile).locator(".dhunk")).toHaveCount(2);
+    await expect(page.locator('[data-filterchip="since"]')).toHaveCount(0);
+    expect(((await apiJson(svc, "GET", `/api/reviews/${reviewId}`)).json as { diffFilter?: unknown }).diffFilter).toBeUndefined();
+
+    // A re-run from the timeline menu (the middle commit) replaces the
+    // panel whole: still one card, header naming the new range. The
+    // menu button is a borderless bar icon carrying the dot; the menu
+    // is the shared `.fmenu` portal.
+    await expect(menuBtn).toBeVisible();
+    await expect(menuBtn).toHaveClass(/\bib\b/);
+    await expect(menuBtn).toHaveClass(/\bhist\b/);
+    await menuBtn.click();
+    const menu = page.getByTestId("explain-menu");
+    await expect(menu).toHaveClass(/fmenu/);
+    // The guide entry leads; every commit oldest first with its hints;
+    // the head row is disabled with a quiet "latest" hint.
+    await expect(menu.getByRole("menuitem", { name: "Explain changes since the guide" })).toBeVisible();
+    const rows = menu.locator("[data-explain-commit]");
+    await expect(rows).toHaveCount(3);
+    await expect(rows.first()).toContainText(v1Short);
+    await expect(rows.first()).toContainText("guide");
+    await expect(rows.nth(1)).toContainText("new");
+    const headRow = menu.locator(`[data-explain-commit="${head3}"]`);
+    await expect(headRow).toBeDisabled();
+    await expect(headRow).toContainText("latest");
+    // The head row is not clickable: a forced click picks nothing —
+    // the menu stays open and the panel is untouched.
+    await headRow.click({ force: true });
+    await expect(menu).toBeVisible();
+    await expect(since).toContainText(new RegExp(`Changes ${v1Short} → ${h3Short}`));
+    await rows.nth(1).click();
+    // Picking runs Explain at once: the bar button shows the busy
+    // state while the run is in flight.
+    await expect(menuBtn.locator(".dots")).toBeVisible();
+    await waitForExplainPass(svc, reviewId);
+    await expect(since).toContainText(new RegExp(`Changes ${h2Short} → ${h3Short}`), { timeout: 30_000 });
+    await expect(since.locator('[id^="C-since-"]')).toHaveCount(1);
+    // The guide entry stays in the menu after the run.
+    await menuBtn.click();
+    await expect(page.getByTestId("explain-menu").getByRole("menuitem", { name: "Explain changes since the guide" })).toBeVisible();
+    await page.keyboard.press("Escape");
+
+    // A Pull that adds commits past the section's head notes it in the
+    // panel header and recounts the dot from the guide's commit.
+    writeFileSync(path.join(repoDir, "src-app.py"), V_ALPHA2.replace("    return 111", "    return 1111"));
+    await git(repoDir, "add", "src-app.py");
+    await git(repoDir, "commit", "-m", "rework alpha again");
+    await page.locator("#reviewbar").getByRole("button", { name: "Pull new commits from GitHub", exact: true }).click();
+    await expect(menuBtn).toHaveAttribute("aria-label", "3 new commits since the guide was written", { timeout: 60_000 });
+    await expect(since.getByTestId("since-newer")).toContainText("1 newer commit since this was written", { timeout: 30_000 });
   });
 
-  test("the picker offers versions and commits; picking a commit re-baselines", async ({ page }) => {
+  test("the toolbar menu lists every commit oldest first with the head disabled; picking runs Explain at once", async ({ page }) => {
     test.setTimeout(240_000);
     if (!svc) throw new Error("no service");
     const before = (await apiJson(svc, "GET", `/api/reviews/${reviewId}`)).json as {
       commits: { sha: string; subject: string }[];
+      version: { headSha: string };
     };
     expect(before.commits.length).toBeGreaterThanOrEqual(2);
-    // Commits are oldest-first: the oldest is v1's commit, strictly
-    // before the head, so the delta is non-empty.
+    // Commits are oldest-first: the oldest is strictly before the head,
+    // so explaining from it is non-empty.
     const older = before.commits[0];
     const short = older.sha.slice(0, 8);
+    const headShort = before.commits[before.commits.length - 1].sha.slice(0, 8);
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator(appFile)).toBeVisible({ timeout: 60_000 });
-    const pick = page.locator('[data-testid="since-section"] [data-testid="since-pick"]');
-    await expect(pick).toContainText("v1 ·", { timeout: 30_000 });
-    await pick.click();
-    await expect(page.getByRole("group", { name: "Versions" })).toBeVisible({ timeout: 15_000 });
-    const commitsGroup = page.locator('[role="group"]', { hasText: "Commits" }).first();
-    await expect(commitsGroup).toBeVisible();
-    // The v1 head sha is this same commit, so scope to the Commits group.
-    await expect(commitsGroup.getByRole("option", { name: new RegExp(short) })).toBeVisible();
-    await commitsGroup.getByRole("option", { name: new RegExp(short) }).click();
-    // The trigger names the picked commit (short sha + subject).
-    await expect(pick).toContainText(short, { timeout: 30_000 });
-    await expect(pick).toContainText(older.subject.slice(0, 12), { timeout: 30_000 });
-    const after = (await apiJson(svc, "GET", `/api/reviews/${reviewId}`)).json as {
-      sinceBaseline: unknown;
-      sinceHunks?: { added: string[]; changed: string[] };
-    };
-    expect(after.sinceBaseline).toEqual({ kind: "commit", sha: older.sha });
-    const hunks = [...(after.sinceHunks?.added ?? []), ...(after.sinceHunks?.changed ?? [])];
-    expect(hunks.length).toBeGreaterThan(0);
+    const since = page.locator('[data-testid="since-section"]');
+    await expect(since).toBeVisible({ timeout: 60_000 });
+
+    // The menu button is a borderless bar icon with the dot and a
+    // counting tooltip: the guide is at the oldest commit, so every
+    // other commit is new.
+    const menuBtn = page.locator('#reviewbar [data-testid="explain-menu-button"]');
+    await expect(menuBtn).toBeVisible();
+    await expect(menuBtn).toHaveClass(/\bib\b/);
+    const newer = before.commits.length - 1;
+    await expect(menuBtn).toHaveAttribute("aria-label", `${newer} new commits since the guide was written`);
+    await expect(menuBtn.locator("[data-new-commits]")).toBeVisible();
+    await menuBtn.click();
+    const menu = page.getByTestId("explain-menu");
+    await expect(menu).toHaveClass(/fmenu/);
+    await expect(menu).toHaveAttribute("role", "menu");
+    // The guide entry leads; one row per commit, oldest first, as
+    // `<sha8> <subject>` — no versions anywhere, and no prior-review
+    // row on a review without one.
+    await expect(menu.getByRole("menuitem", { name: "Explain changes since the guide" })).toBeVisible();
+    const rows = menu.locator("[data-explain-commit]");
+    await expect(rows).toHaveCount(before.commits.length);
+    await expect(rows.first()).toContainText(`${short} ${older.subject}`);
+    await expect(rows.first()).toContainText("guide");
+    await expect(menu).not.toContainText("Versions");
+    await expect(menu.locator("[data-explain-prior]")).toHaveCount(0);
+    // The head is shown disabled with a quiet "latest" hint (an empty
+    // range the route would refuse).
+    const headRow = menu.locator(`[data-explain-commit="${before.version.headSha}"]`);
+    await expect(headRow).toContainText(headShort);
+    await expect(headRow).toBeDisabled();
+    await expect(headRow).toContainText("latest");
+    // Picking a commit runs Explain at once (no arming step): the menu
+    // closes and the panel is replaced with the new range.
+    await rows.first().click();
+    await expect(menu).toBeHidden();
+    await waitForExplainPass(svc, reviewId);
+    const headNow = ((await apiJson(svc, "GET", `/api/reviews/${reviewId}`)).json as { version: { headSha: string } }).version.headSha;
+    await expect(since).toContainText(new RegExp(`Changes ${short} → ${headNow.slice(0, 8)}`), { timeout: 30_000 });
+    await expect(since.locator('[id^="C-since-"]')).toHaveCount(1);
+    // No in-guide picker rows anywhere: the menu is the only entry.
+    await expect(page.getByTestId("explain-control")).toHaveCount(0);
+    await expect(page.getByTestId("explain-pick")).toHaveCount(0);
   });
 });
 
@@ -359,25 +480,44 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
     expect(s.sinceBaseline).toEqual({ kind: "commit", sha: c1 });
     const hunks = [...(s.sinceHunks?.added ?? []), ...(s.sinceHunks?.changed ?? [])];
     expect(hunks.length).toBeGreaterThan(0);
-    // Exactly one guide run: a single reader job, no update pass.
+    // Exactly one guide run: a single reader job, no explain pass.
     const readers = (s.jobs ?? []).filter((j) => j.kind === "reader");
     expect(readers).toHaveLength(1);
     expect(readers[0].state).toBe("done");
-    expect((s.jobs ?? []).some((j) => j.kind === "update-pass")).toBe(false);
+    expect((s.jobs ?? []).some((j) => j.kind === "explain-pass")).toBe(false);
   });
 
-  test("the Since filter reads the commit baseline label", async ({ page }) => {
+  test("Explain from the last GitHub review writes the panel", async ({ page }) => {
     test.setTimeout(180_000);
     await page.goto(`${svc!.origin}/review/${reviewId}?token=${svc!.token}`);
     await expect(page.locator("#page .doc")).toBeVisible({ timeout: 60_000 });
+    // No section yet and no new commits. The reviewer's last GitHub
+    // review is at a commit already in the Commits list, so (owner, #421)
+    // that commit's row is marked "your last review" and there is no
+    // separate row for it: the same commit never shows twice.
+    const menuBtn = page.locator('#reviewbar [data-testid="explain-menu-button"]');
+    await expect(menuBtn).toBeVisible({ timeout: 30_000 });
+    await menuBtn.click();
+    const menu = page.getByTestId("explain-menu");
+    const markedRow = menu.locator(`[data-explain-commit="${c1}"]`);
+    await expect(markedRow).toBeVisible({ timeout: 30_000 });
+    await expect(markedRow).toContainText("your last review");
+    await expect(menu.locator("[data-explain-prior]")).toHaveCount(0);
+    await expect(menu.getByText(c1short)).toHaveCount(1);
+    await markedRow.click();
+    await waitForExplainPass(svc!, reviewId);
+    // The panel names the last-review commit as the range start.
+    const head = ((await apiJson(svc!, "GET", `/api/reviews/${reviewId}`)).json as { version: { headSha: string } }).version.headSha;
+    const since = page.locator('[data-testid="since-section"]');
+    await expect(since).toContainText(new RegExp(`Changes ${c1short} → ${head.slice(0, 8)}`), { timeout: 30_000 });
+    await expect(since.locator('[id^="C-since-"]')).toHaveCount(1);
+    // No in-guide picker rows anywhere.
+    await expect(page.getByTestId("explain-control")).toHaveCount(0);
+    await expect(page.getByTestId("explain-pick")).toHaveCount(0);
+    // #413: no Since filter chip in the diff toolbar.
     await page.locator('#right [role="tab"]').getByText("Diff").click();
     await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
-    const chip = page.locator('[data-filterchip="since"]');
-    await expect(chip).toContainText(`Since ${c1short}`, { timeout: 30_000 });
-    await expect(chip).toHaveAttribute("aria-label", `Show only hunks changed since ${c1short}`);
-    await chip.click();
-    await expect(chip).toContainText("hidden", { timeout: 30_000 });
-    await expect(chip).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator('[data-filterchip="since"]')).toHaveCount(0);
   });
 
   test("the offer is gone once the guide lands", async ({ page }) => {
@@ -400,7 +540,7 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
 // One update-state model (j367).
 // ---------------------------------------------------------------------------
 
-test.describe("L7 update clears every card; banner has one state model", () => {
+test.describe("L7 new-commits dot; no stale anywhere", () => {
   let repoDir = "", dataDir = "";
   let svc: RunningService | null = null;
   let reviewId = "";
@@ -418,7 +558,7 @@ test.describe("L7 update clears every card; banner has one state model", () => {
     rmSync(dataDir, { recursive: true, force: true });
   });
 
-  test("stale banner offers Update; after Update the banner reads current with no Update and no card banner", async ({ page }) => {
+  test("the dot offers Explain from the guide; after Explain the old guide is untouched and nothing is stale", async ({ page }) => {
     test.setTimeout(240_000);
     if (!svc) throw new Error("no service");
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -436,42 +576,46 @@ test.describe("L7 update clears every card; banner has one state model", () => {
     writeFileSync(path.join(repoDir, "src-app.py"), V_ALPHA2);
     await git(repoDir, "add", "src-app.py");
     await git(repoDir, "commit", "-m", "rework alpha");
-    await page.locator("#reviewbar").getByRole("button", { name: "Refresh", exact: true }).click();
+    await page.locator("#reviewbar").getByRole("button", { name: "Pull new commits from GitHub", exact: true }).click();
 
-    // Stale state: one model — "New commits · v1 → v2 (…)" plus Update.
-    const banner = page.locator('[data-testid="stale-banner"]');
-    await expect(banner).toHaveAttribute("data-update-state", "stale", { timeout: 60_000 });
-    await expect(banner).toContainText(/New commits · v1 → v2/);
-    await expect(banner).toContainText(/1 changed/);
-    await expect(banner.getByRole("button", { name: "Update", exact: true })).toBeVisible();
+    // New-commits state: the history icon dots with "N new commits
+    // since the guide was written", and the menu's first item explains
+    // from the guide's commit. No banner anywhere.
+    const menuBtn = page.locator('#reviewbar [data-testid="explain-menu-button"]');
+    await expect(menuBtn).toHaveAttribute("aria-label", "1 new commit since the guide was written", { timeout: 60_000 });
+    await expect(menuBtn.locator("[data-new-commits]")).toBeVisible();
+    await expect(page.getByTestId("stale-banner")).toHaveCount(0);
 
     // #368: the header chip sits off the diff stat with the shared gap.
     await expect(page.locator(appFile).getByText("changed since reviewed")).toHaveCount(1);
     await expect(page.locator(appFile).locator(".prtag").first()).toHaveCSS("margin-left", "6px");
 
-    await banner.getByRole("button", { name: "Update", exact: true }).click();
-    await waitForUpdatePass(svc, reviewId);
-    await expect(banner).toHaveAttribute("data-update-state", "current", { timeout: 60_000 });
+    // Explain from the guide: the section lands, the guide entry stays,
+    // nothing stale.
+    await menuBtn.click();
+    await page.getByTestId("explain-menu").getByRole("menuitem", { name: "Explain changes since the guide" }).click();
+    await waitForExplainPass(svc, reviewId);
+    await expect(page.locator('[data-testid="since-section"]')).toContainText(/Changes [0-9a-f]{8} → [0-9a-f]{8}/, { timeout: 60_000 });
+    await menuBtn.click();
+    await expect(page.getByTestId("explain-menu").getByRole("menuitem", { name: "Explain changes since the guide" })).toBeVisible();
+    await page.keyboard.press("Escape");
 
-    // Up-to-date state: "Updated to v2 · since v1" with the picker and
-    // range-diff, no Update button, no "Already up to date" label.
-    await expect(banner).toContainText(/Updated to v2 · since v1/);
-    await expect(banner.getByRole("button", { name: "Update", exact: true })).toHaveCount(0);
-    await expect(banner).not.toContainText(/Already up to date/);
-    await expect(banner.locator('[data-testid="since-pick"]')).toBeVisible();
-
-    // No card banner anywhere: the UI offers no Update the service would refuse.
+    // No stale markers anywhere: no card badges, no Update buttons.
     await expect(page.locator("#page .stale")).toHaveCount(0);
+    await expect(page.locator("#page").getByRole("button", { name: "Update", exact: true })).toHaveCount(0);
 
-    // The service agrees: a further update is refused as already up to date.
-    const again = await apiJson(svc, "POST", `/api/reviews/${reviewId}/update`);
-    expect(again.status).toBe(409);
+    // The old guide is untouched by the run: no addenda appended.
+    await expect(page.locator("#page [data-addendum]")).toHaveCount(0);
+
+    // The service agrees: explaining again is a fresh 202, never a 409.
+    const again = await apiJson(svc, "POST", `/api/reviews/${reviewId}/explain`);
+    expect(again.status).toBe(202);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Refresh (j12): banner counts, reviewed clears on the changed hunk only,
-// the old version is read-only; #112 re-anchor.
+// Refresh (j12): dot recount, reviewed clears on the changed hunk only;
+// #112 re-anchor.
 // ---------------------------------------------------------------------------
 
 test.describe("L7 refresh with new commits", () => {
@@ -502,7 +646,7 @@ test.describe("L7 refresh with new commits", () => {
     rmSync(dataDir, { recursive: true, force: true });
   });
 
-  test("refresh banners counts, reviewed clears only on the changed hunk, old version read-only", async ({ page }) => {
+  test("refresh recounts the dot, reviewed clears only on the changed hunk", async ({ page }) => {
     test.setTimeout(240_000);
     if (!svc) throw new Error("no service");
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
@@ -530,11 +674,18 @@ test.describe("L7 refresh with new commits", () => {
     await git(repoDir, "add", "d.py");
     await git(repoDir, "commit", "--amend", "--no-edit");
 
-    await page.locator("#reviewbar").getByRole("button", { name: "Refresh", exact: true }).click();
-    const banner = page.locator('[data-testid="stale-banner"]');
-    await expect(banner).toContainText("1 changed · 1 new · 0 removed hunks", { timeout: 60_000 });
-    await banner.getByText("range-diff").click();
-    await expect(page.locator('[data-testid="range-diff"]')).not.toBeEmpty();
+    await page.locator("#reviewbar").getByRole("button", { name: "Pull new commits from GitHub", exact: true }).click();
+    // #427: no banner, no switcher — the history icon dots and counts
+    // the new commits, and its menu explains from the guide's commit.
+    const menuBtn = page.locator('#reviewbar [data-testid="explain-menu-button"]');
+    await expect(menuBtn).toHaveAttribute("aria-label", "2 new commits since the guide was written", { timeout: 60_000 });
+    await expect(menuBtn.locator("[data-new-commits]")).toBeVisible();
+    await expect(page.locator("#version-pick")).toHaveCount(0);
+    await expect(page.getByTestId("stale-banner")).toHaveCount(0);
+    await menuBtn.click();
+    const rmenu = page.getByTestId("explain-menu");
+    await expect(rmenu.getByRole("menuitem", { name: "Explain changes since the guide" })).toBeVisible();
+    await page.keyboard.press("Escape");
 
     // Reviewed cleared only on the changed hunk: alpha carries the stale
     // marker with the new code, beta keeps its reviewed state.
@@ -543,33 +694,16 @@ test.describe("L7 refresh with new commits", () => {
     await expect(page.locator(appFile).getByText("return 111")).toBeVisible({ timeout: 30_000 });
     await expect(page.locator(appFile).getByText(/return 11\b/)).toHaveCount(0);
 
-    // Older version stays viewable, read-only, with the pre-refresh code.
-    await page.locator("#version-pick").click();
-    await openPopup(page).getByRole("option", { name: /^v1 / }).click();
-    await expect(page).toHaveURL(/version=1/);
-    await expect(page.locator(appFile).getByText(/return 11\b/)).toBeVisible({ timeout: 30_000 });
-    await expect(page.locator(appFile).getByText("return 111")).toHaveCount(0);
-    await expect(page.locator('[data-testid="stale-banner"]')).toHaveCount(0, { timeout: 15_000 });
-    // The switcher flags the older version read-only (trigger names it,
-    // no back button, read-only hint).
-    await expect(page.locator('[data-testid="version-switcher"]')).toHaveAttribute("data-ro", "1");
-    await expect(page.locator("#version-pick")).toContainText("v1");
-    await expect(page.getByRole("button", { name: "Back to current" })).toHaveCount(0);
-    await expect(page.getByText("read-only", { exact: false }).first()).toBeVisible();
-    // On the older version diff line clicks refuse with a toast and open no composer.
+    // Old-version viewing is gone: the pre-refresh code is not reachable
+    // through any version UI, and diff line clicks open the composer.
     await page.locator(`${appFile} td.n.new`).first().click();
-    await expect(page.locator("#toast")).toContainText(/read-only/i, { timeout: 5_000 });
-    await expect(page.locator(`${appFile} .ithread[data-pending-thread]`)).toHaveCount(0);
+    await expect(page.locator(`${appFile} .ithread[data-pending-thread]`)).toBeVisible({ timeout: 15_000 });
 
-    // Choosing the current version (annotated in the dropdown) is the way
-    // back; the banner returns, and Update reports plainly without the
-    // pipeline (no base runner) instead of hanging.
-    await page.locator("#version-pick").click();
-    const options = openPopup(page).getByRole("option");
-    await expect(options.last()).toContainText("current");
-    await options.last().click();
-    await expect(banner).toBeVisible();
-    await banner.getByRole("button", { name: "Update" }).click();
+    // Explain reports plainly without an agent runner (the explain-pass
+    // job fails with the none-runner message) instead of hanging.
+    await menuBtn.click();
+    await page.getByTestId("explain-menu").getByRole("menuitem", { name: "Explain changes since the guide" }).click();
+    await expect(page.locator("#toast")).toContainText("no agent configured", { timeout: 30_000 });
   });
 
   test("#112 a code citation outside the diff is re-anchored after refresh", async ({ page }) => {
@@ -615,7 +749,6 @@ test.describe("L7 refresh with new commits", () => {
         id: "c-helper",
         pageId: "root",
         title: "Helper card",
-        level: "standard",
         read: false,
         collapsed: false,
         revision: 1,
@@ -623,7 +756,7 @@ test.describe("L7 refresh with new commits", () => {
           {
             type: "paragraph",
             id: "b-helper",
-            text: { standard: "Uses the helper beta value." },
+            text: "Uses the helper beta value.",
             citations: [{ target: `code:helper.py:2@${oldHead}` }],
           },
         ],
@@ -650,7 +783,7 @@ test.describe("L7 refresh with new commits", () => {
 
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.getByText("Uses the helper beta value.")).toBeVisible({ timeout: 60_000 });
-    await page.locator("#reviewbar").getByRole("button", { name: "Refresh", exact: true }).click();
+    await page.locator("#reviewbar").getByRole("button", { name: "Pull new commits from GitHub", exact: true }).click();
 
     // The citation now points at beta's new line under the new head.
     const deadline = Date.now() + 60_000;
@@ -681,6 +814,131 @@ test.describe("L7 refresh with new commits", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Section citation into a folded doc/config hunk (#413): h: targets
+// resolve to their head range, so the reveal unfolds the hidden group
+// with no toast, and the whole diff stays shown.
+// ---------------------------------------------------------------------------
+
+test.describe("L7 section citation into a folded doc hunk", () => {
+  let repoDir = "", dataDir = "";
+  let svc: RunningService | null = null;
+  let reviewId = "";
+
+  const RST_V1 = ["Title", "=====", "", "Alpha line one.", "Alpha line two.", "Alpha line three.", "Beta line one.", ""].join("\n") + "\n";
+  const RST_V2 = RST_V1.replace("Alpha line two.", "Alpha line TWO reworked.").replace("Alpha line three.", "Alpha line THREE reworked.");
+
+  test.beforeAll(async () => {
+    repoDir = await initTwoHunkRepo();
+    writeFileSync(path.join(repoDir, "docs.rst"), RST_V1);
+    await git(repoDir, "add", ".");
+    await git(repoDir, "commit", "-m", "add docs");
+    dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-l7doc-data-"));
+    svc = await startService(dataDir, { agent: "replay", label: "l7secdoc" });
+    reviewId = await createScratchReview(svc, repoDir);
+    await waitForGuideCards(svc, reviewId);
+    // v2 touches the docs only.
+    writeFileSync(path.join(repoDir, "docs.rst"), RST_V2);
+    await git(repoDir, "add", "docs.rst");
+    await git(repoDir, "commit", "-m", "rework docs");
+    const refreshed = await apiJson(svc, "POST", `/api/reviews/${reviewId}/refresh`);
+    expect(refreshed.status).toBe(200);
+  });
+  test.afterAll(async () => {
+    await svc?.stop().catch(() => {});
+    rmSync(repoDir, { recursive: true, force: true });
+    rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  test("a section citation into a folded doc hunk unfolds and reveals it with no toast", async ({ page }) => {
+    test.setTimeout(240_000);
+    if (!svc) throw new Error("no service");
+    // The doc hunk's head id, then a stop-seed-restart (the #112
+    // pattern): the Since section cites the doc hunk and the hunk
+    // carries the docs/config hidden reason, so it renders grouped.
+    const before = (await apiJson(svc, "GET", `/api/reviews/${reviewId}`)).json as ReviewSnapshot;
+    const docFile = before.files.find((f) => f.path === "docs.rst");
+    if (!docFile) throw new Error("no docs.rst in the snapshot");
+    const docHunk = docFile.hunks[0];
+    if (!docHunk) throw new Error("no doc hunk in the snapshot");
+    const docId = `h:${docFile.fileKey}:${docHunk.contentHash}`;
+    await svc.stop();
+    const { DatabaseSync } = await import("node:sqlite");
+    const { stampDataFormat } = await import("./journey-helpers.js");
+    const db = new DatabaseSync(path.join(dataDir, "unvibe.db"));
+    try {
+      const row = db.prepare("SELECT rev, snapshot FROM review_snapshots WHERE review_id = ?").get(reviewId) as
+        | { rev: number; snapshot: string }
+        | undefined;
+      if (!row) throw new Error("no snapshot row to seed");
+      const snap = JSON.parse(row.snapshot) as ReviewSnapshot & { pages: { id: string; cards: unknown[] }[] };
+      for (const f of snap.files) {
+        if (f.path !== "docs.rst") continue;
+        for (const h of f.hunks) h.hiddenReason = "docs / config";
+      }
+      snap.sinceBaseline = { kind: "version", version: 1 };
+      snap.sinceHunks = { added: [docId], changed: [] };
+      const now = Date.now();
+      snap.sinceSection = {
+        baseline: { kind: "version", version: 1 },
+        headVersion: snap.review.currentVersion,
+        // Issue #421: the section was written at the current head.
+        headSha: snap.version.headSha,
+        at: now,
+        cards: [
+          {
+            id: "since-doc-1",
+            pageId: "since",
+            title: "Docs reworked",
+            collapsed: false,
+            revision: 1,
+            undoStack: [],
+            blocks: [
+              {
+                type: "paragraph",
+                id: "b-since-doc-1",
+                text: "The docs now say TWO and THREE.",
+                citations: [{ target: docId }],
+              },
+            ],
+            answers: [],
+          },
+        ],
+      };
+      db.prepare("UPDATE review_snapshots SET rev = ?, snapshot = ? WHERE review_id = ?").run(
+        row.rev + 1,
+        JSON.stringify(snap),
+        reviewId,
+      );
+      stampDataFormat(db);
+    } finally {
+      db.close();
+    }
+    svc = await startService(dataDir, { agent: "replay", label: "l7secdoc2" });
+
+    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    await expect(page.locator(appFile)).toBeVisible({ timeout: 60_000 });
+    const since = page.locator('[data-testid="since-section"]');
+    const v1 = (before.review.versions.find((v) => v.n === 1) ?? before.version).headSha.slice(0, 8);
+    const v2 = before.version.headSha.slice(0, 8);
+    await expect(since).toContainText(new RegExp(`Changes ${v1} → ${v2}`), { timeout: 30_000 });
+
+    // The doc hunk starts folded in its hidden group: new text absent.
+    await page.locator('#right [role="tab"]').getByText("Diff").click();
+    await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
+    const docSection = page.locator(`[id="F-${fileKeyForPath("docs.rst")}"]`);
+    await expect(docSection.locator(".dhid").first()).toBeVisible({ timeout: 30_000 });
+    await expect(docSection.getByText("Alpha line TWO reworked.")).toHaveCount(0);
+
+    // Clicking the section citation reveals the hunk: unfolded,
+    // highlighted, no toast; no filter turns on.
+    await since.locator("#C-since-doc-1 .lk").first().click();
+    await expect(docSection.getByText("Alpha line TWO reworked.")).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator('[data-filterchip="since"]')).toHaveCount(0);
+    await expect(page.locator("#toast")).toBeHidden({ timeout: 15_000 });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Refresh carry-over (j16): cards, comments and reviewed state survive;
 // the changed hunk reopens; the update pass terminates; Debug shows the
 // refresh steps and job times.
@@ -702,6 +960,31 @@ test.describe("L7 refresh carry-over", () => {
     await svc?.stop().catch(() => {});
     rmSync(repoDir, { recursive: true, force: true });
     rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  test("one-version, one-commit review: no Explain row; head X is a 409", async ({ page }) => {
+    test.setTimeout(240_000);
+    if (!svc) throw new Error("no service");
+    // A fresh review on the same repo: a single version, no section,
+    // no new commits.
+    const id2 = await createScratchReview(svc, repoDir);
+    await waitForGuideCards(svc, id2);
+    await page.goto(`${svc.origin}/review/${id2}?token=${svc.token}`);
+    await expect(page.locator("#page .doc")).toBeVisible({ timeout: 60_000 });
+    // #413: nothing earlier than the head (one version, its only commit
+    // is the head, no prior review): the guide shows no Explain row at
+    // all, never a picker whose only choice is the head.
+    const snap = await apiJson(svc, "GET", `/api/reviews/${id2}`);
+    expect((snap.json as { commits: unknown[] }).commits.length).toBe(1);
+    await expect(page.getByTestId("explain-control")).toHaveCount(0);
+    await expect(page.getByTestId("explain-pick")).toHaveCount(0);
+    // The route refuses the head in every spelling, before any spend.
+    const headSha = (snap.json as { version: { headSha: string } }).version.headSha;
+    for (const payload of [{}, { version: 1 }, { sha: headSha }]) {
+      const res = await apiJson(svc, "POST", `/api/reviews/${id2}/explain`, payload);
+      expect(res.status).toBe(409);
+      expect((res.json as { error: string }).error).toMatch(/Nothing to explain/);
+    }
   });
 
   test("cards, a comment and reviewed state survive a refresh; the changed hunk reopens", async ({ page }) => {
@@ -732,8 +1015,8 @@ test.describe("L7 refresh carry-over", () => {
     writeFileSync(path.join(repoDir, "src-app.py"), V_ALPHA2);
     await git(repoDir, "add", "src-app.py");
     await git(repoDir, "commit", "-m", "rework alpha");
-    await page.locator("#reviewbar").getByRole("button", { name: "Refresh", exact: true }).click();
-    await expect(page.locator('[data-testid="stale-banner"]')).toContainText(/1 changed/, { timeout: 60_000 });
+    await page.locator("#reviewbar").getByRole("button", { name: "Pull new commits from GitHub", exact: true }).click();
+    await expect(page.locator('#reviewbar [data-testid="explain-menu-button"]')).toHaveAttribute("aria-label", "1 new commit since the guide was written", { timeout: 60_000 });
 
     // Carried over: guide cards, the comment, and the unchanged reviewed state.
     await expect(page.locator("#page .doc h1.title")).toHaveText(guideText, { timeout: 30_000 });
@@ -741,33 +1024,35 @@ test.describe("L7 refresh carry-over", () => {
     await expect(page.locator(appFile).locator(".revc")).toContainText("1/2", { timeout: 30_000 });
     await expect(page.locator(appFile).getByText("return 111")).toBeVisible({ timeout: 30_000 });
 
-    // #194: the update pass finishes terminally either way under replay.
-    await page.locator('[data-testid="stale-banner"]').getByRole("button", { name: "Update" }).click();
+    // #194: the explain pass finishes terminally either way under replay.
+    const carryMenuBtn = page.locator('#reviewbar [data-testid="explain-menu-button"]');
+    await carryMenuBtn.click();
+    await page.getByTestId("explain-menu").getByRole("menuitem", { name: "Explain changes since the guide" }).click();
     const jobDeadline = Date.now() + 90_000;
-    let updateJob: { id: string; kind: string; state: string; finishedAt?: number } | undefined;
+    let explainJob: { id: string; kind: string; state: string; finishedAt?: number } | undefined;
     for (;;) {
       const res = await apiJson(svc, "GET", `/api/jobs?review=${reviewId}`);
       const jobs = (res.json as { jobs: { id: string; kind: string; state: string; finishedAt?: number }[] }).jobs ?? [];
-      updateJob = jobs.find((j) => j.kind === "update-pass");
-      if (updateJob && (updateJob.state === "done" || updateJob.state === "error" || updateJob.state === "cancelled")) break;
-      if (Date.now() > jobDeadline) throw new Error(`update-pass job never finished: ${JSON.stringify(updateJob)}`);
+      explainJob = jobs.find((j) => j.kind === "explain-pass");
+      if (explainJob && (explainJob.state === "done" || explainJob.state === "error" || explainJob.state === "cancelled")) break;
+      if (Date.now() > jobDeadline) throw new Error(`explain-pass job never finished: ${JSON.stringify(explainJob)}`);
       await new Promise((r) => setTimeout(r, 500));
     }
-    expect(typeof updateJob?.finishedAt).toBe("number");
+    expect(typeof explainJob?.finishedAt).toBe("number");
 
     // #194: Debug page shows job timings and the refresh's timed steps.
     await page.goto(`${svc.origin}/review/${reviewId}/debug?token=${svc.token}`);
     const steps = page.locator('[data-testid="refresh-steps"]');
     await expect(steps).toBeVisible({ timeout: 30_000 });
-    for (const label of ["Fetch", "Building the new version", "Range diff", "Remapping anchors", "Remapping citations", "Remapping pins"]) {
+    for (const label of ["Fetch", "Building the new version", "Remapping anchors", "Remapping citations", "Remapping pins"]) {
       await expect(steps).toContainText(label);
     }
     await expect(steps).toContainText("started");
     await expect(page.locator('[data-testid="job-times"]').first()).toContainText("Queued", { timeout: 30_000 });
     await expect(page.locator('[data-testid="job-times"]').first()).toContainText("Duration");
-    const updateRow = page.locator(`[data-testid="job-${updateJob!.id}"]`);
+    const updateRow = page.locator(`[data-testid="job-${explainJob!.id}"]`);
     await expect(updateRow).toContainText("Finished", { timeout: 30_000 });
-    await expect(updateRow).toContainText("update:");
+    await expect(updateRow).toContainText("explain-pass");
   });
 });
 
@@ -926,8 +1211,10 @@ test.describe("L7 version settings and update system", () => {
     await expect(icon).toBeVisible();
     await expect(icon).toHaveAttribute("title", "Update available: v0.0.2");
     await expect(icon).toHaveAttribute("href", "/settings?tab=version");
-    // #250: the update icon is a gift (rect box + lid), not chevrons.
-    await expect(icon.locator("svg rect")).toHaveCount(1);
+    // #250: the update icon is a gift, not chevrons. #407 draws it from
+    // Tabler (all paths, no rect), so check the icon's identity instead
+    // of its drawing.
+    await expect(icon.locator("svg.tabler-icon-gift")).toHaveCount(1);
   });
 
   test("up to date: no icon", async ({ page }) => {
@@ -1043,6 +1330,100 @@ test.describe("L7 version settings and update system", () => {
     await expect(page.locator('[data-testid="update-channel"][data-ref="preview/feat-x"]')).toBeVisible();
     // #249: preview rows keep their short sha.
     await expect(page.locator('[data-testid="update-channel"][data-ref="preview/feat-x"]')).toContainText("abc1234");
+  });
+
+  test("toggle on lists previews with the Installed badge; reload keeps it on (#403)", async ({ page }) => {
+    test.setTimeout(120_000);
+    const s = service();
+    await stageChannels(
+      s,
+      [
+        { ref: "release", version: "0.0.2", commit: "newcommit0000001", builtAt: iso(NOW) },
+        {
+          ref: "preview/feat-x",
+          version: "0.0.2-preview.feat-x.abc1234",
+          commit: "abc1234def5678",
+          sourceBranch: "feat/x",
+          builtAt: iso(NOW - 7200_000),
+        },
+      ],
+      "preview/feat-x",
+    );
+    // Installed build matches the published preview commit: no update available.
+    await stageInstalled({ version: "0.0.2-preview.feat-x.abc1234", commit: "abc1234def5678", builtAt: iso(NOW - 7200_000) });
+
+    await page.goto(`${s.origin}/settings?tab=version&token=${s.token}`);
+    await expect(page.getByRole("tabpanel", { name: "Version" })).toBeVisible({ timeout: 15_000 });
+    const toggle = page.getByTestId("version-picker-toggle");
+    if (!(await toggle.isChecked())) {
+      await toggle.click();
+      await expect(toggle).toBeChecked({ timeout: 15_000 });
+    }
+    const feat = page.locator('[data-testid="update-channel"][data-ref="preview/feat-x"]');
+    await expect(feat).toBeVisible({ timeout: 15_000 });
+    // The installed preview carries its Installed badge (#246).
+    await expect(feat.getByTestId("update-current")).toBeVisible({ timeout: 15_000 });
+    await expect(feat).toContainText("abc1234");
+
+    await page.reload();
+    await expect(page.getByRole("tabpanel", { name: "Version" })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("version-picker-toggle")).toBeChecked({ timeout: 15_000 });
+    const featAfter = page.locator('[data-testid="update-channel"][data-ref="preview/feat-x"]');
+    await expect(featAfter).toBeVisible({ timeout: 15_000 });
+    await expect(featAfter.getByTestId("update-current")).toBeVisible({ timeout: 15_000 });
+  });
+
+  test("a settings change under the page snaps the toggle to the saved value (#403)", async ({ page }) => {
+    test.setTimeout(120_000);
+    const s = service();
+    await stageChannels(
+      s,
+      [
+        { ref: "release", version: "0.0.2", commit: "newcommit0000001", builtAt: iso(NOW) },
+        {
+          ref: "preview/feat-x",
+          version: "0.0.2-preview.feat-x.abc1234",
+          commit: "abc1234def5678",
+          sourceBranch: "feat/x",
+          builtAt: iso(NOW - 7200_000),
+        },
+      ],
+      "release",
+    );
+    await stageInstalled({ version: "0.0.1", commit: "oldcommit0000001", builtAt: iso(NOW - 7 * 86400_000) });
+
+    await page.goto(`${s.origin}/settings?tab=version&token=${s.token}`);
+    await expect(page.getByRole("tabpanel", { name: "Version" })).toBeVisible({ timeout: 15_000 });
+    const toggle = page.getByTestId("version-picker-toggle");
+    if (!(await toggle.isChecked())) {
+      await toggle.click();
+      await expect(toggle).toBeChecked({ timeout: 15_000 });
+    }
+    await expect(page.locator('[data-testid="update-channel"]')).toHaveCount(2);
+
+    // Another client (a switch or reset from elsewhere) flips the saved
+    // setting off under the open page.
+    const flip = await apiJson(s, "PUT", "/api/settings", { versionPickerEnabled: false });
+    expect(flip.status).toBe(200);
+
+    // Refresh re-reads status first: the box follows the saved value and
+    // the list drops the previews.
+    await page.getByTestId("update-refresh").click();
+    await expect(toggle).not.toBeChecked({ timeout: 15_000 });
+    await expect(page.locator('[data-testid="update-channel"]')).toHaveCount(1);
+    await expect(page.locator('[data-testid="update-channel"][data-ref="preview/feat-x"]')).toHaveCount(0);
+
+    // And back on: Refresh restores the ticked box with the previews.
+    const flipBack = await apiJson(s, "PUT", "/api/settings", { versionPickerEnabled: true });
+    expect(flipBack.status).toBe(200);
+    await page.getByTestId("update-refresh").click();
+    await expect(toggle).toBeChecked({ timeout: 15_000 });
+    await expect(page.locator('[data-testid="update-channel"][data-ref="preview/feat-x"]')).toBeVisible({ timeout: 15_000 });
+
+    // Reload: still on, since the saved value persisted.
+    await page.reload();
+    await expect(page.getByTestId("version-picker-toggle")).toBeChecked({ timeout: 15_000 });
+    await expect(page.locator('[data-testid="update-channel"]')).toHaveCount(2);
   });
 
   test("failed check: no icon, no error UI, Version panel names the failure", async ({ page }) => {

@@ -32,7 +32,7 @@ type PatchEvent = Extract<ReviewEvent, { type: "patch" }>;
  * reacts on click instead of waiting for the first WS event.
  */
 export type InFlightKind =
-  | "depth"
+  | "slower"
   | "examples"
   | "diagram"
   | "generate"
@@ -63,6 +63,19 @@ export interface InFlightAction {
 }
 
 let inflightSeq = 0;
+
+/**
+ * Issue #418 (Explain terms): one picked term — the selected text plus
+ * the guide card it was picked from (for the tray list and the
+ * highlight). Terms always belong to the picking card.
+ */
+export interface ExplainTerm {
+  id: string;
+  text: string;
+  cardId: string;
+}
+
+let explainTermSeq = 0;
 
 /**
  * Safety cap so an in-flight entry can never spin forever (a lost job
@@ -170,6 +183,17 @@ interface ReviewState {
   appendStream: (annotationId: string, jobId: string, delta: string) => void;
   /** Issue #126 (experiment): drop a card's streamed buffer. */
   clearStream: (annotationId: string) => void;
+  /**
+   * Issue #418 (Explain terms): the card in term picking, if any.
+   * Transient UI state only — the terms ride the Rewrite action, never
+   * stored. Only one card picks at a time. `clear` resets both.
+   */
+  explainPickCardId: string | null;
+  explainTerms: ExplainTerm[];
+  setExplainPickCard: (cardId: string | null) => void;
+  addExplainTerm: (term: { text: string; cardId: string }) => string;
+  removeExplainTerm: (id: string) => void;
+  clearExplainTerms: () => void;
   clear: () => void;
 }
 
@@ -497,5 +521,21 @@ export const useReview = create<ReviewState>()((set, get) => ({
       delete next[annotationId];
       return { streams: next };
     }),
-  clear: () => set({ snapshot: null, inflight: {}, pending: [], streams: {}, resyncSeq: 0 }),
+  explainPickCardId: null,
+  explainTerms: [],
+  setExplainPickCard: (cardId) =>
+    // One picking card at a time: opening another card's picker drops
+    // the first card's terms (its highlights are cleared at the call site).
+    set(() => (cardId ? { explainPickCardId: cardId, explainTerms: [] } : { explainPickCardId: null, explainTerms: [] })),
+  addExplainTerm: (term) => {
+    // Same text twice is one term (the tray lists each term once).
+    const dup = get().explainTerms.find((t) => t.text === term.text);
+    if (dup) return dup.id;
+    const id = `et${++explainTermSeq}`;
+    set((s) => ({ explainTerms: [...s.explainTerms, { ...term, id }] }));
+    return id;
+  },
+  removeExplainTerm: (id) => set((s) => ({ explainTerms: s.explainTerms.filter((t) => t.id !== id) })),
+  clearExplainTerms: () => set({ explainTerms: [] }),
+  clear: () => set({ snapshot: null, inflight: {}, pending: [], streams: {}, resyncSeq: 0, explainPickCardId: null, explainTerms: [] }),
 }));

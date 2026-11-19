@@ -142,6 +142,7 @@ export async function setupReview(
     ...(prNumber !== null ? { prNumber } : {}),
     versions: [version],
     currentVersion: 1,
+    guidePersonaId: "guide",
     createdAt: 1,
   };
   const files = opts.files ?? [sourceFile()];
@@ -159,6 +160,8 @@ export async function setupReview(
   const snapshot: ReviewSnapshot = {
     review,
     version,
+    // Issue #421: the helper guide describes this head.
+    guideHead: { version: version.n, sha: version.headSha },
     files,
     description,
     ingest: { status: "ready" },
@@ -186,8 +189,7 @@ export function mkTestReply(who: "you" | "agent", text: string, suggested = fals
     kind: "comment",
     who,
     question: null,
-    blocks: [{ type: "paragraph", id: "b1", text: { standard: esc }, citations: [] }],
-    level: "standard",
+    blocks: [{ type: "paragraph", id: "b1", text: esc, citations: [] }],
     revision: 1,
     undoStack: [],
     ...(suggested ? { suggested: true } : {}),

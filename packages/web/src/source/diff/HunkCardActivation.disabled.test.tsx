@@ -60,11 +60,10 @@ function card(open: boolean): Thread {
           {
             type: "paragraph",
             id: "b1",
-            text: { standard: "Unfolds folded header values before reading." },
+            text: "Unfolds folded header values before reading.",
             citations: [],
           },
         ],
-        level: "standard",
         revision: 1,
         undoStack: [],
         working: null,
@@ -76,7 +75,7 @@ function card(open: boolean): Thread {
 function seed(annotations: Thread[]): void {
   useReview.getState().clear();
   useReview.getState().setSnapshot({
-    review: { id: REVIEW_ID, repoId: "demo", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
+    review: { id: REVIEW_ID, repoId: "demo", branch: "b", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: 0 },
     version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
     files: [file()],
     pages: [{ id: "p-1", kind: "opened-expansion", title: "Unfolds folded values", parent: "root", cards: [] }],

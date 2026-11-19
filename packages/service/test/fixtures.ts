@@ -121,7 +121,6 @@ export function fixtureSnapshot(): PromptReviewSnapshot {
       {
         id: "c-problem",
         title: "The problem",
-        level: "standard",
         revision: 1,
         markdown:
           "Legacy servers folded long headers across lines. [[desc:d-intro]] Python kept the raw line break. [[diff:conn:650-651]]",
@@ -129,7 +128,6 @@ export function fixtureSnapshot(): PromptReviewSnapshot {
       {
         id: "c-central",
         title: "The central change",
-        level: "standard",
         revision: 2,
         markdown:
           "urllib3 now unfolds header values after parsing. [[diff:conn:650-651]]",

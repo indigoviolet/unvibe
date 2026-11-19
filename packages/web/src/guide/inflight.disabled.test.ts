@@ -25,7 +25,7 @@ import {
   isRewriteKind,
   jobLabel,
   liveJobForTarget,
-  updateKey,
+  explainRunKey,
 } from "./inflight.js";
 import type { InFlightAction } from "../state/store.js";
 
@@ -36,7 +36,7 @@ function entry(kind: InFlightAction["kind"], targetId = "c1"): InFlightAction {
 function job(over: Partial<Job> = {}): Job {
   return {
     id: "job-1",
-    kind: "depth",
+    kind: "slower",
     provider: "claude",
     model: "mock",
     reviewId: "r",
@@ -49,7 +49,7 @@ function job(over: Partial<Job> = {}): Job {
 describe("inflight labels", () => {
   test("every kind has a short fixed plain label", () => {
     for (const kind of [
-      "depth",
+      "slower",
       "examples",
       "diagram",
       "generate",
@@ -65,21 +65,21 @@ describe("inflight labels", () => {
       expect(label.length).toBeGreaterThan(0);
       expect(label.length).toBeLessThan(40);
     }
-    expect(inflightLabel("depth")).toBe("Rewriting…");
+    expect(inflightLabel("slower")).toBe("Rewriting…");
     expect(inflightLabel("examples")).toBe("Adding examples…");
     expect(inflightLabel("diagram")).toBe("Drawing diagram…");
   });
 
   test("job kinds map to the same labels, unknown kinds to Working…", () => {
-    expect(jobLabel("depth")).toBe("Rewriting…");
+    expect(jobLabel("slower")).toBe("Rewriting…");
     expect(jobLabel("go-deeper")).toBe("Writing…");
-    expect(jobLabel("update-pass")).toBe("Updating…");
+    expect(jobLabel("explain-pass")).toBe("Explaining changes…");
     expect(jobLabel("reader")).toBe("Working…");
     expect(jobLabel("hunk-pass")).toBe("Working…");
   });
 
   test("depth/examples/diagram rewrite; everything else is new content", () => {
-    expect(isRewriteKind("depth")).toBe(true);
+    expect(isRewriteKind("slower")).toBe(true);
     expect(isRewriteKind("examples")).toBe(true);
     expect(isRewriteKind("diagram")).toBe(true);
     expect(isRewriteKind("generate")).toBe(false);
@@ -135,11 +135,11 @@ describe("entry keys", () => {
     expect(inflightForBlock({}, "c1", "b1")).toBeUndefined();
   });
 
-  test("follow-up, concept and update keys", () => {
+  test("follow-up, concept and explain-run keys", () => {
     expect(followupKey("c1", "b1", 0)).toBe("followup:c1:b1:0");
     expect(followupKey("c1", "b1", 0)).not.toBe(followupKey("c1", "b1", 1));
     expect(conceptKey("obs-fold")).toBe("concept:obs-fold");
-    expect(updateKey("demo")).toBe("update:demo");
+    expect(explainRunKey("demo")).toBe("explain-run:demo");
   });
 
   test("follow-up entries match by anchor block, bare or qualified", () => {

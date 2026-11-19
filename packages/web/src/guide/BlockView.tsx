@@ -4,11 +4,11 @@
  * Paragraph, heading (### sub-headings, issue #327), list (per-item
  * citations; no block-level union row — issue
  * #165), table, code, diagram (D2, service-rendered), aside
- * (Example / Diagram / Underlying principle), finding-link (orange
+ * (Example / Diagram), finding-link (orange
  * agent-finding card), follow-up chips, comment-link (suggested review
  * comment on a diff line).
  */
-import type { Thread, Block, DepthLevel, Page } from "@unvibe/shared";
+import type { Thread, Block, Page } from "@unvibe/shared";
 import { Icon } from "../components/Icon.js";
 import { InlineCode } from "../components/inlineCode.js";
 import { WorkingPlaceholder } from "../components/WorkingPlaceholder.js";
@@ -16,7 +16,7 @@ import { revealSource } from "../source/reveal.js";
 import { useReview } from "../state/store.js";
 import { resolveBlockCitations, resolveCitation } from "./citations.js";
 import { DiagramView } from "./DiagramView.js";
-import { anchorMatchesBlock, depthText } from "./guideUtils.js";
+import { anchorMatchesBlock } from "./guideUtils.js";
 import { followupKey, inflightLabel } from "./inflight.js";
 import { BlockMarkers } from "./Markers.js";
 import { handleHtmlLinkClick, RichText } from "./RichText.js";
@@ -29,7 +29,6 @@ export interface BlockCallbacks {
 
 interface Props extends BlockCallbacks {
   block: Block;
-  level: DepthLevel;
   threads: Thread[];
   /** Closed expansions + promoted links anchored on this block (footnote chips). */
   footnotes?: Thread[];
@@ -84,7 +83,7 @@ function AsideInner({
     case "paragraph":
       return (
         <p className="prose sel" data-top={top}>
-          <RichText html={inner.text.standard} className="rt" top={top} onOpenPage={onOpenPage} />
+          <RichText html={inner.text} className="rt" top={top} onOpenPage={onOpenPage} />
         </p>
       );
     case "heading":
@@ -145,7 +144,7 @@ export function uncoveredListCitations(
   return blockLevel.filter((c) => !c.unverified && !covered.has(c.target));
 }
 
-export function BlockView({ block, level, threads, footnotes, lookupPage, cardId, onOpenPage, onFollowUp }: Props) {
+export function BlockView({ block, threads, footnotes, lookupPage, cardId, onOpenPage, onFollowUp }: Props) {
   const snapshot = useReview((s) => s.snapshot);
   const inflight = useReview((s) => s.inflight);
   const pages = snapshot?.pages;
@@ -173,7 +172,7 @@ export function BlockView({ block, level, threads, footnotes, lookupPage, cardId
       );
     }
     case "paragraph": {
-      const html = depthText(block.text, level);
+      const html = block.text;
       return (
         <div className="blk" id={id}>
           <Paragraph
@@ -298,14 +297,21 @@ export function BlockView({ block, level, threads, footnotes, lookupPage, cardId
       );
     case "aside":
       return (
-        <div className="blk gen-aside fresh" id={id}>
+        <div className={block.kind === "Background" ? "blk gen-aside bg-aside fresh" : "blk gen-aside fresh"} id={id}>
           <div className="tag">{block.kind}</div>
           {block.inner.map((inner) => (
             <AsideInner key={inner.id} inner={inner} top={block.id} reviewId={reviewId} onOpenPage={onOpenPage} />
           ))}
-          {threads.length > 0 && (
+          {(threads.length > 0 || (block.kind === "Background" && block.citations.length > 0)) && (
             <div className="lo-row">
-              <BlockMarkers citations={[]} threads={threads} blockId={block.id} />
+              {/* Issue #402: a Background block states facts about the system, so
+                  its citations show like a paragraph's; Example and Diagram
+                  asides keep their existing marker-free look. */}
+              <BlockMarkers
+                citations={block.kind === "Background" ? resolved : []}
+                threads={threads}
+                blockId={block.id}
+              />
             </div>
           )}
         </div>

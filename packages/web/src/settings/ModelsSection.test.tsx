@@ -51,6 +51,11 @@ function mockProviders(providers: string[] = ["claude", "codex"]): void {
   vi.spyOn(api, "providers").mockResolvedValue({ providers });
 }
 
+/** Issue #404: which settings keys the user explicitly saved. */
+function mockSavedKeys(savedKeys: string[] = []): void {
+  vi.spyOn(api, "savedSettingsKeys").mockResolvedValue({ savedKeys });
+}
+
 type ThinkingMap = Record<string, { value: string; name?: string }[]>;
 
 const THINKING_BOTH: ThinkingMap = {
@@ -166,6 +171,8 @@ describe("ModelsSection provider switch", () => {
     mockReadiness();
     mockModels();
     mockThinking();
+    // Issue #404: the pick was explicitly saved, so its disappearance warns.
+    mockSavedKeys(["small"]);
     const retired = {
       ...SETTINGS,
       small: { provider: "claude", model: "retired-x", effort: "" },
@@ -183,10 +190,28 @@ describe("ModelsSection provider switch", () => {
     await waitFor(() => expect(screen.getByTestId("model-small-missing")).toBeInTheDocument());
   });
 
+  it("stays quiet when the missing pick was never saved (issue #404)", async () => {
+    mockReadiness();
+    mockModels();
+    mockThinking();
+    // Fresh install: the static default is served, but the live list lacks
+    // it — and nothing was ever saved, so no "Saved model" error.
+    mockSavedKeys([]);
+    const fresh = {
+      ...SETTINGS,
+      small: { provider: "claude", model: "claude-haiku-5-5", effort: "" },
+    } as Settings;
+    render(<ModelsSection settings={fresh} onSaved={vi.fn()} />);
+
+    await waitFor(() => expect(modelSelect("small")).toHaveTextContent("claude-haiku-5-5 (current)"));
+    expect(screen.queryByTestId("model-small-missing")).not.toBeInTheDocument();
+  });
+
   it("failed save shows a readable error, reverts to the saved pick, and clears on the next change", async () => {
     mockReadiness();
     mockModels();
     mockThinking();
+    mockSavedKeys(["small"]);
     const saveSettings = vi
       .spyOn(api, "saveSettings")
       .mockRejectedValue(

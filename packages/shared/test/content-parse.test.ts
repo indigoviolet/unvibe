@@ -55,6 +55,7 @@ describe("parseBlocks golden", () => {
     const blocks = cards[0].blocks;
     expect(blocks.map((b) => b.type)).toEqual([
       "paragraph",
+      "paragraph",
       "list",
       "table",
       "code",
@@ -72,18 +73,25 @@ describe("parseBlocks golden", () => {
       "b6",
       "b7",
       "b8",
+      "b9",
     ]);
 
     const para = blocks[0];
     expect(para.type).toBe("paragraph");
     if (para.type !== "paragraph") return;
-    expect(para.text.simple).toBe("Simpler: old servers split headers across lines.");
-    expect(para.text.standard).toContain("<code>http.client</code>");
-    expect(para.text.standard).toContain('data-link="concept:http-headers"');
-    expect(para.text.standard).not.toContain("[[");
+    expect(para.text).toContain("<code>http.client</code>");
+    expect(para.text).toContain('data-link="concept:http-headers"');
+    expect(para.text).not.toContain("[[");
     expect(para.citations).toEqual([{ target: "desc:d-intro" }, { target: "diff:conn:80-82" }]);
 
-    const list = blocks[1];
+    // Issue #387: retired `::: simple` containers fall back to a plain
+    // paragraph instead of attaching to the paragraph above.
+    const fallen = blocks[1];
+    expect(fallen.type).toBe("paragraph");
+    if (fallen.type !== "paragraph") return;
+    expect(fallen.text).toBe("Simpler: old servers split headers across lines.");
+
+    const list = blocks[2];
     expect(list.type).toBe("list");
     if (list.type !== "list") return;
     expect(list.ordered).toBe(false);
@@ -91,19 +99,19 @@ describe("parseBlocks golden", () => {
     expect(list.items[1].citations).toEqual([]);
     expect(list.citations).toEqual([{ target: "diff:conn:91-110" }]);
 
-    const table = blocks[2];
+    const table = blocks[3];
     expect(table.type).toBe("table");
     if (table.type !== "table") return;
     expect(table.html).toContain("<th>Raw value</th>");
     expect(table.html).toContain("<code>one\\r\\n two</code>");
 
-    const code = blocks[3];
+    const code = blocks[4];
     expect(code.type).toBe("code");
     if (code.type !== "code") return;
     expect(code.language).toBe("python");
     expect(code.citations).toEqual([]);
 
-    const diagram = blocks[4];
+    const diagram = blocks[5];
     expect(diagram.type).toBe("diagram");
     if (diagram.type !== "diagram") return;
     expect(diagram.caption).toContain("The flow.");
@@ -111,13 +119,13 @@ describe("parseBlocks golden", () => {
       ["diff:conn:650-651", "diff:tsock:139-146"].sort(),
     );
 
-    const aside = blocks[5];
+    const aside = blocks[6];
     expect(aside.type).toBe("aside");
     if (aside.type !== "aside") return;
     expect(aside.kind).toBe("Example");
-    expect(aside.inner[0].id).toBe("b6-b1");
+    expect(aside.inner[0].id).toBe("b7-b1");
 
-    const follow = blocks[6];
+    const follow = blocks[7];
     expect(follow.type).toBe("follow-up");
     if (follow.type !== "follow-up") return;
     expect(follow.items).toEqual([
@@ -125,7 +133,7 @@ describe("parseBlocks golden", () => {
       { label: "Is order kept?" },
     ]);
 
-    const finding = blocks[7];
+    const finding = blocks[8];
     expect(finding).toMatchObject({ type: "finding-link", pageId: "f-lf" });
   });
 
@@ -194,11 +202,7 @@ describe("parseBlocks golden", () => {
         if (b.type === "paragraph") {
           return {
             ...b,
-            text: {
-              standard: normText(b.text.standard),
-              ...(b.text.simple ? { simple: normText(b.text.simple) } : {}),
-              ...(b.text.deep ? { deep: normText(b.text.deep) } : {}),
-            },
+            text: normText(b.text),
           };
         }
         if (b.type === "list") {
@@ -267,7 +271,7 @@ describe("parseBlocks lists (issue #314)", () => {
     expect(blocks[0].items.map((it) => it.html)).toEqual(["a", "b"]);
     expect(blocks[1].type).toBe("paragraph");
     if (blocks[1].type !== "paragraph") return;
-    expect(blocks[1].text.standard).toBe("After the list.");
+    expect(blocks[1].text).toBe("After the list.");
   });
 
   it("keeps an ordered list's start number", () => {
@@ -311,6 +315,18 @@ describe("parseBlocks lists (issue #314)", () => {
     const aside = blocks[1];
     if (aside.type !== "aside") throw new Error("not an aside");
     expect(aside.kind).toBe("Example");
+  });
+
+  it("parses ::: background as a Background aside with its citations, and round-trips it (#402)", () => {
+    const blocks = parseBlocks("Lead.\n\n::: background\nThe cache keeps one entry per version. [[diff:conn:1-2]]\n:::\n\nAfter.\n");
+    expect(blocks.map((b) => b.type)).toEqual(["paragraph", "aside", "paragraph"]);
+    const aside = blocks[1];
+    if (aside.type !== "aside") throw new Error("not an aside");
+    expect(aside.kind).toBe("Background");
+    expect(aside.citations).toHaveLength(1);
+    expect(renderMarkdown(blocks)).toContain("::: background\n");
+    const back = parseBlocks(renderMarkdown(blocks));
+    expect(back[1].type === "aside" && back[1].kind).toBe("Background");
   });
 
   it("round-trips a loose list with a start number through renderMarkdown", () => {
@@ -472,7 +488,7 @@ describe("emptied brackets after citation stripping (issue #369)", () => {
     const blocks = parseBlocks("…for building the links ([[desc:d-p2]]).\n");
     expect(blocks[0].type).toBe("paragraph");
     if (blocks[0].type !== "paragraph") return;
-    expect(blocks[0].text.standard).toBe("…for building the links.");
+    expect(blocks[0].text).toBe("…for building the links.");
     expect(blocks[0].citations).toEqual([{ target: "desc:d-p2" }]);
   });
 
@@ -482,7 +498,7 @@ describe("emptied brackets after citation stripping (issue #369)", () => {
     );
     expect(blocks[0].type).toBe("paragraph");
     if (blocks[0].type !== "paragraph") return;
-    expect(blocks[0].text.standard).toBe("Both scope the fix to folds.");
+    expect(blocks[0].text).toBe("Both scope the fix to folds.");
     expect(blocks[0].citations).toEqual([
       { target: "diff:changelog-1362.bugfix.rst:1-3" },
       { target: "desc:d-p1" },
@@ -493,7 +509,7 @@ describe("emptied brackets after citation stripping (issue #369)", () => {
     const blocks = parseBlocks("(see [[desc:d-p2]]) stays.\n");
     expect(blocks[0].type).toBe("paragraph");
     if (blocks[0].type !== "paragraph") return;
-    expect(blocks[0].text.standard).toBe("(see) stays.");
+    expect(blocks[0].text).toBe("(see) stays.");
     expect(blocks[0].citations).toEqual([{ target: "desc:d-p2" }]);
   });
 
@@ -526,7 +542,7 @@ describe("emptied brackets after citation stripping (issue #369)", () => {
     const first = parsed.blocks[0];
     expect(first.type).toBe("paragraph");
     if (first.type !== "paragraph") return;
-    expect(first.text.standard).not.toMatch(/\(\s*[,;]?\s*\)/);
+    expect(first.text).not.toMatch(/\(\s*[,;]?\s*\)/);
     expect(first.citations).toEqual([{ target: "diff:src-urllib3-connection.py:80-82" }]);
   });
 });

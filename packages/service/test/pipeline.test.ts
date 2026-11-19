@@ -79,6 +79,9 @@ describe("pipeline demo e2e (replay)", () => {
       const changes = await app.inject({ method: "GET", url: "/api/repos/demo/changes", headers: authed });
       expect(changes.statusCode).toBe(200);
       expect((changes.json() as { changes: { kind: string }[] }).changes[0].kind).toBe("demo");
+      // The full demo includes the go-deeper fills, which are written
+      // automatically only with the setting on (off by default, #389).
+      ctx.settings.update({ autoGoDeeper: true });
 
       const created = await app.inject({
         method: "POST",
@@ -135,9 +138,9 @@ describe("pipeline demo e2e (replay)", () => {
       // the bare-LF draft by its suggested text instead (Sonnet re-record
       // wording, #341: "a socket test with bare-LF folds").
       const replyText = (r: { blocks?: { type: string }[] }): string =>
-        ((r.blocks ?? []) as { type: string; text?: { standard?: string } }[])
+        ((r.blocks ?? []) as { type: string; text?: string }[])
           .filter((b) => b.type === "paragraph")
-          .map((b) => b.text?.standard ?? "")
+          .map((b) => b.text ?? "")
           .join(" ");
       const tlf = snap.annotations.find((a) =>
         a.replies.some((r) => r.kind === "comment" && r.suggested && replyText(r).includes("bare-LF folds")),
@@ -252,8 +255,10 @@ describe("pipeline failure paths (scripted fakes)", () => {
       "INSERT INTO versions (review_id, n, head_sha, merge_base_sha, base_ref, fetched_at, id_mapping) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(review_id, n) DO NOTHING",
     ).run(id, 1, "abc1234def5678abc1234def5678abc1234def5", "0000000", "main", Date.now(), JSON.stringify({}));
     const snap: ReviewSnapshot = {
-      review: { id, repoId: "demo", branch: "main", versions: [], currentVersion: 1, createdAt: Date.now() },
+      review: { id, repoId: "demo", branch: "main", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: Date.now() },
       version: { n: 1, headSha: "abc1234def5678abc1234def5678abc1234def5", mergeBaseSha: "0000000", baseRef: "main", fetchedAt: Date.now(), idMapping: {} },
+      // Issue #421: the fixture guide describes this head.
+      guideHead: { version: 1, sha: "abc1234def5678abc1234def5678abc1234def5" },
       files: [
         {
           fileKey: "a-py",
@@ -524,10 +529,9 @@ describe("pipeline failure paths (scripted fakes)", () => {
           id: "central",
           pageId: "root",
           title: "Central",
-          level: "standard",
           collapsed: false,
           revision: 1,
-          blocks: [{ type: "paragraph", id: "b1", text: { standard: "Does [[diff:a-py:1-2]]" }, citations: [{ target: "diff:a-py:1-2" }] }],
+          blocks: [{ type: "paragraph", id: "b1", text: "Does [[diff:a-py:1-2]]", citations: [{ target: "diff:a-py:1-2" }] }],
           undoStack: [],
         });
       });
@@ -707,6 +711,7 @@ describe("reader pinned code (#37)", () => {
           prNumber: 7,
           versions: [version],
           currentVersion: 1,
+          guidePersonaId: "guide",
           createdAt: 1,
         };
         const files = [sourceFile()];
@@ -723,6 +728,8 @@ describe("reader pinned code (#37)", () => {
         ctx.reviews.putSnapshot(reviewId, {
           review,
           version,
+          // Issue #421: the fixture guide describes this head.
+          guideHead: { version: version.n, sha: version.headSha },
           files,
           description,
           ingest: { status: "ready" },
@@ -843,6 +850,7 @@ describe("reader pinned code (#37)", () => {
           prNumber: 7,
           versions: [version],
           currentVersion: 1,
+          guidePersonaId: "guide",
           createdAt: 1,
         };
         const files = [sourceFile()];
@@ -859,6 +867,8 @@ describe("reader pinned code (#37)", () => {
         ctx.reviews.putSnapshot(reviewId, {
           review,
           version,
+          // Issue #421: the fixture guide describes this head.
+          guideHead: { version: version.n, sha: version.headSha },
           files,
           description,
           ingest: { status: "ready" },

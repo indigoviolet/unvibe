@@ -25,7 +25,7 @@ export interface RunInForkOptions {
   /** Template variables (rendered deterministically; may nest for `{{a.b}}`). */
   variables: Record<string, unknown>;
   priority: number;
-  dedupeKey?: { anchor: string; requestKind: string; depth?: string; baseVersion: string };
+  dedupeKey?: { anchor: string; requestKind: string; revision?: number; baseVersion: string };
   cardId?: string;
   /**
    * M5 shared context (PRD §9.3): persistent conversation the turn belongs
@@ -99,7 +99,7 @@ export interface RunSmallOptions {
   template: string;
   variables: Record<string, unknown>;
   priority: number;
-  dedupeKey?: { anchor: string; requestKind: string; depth?: string; baseVersion: string };
+  dedupeKey?: { anchor: string; requestKind: string; revision?: number; baseVersion: string };
   cardId?: string;
   /** Issue #136: annotation the streamed text belongs to (conversation fills). */
   annotationId?: string;

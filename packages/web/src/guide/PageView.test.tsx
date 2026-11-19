@@ -21,7 +21,7 @@ const REVIEW_ID = "page-test";
 function seedSnapshot(page: Page): void {
   useReview.getState().clear();
   useReview.getState().setSnapshot({
-    review: { id: REVIEW_ID, repoId: "r", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
+    review: { id: REVIEW_ID, repoId: "r", branch: "b", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: 0 },
     version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
     files: [],
     pages: [page],
@@ -54,11 +54,10 @@ function card(id: string, title: string): Card {
     id,
     pageId: "root",
     title,
-    level: "standard",
     read: false,
     collapsed: false,
     revision: 1,
-    blocks: [{ type: "paragraph", id: `b-${id}`, text: { standard: `Text of ${title}.` }, citations: [] }],
+    blocks: [{ type: "paragraph", id: `b-${id}`, text: `Text of ${title}.`, citations: [] }],
     undoStack: [],
   } as unknown as Card;
 }
@@ -131,7 +130,8 @@ describe("page header title row (#240: no bookmark, #326: no collapse control)",
     expect(row).not.toBeNull();
     expect(row?.querySelector("h1.title")).toHaveTextContent("b");
     // #326: Collapse threads moved to the review top bar — the title
-    // gets the full width, no button beside it.
+    // gets the full width, no button beside it. (#384's guide copy
+    // control lives in the review top bar, not here.)
     expect(row?.querySelectorAll("button")).toHaveLength(0);
     expect(document.querySelector('[data-testid="collapse-threads"]')).toBeNull();
     expect(screen.queryByRole("button", { name: "Collapse threads" })).toBeNull();

@@ -29,7 +29,7 @@ function seedDb(dataDir: string, opts: { stamp?: number; withReview?: boolean } 
       "rv_1",
       1,
       JSON.stringify({
-        review: { id: "rv_1", repoId: "repo", branch: "feature", versions: [], currentVersion: 1, createdAt: 0 },
+        review: { id: "rv_1", repoId: "repo", branch: "feature", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: 0 },
         version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
         files: [{ fileKey: "fk1", path: "src/app.py", category: "source", hunks: [] }],
         ingest: { status: "ready" },
@@ -48,8 +48,7 @@ function seedDb(dataDir: string, opts: { stamp?: number; withReview?: boolean } 
                 kind: "comment",
                 who: "you",
                 question: null,
-                blocks: [{ type: "paragraph", id: "b1", text: { standard: "Unposted draft text" }, citations: [] }],
-                level: "standard",
+                blocks: [{ type: "paragraph", id: "b1", text: "Unposted draft text", citations: [] }],
                 revision: 1,
                 undoStack: [],
               },
@@ -111,10 +110,18 @@ describe("checkDataFormat", () => {
     expect(checkDataFormat(dir).state).toBe("none");
   });
 
-  it("mismatch when data files exist without a DB", () => {
+  // #396: reviews live only in unvibe.db. A fresh install writes update/
+  // (switch logs) and channel-backups/ before its first DB exists; those
+  // must not read as unreadable old data.
+  it("none without a DB, even with update/, channel-backups/ and a token", () => {
     const dir = tmp("unvibe-df-");
-    fs.mkdirSync(path.join(dir, "reviews"), { recursive: true });
-    expect(checkDataFormat(dir).state).toBe("mismatch");
+    fs.writeFileSync(path.join(dir, "token"), "x\n");
+    fs.mkdirSync(path.join(dir, "update"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "update", "switch-1.log"), "log\n");
+    fs.mkdirSync(path.join(dir, "channel-backups", "release"), { recursive: true });
+    const status = checkDataFormat(dir);
+    expect(status.state).toBe("none");
+    expect(status.hasData).toBe(false);
   });
 });
 

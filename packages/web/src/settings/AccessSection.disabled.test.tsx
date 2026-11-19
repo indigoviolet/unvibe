@@ -22,6 +22,7 @@ function settingsWith(fullAccess: boolean): Settings {
   return {
     small: { provider: "claude", model: "mock-small", effort: "" },
     personas: [MOCK_GUIDE],
+    defaultGuidePersonaId: "guide",
     sessionsPerProvider: 4,
     inlineBudgetTokens: 40000,
     rebuildSupersededRatio: 0.2,
@@ -33,7 +34,7 @@ function settingsWith(fullAccess: boolean): Settings {
     uiTheme: "default",
   versionPickerEnabled: false,
     fullAccess,
-    autoGoDeeper: true, recordTraces: false,
+    autoGoDeeper: true, recordTraces: false, experimental: { explainTerms: false, markdownDocs: false },
   extensionActiveRepoIds: null,
   extensionModel: { provider: "pi", model: "muse-spark-1.3-contributor", effort: "" },
   fullAccessAcknowledgedAt: fullAccess ? 123 : null,

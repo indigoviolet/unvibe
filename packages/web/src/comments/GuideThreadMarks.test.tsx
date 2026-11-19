@@ -35,8 +35,7 @@ function thread(): Thread {
       kind: "comment",
       who: "you",
       question: null,
-      blocks: [{ type: "paragraph", id: "b1", text: { standard: "A quiet comment" }, citations: [] }],
-      level: "standard",
+      blocks: [{ type: "paragraph", id: "b1", text: "A quiet comment", citations: [] }],
       revision: 1,
       undoStack: [],
     }],
@@ -47,7 +46,7 @@ function thread(): Thread {
 function seed(): void {
   useReview.getState().clear();
   useReview.getState().setSnapshot({
-    review: { id: REVIEW_ID, repoId: "r", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
+    review: { id: REVIEW_ID, repoId: "r", branch: "b", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: 0 },
     version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
     files: [],
     pages: [
@@ -60,10 +59,9 @@ function seed(): void {
             id: "central",
             pageId: "root",
             title: "Central",
-            level: "standard",
             collapsed: false,
             revision: 1,
-            blocks: [{ type: "paragraph", id: "b1", text: { standard: "The fast path skips values." }, citations: [] }],
+            blocks: [{ type: "paragraph", id: "b1", text: "The fast path skips values.", citations: [] }],
             undoStack: [],
           },
         ],

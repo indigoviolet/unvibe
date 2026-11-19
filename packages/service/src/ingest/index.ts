@@ -17,7 +17,7 @@ import type {
 } from "@unvibe/shared";
 import type { DatabaseSync } from "../store/index.js";
 import type { CommandRunner } from "../exec/index.js";
-import { buildReviewFiles, displayedReviewDecision } from "@unvibe/shared";
+import { GUIDE_PERSONA_ID, buildReviewFiles, displayedReviewDecision } from "@unvibe/shared";
 import { renderCommitMessages, renderMarkdownBlocks } from "./description.js";
 import { parseUnifiedDiff } from "./diff.js";
 import { buildReviewCommits, readCommitDiffs } from "./commits.js";
@@ -159,6 +159,9 @@ export async function ingestReview(
     repoId: "",
     branch: resolved.branch,
     ...(prNumber !== undefined ? { prNumber } : {}),
+    // Issue #393: the route overrides this with the placeholder's Guide
+    // persona (redo-with included) when the ingest lands.
+    guidePersonaId: GUIDE_PERSONA_ID,
     versions: [],
     currentVersion: 1,
     createdAt: now,

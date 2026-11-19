@@ -154,7 +154,6 @@ export async function ensureHunkCard(
     who: "agent",
     question: null,
     blocks,
-    level: "standard",
     revision: 1,
     undoStack: [],
     working: null,
@@ -216,7 +215,6 @@ export async function createConversationCard(
     who: "agent",
     question,
     blocks: [],
-    level: "standard",
     revision: 1,
     undoStack: [],
     working: workingLabel,
@@ -264,7 +262,6 @@ export async function pushConversationTurn(
       who: "agent",
       question,
       blocks: [],
-      level: "standard",
       revision: 1,
       undoStack: [],
       working: workingLabel,
@@ -319,7 +316,7 @@ export interface ConversationTurnOptions {
   transcript?: string;
   /** Continue on this session instead of forking (later turns, live session). */
   continueSessionId?: string;
-  dedupeKey?: { anchor: string; requestKind: string; depth?: string; baseVersion: string };
+  dedupeKey?: { anchor: string; requestKind: string; revision?: number; baseVersion: string };
   skipDedupe?: boolean;
   echoCandidates: string[];
   /**
@@ -513,13 +510,10 @@ export async function runConversationTurn(
         const first = await finalizeFresh(ctx, fixed);
         if (first.needsRepair) {
           try {
-            const turn = getSnapshotOrThrow(reviews, reviewId).annotations
-              .find((a) => a.id === annotationId)?.replies?.find((t) => t.id === replyId);
             const repaired = await repairDiagrams(
               ctx,
               {
                 card: opts.cardLabel,
-                level: turn?.level ?? "standard",
                 dedupeAnchor: `ann:${annotationId}`,
                 requestKind: "ask-diagram-repair",
                 annotationId,

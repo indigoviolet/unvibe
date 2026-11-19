@@ -21,7 +21,6 @@ import {
   recordInteraction,
   setTargetContent,
   targetBlocks,
-  targetLevel,
 } from "../../interaction/index.js";
 import { answerEchoTitle, cardTitle, storedCardTitle } from "./events.js";
 import { isReplayRunner } from "../../agent/factory.js";
@@ -65,8 +64,7 @@ export async function diagramAction(
     return { cardId, reused: true };
   }
 
-  const level = targetLevel(target);
-  const variables = { card: cardPromptText(snapshot, cardId), level };
+  const variables = { card: cardPromptText(snapshot, cardId) };
   const capture = captureJobId();
   const replay = isReplayRunner(pipeline.runner) ? { kind: "diagram" } : undefined;
   // Issue #50: the walkthrough must not open by repeating the card title
@@ -99,7 +97,6 @@ export async function diagramAction(
             ctx,
             {
               card: cardPromptText(snapshot, cardId),
-              level,
               dedupeAnchor: `card:${cardId}`,
               requestKind: "diagram-repair",
               cardId,
@@ -127,9 +124,8 @@ export async function diagramAction(
         const current = targetBlocks(t) as Block[];
         const out = insertDiagrams(current, fresh);
         if (out.added === 0) return;
-        const from = targetLevel(t);
-        pushUndo(t, [...current], from);
-        setTargetContent(t, out.blocks, from);
+        pushUndo(t, [...current]);
+        setTargetContent(t, out.blocks);
         markStaleAnchors(draft, cardId);
         mirrorPromotedAnswer(draft, cardId);
         added = out.added;
@@ -191,7 +187,7 @@ async function diagramOnVariant(
     return { cardId, reused: true };
   }
 
-  const variables = { card: personaVariantPromptText(snapshot, cardId, personaId), level: variant.level };
+  const variables = { card: personaVariantPromptText(snapshot, cardId, personaId) };
   const capture = captureJobId();
   const replay = isReplayRunner(pipeline.runner) ? { kind: "diagram" } : undefined;
   const echoTitle = storedCardTitle(snapshot, cardId) ?? answerEchoTitle(snapshot, cardId);
@@ -225,7 +221,6 @@ async function diagramOnVariant(
             ctx,
             {
               card: personaVariantPromptText(getSnapshotOrThrow(reviews, reviewId), cardId, personaId),
-              level: variant.level,
               dedupeAnchor: `persona:${cardId}:${personaId}`,
               requestKind: "diagram-repair",
               cardId,
@@ -255,7 +250,7 @@ async function diagramOnVariant(
         if (!targetCard || !v || !isCardVariant(v)) return;
         const out = insertDiagrams(v.blocks as Block[], fresh);
         if (out.added === 0) return;
-        v.undoStack.push({ blocks: [...v.blocks], level: v.level });
+        v.undoStack.push({ blocks: [...v.blocks] });
         v.blocks = out.blocks;
         v.revision += 1;
         if (sessionId) v.sessionId = sessionId;

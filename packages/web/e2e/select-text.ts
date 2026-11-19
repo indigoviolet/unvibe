@@ -92,6 +92,10 @@ export async function selectText(
   text: string,
   startIn = 0,
   endIn?: number,
+  // Issue #418: the picking card suspends the toolbar, so there is no
+  // bar to wait for — return the raw selected text once the mouseup is
+  // dispatched.
+  opts?: { waitForBar?: boolean },
 ): Promise<string> {
   let lastQuote = "";
   await expect
@@ -176,6 +180,12 @@ export async function selectText(
           { rootSelector, text, startIn, endIn },
         );
         if (!found) return "not-found";
+        if (opts?.waitForBar === false) {
+          // Issue #418: the picking card suspends the toolbar, so
+          // "shown" means the mouseup was dispatched; the caller
+          // asserts the tray and highlights with their own waits.
+          return "shown";
+        }
         // Wait for the toolbar to actually appear (a slow loop needs
         // longer than a fixed tick to render it), not a fixed sleep.
         const shown = await page

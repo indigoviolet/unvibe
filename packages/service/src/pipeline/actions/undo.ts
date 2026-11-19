@@ -1,6 +1,6 @@
 /**
- * `undo` action (PRD §4.4): revert the card's last change (depth,
- * examples or diagram). No redo, no history trail. Comments and
+ * `undo` action (PRD §4.4): revert the card's last change (a slower
+ * rewrite, examples or diagram). No redo, no history trail. Comments and
  * expansions attached to the card survive undo (annotations live outside
  * cards, re-attached to their blocks by id).
  */
@@ -26,7 +26,6 @@ export async function undoAction(
       if (!prev) return;
       undone = true;
       variant.blocks = prev.blocks;
-      variant.level = prev.level;
       variant.revision += 1;
       markStaleAnchors(draft, cardId);
       mirrorPromotedAnswer(draft, cardId);

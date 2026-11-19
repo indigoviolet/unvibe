@@ -11,12 +11,18 @@
       "file": "reader.md"
     },
     {
+      "kind": "reader",
+      "key": "scratch-app",
+      "pattern": "src-app\\.py|def alpha",
+      "file": "reader-scratch-app.md"
+    },
+    {
       "kind": "critic",
       "file": "critic.md"
     },
     {
-      "kind": "update-pass",
-      "file": "update-pass.md"
+      "kind": "explain-pass",
+      "file": "explain-pass.md"
     },
     {
       "kind": "concept-page",
@@ -79,6 +85,18 @@
       "file": "hunk-log-0.md"
     },
     {
+      "kind": "hunk",
+      "key": "scratch-alpha",
+      "pattern": "h:src-app\\.py:025c48900cb5b0e9",
+      "file": "hunk-scratch-alpha.md"
+    },
+    {
+      "kind": "hunk",
+      "key": "scratch-beta",
+      "pattern": "h:src-app\\.py:d05efa00b6269df8",
+      "file": "hunk-scratch-beta.md"
+    },
+    {
       "kind": "go-deeper",
       "key": "tests",
       "file": "go-deeper-tests.md"
@@ -97,131 +115,6 @@
       "kind": "go-deeper",
       "key": "regex",
       "file": "go-deeper-regex.md"
-    },
-    {
-      "kind": "depth",
-      "key": "problem:simple",
-      "file": "depth-problem-simple.md"
-    },
-    {
-      "kind": "depth",
-      "key": "problem:deep",
-      "file": "depth-problem-deep.md"
-    },
-    {
-      "kind": "depth",
-      "key": "central:simple",
-      "file": "depth-central-simple.md"
-    },
-    {
-      "kind": "depth",
-      "key": "central:deep",
-      "file": "depth-central-deep.md"
-    },
-    {
-      "kind": "depth",
-      "key": "buildup:simple",
-      "file": "depth-buildup-simple.md"
-    },
-    {
-      "kind": "depth",
-      "key": "buildup:deep",
-      "file": "depth-buildup-deep.md"
-    },
-    {
-      "kind": "depth",
-      "key": "decisions:simple",
-      "file": "depth-decisions-simple.md"
-    },
-    {
-      "kind": "depth",
-      "key": "decisions:deep",
-      "file": "depth-decisions-deep.md"
-    },
-    {
-      "kind": "depth",
-      "key": "g-alt:simple",
-      "file": "depth-g-alt-simple.md"
-    },
-    {
-      "kind": "depth",
-      "key": "g-alt:deep",
-      "file": "depth-g-alt-deep.md"
-    },
-    {
-      "kind": "depth",
-      "key": "g-regex:simple",
-      "file": "depth-g-regex-simple.md"
-    },
-    {
-      "kind": "depth",
-      "key": "g-regex:deep",
-      "file": "depth-g-regex-deep.md"
-    },
-    {
-      "kind": "depth",
-      "key": "g-tests:simple",
-      "file": "depth-g-tests-simple.md"
-    },
-    {
-      "kind": "depth",
-      "key": "g-tests:deep",
-      "file": "depth-g-tests-deep.md"
-    },
-    {
-      "kind": "depth",
-      "key": "g-reach:simple",
-      "file": "depth-g-reach-simple.md"
-    },
-    {
-      "kind": "depth",
-      "key": "g-reach:deep",
-      "file": "depth-g-reach-deep.md"
-    },
-    {
-      "kind": "depth",
-      "key": "evidence-adjacent-folds:simple",
-      "file": "depth-evidence-adjacent-folds-simple.md"
-    },
-    {
-      "kind": "depth",
-      "key": "evidence-adjacent-folds:deep",
-      "file": "depth-evidence-adjacent-folds-deep.md"
-    },
-    {
-      "kind": "depth",
-      "key": "assessment-adjacent-folds:simple",
-      "file": "depth-assessment-adjacent-folds-simple.md"
-    },
-    {
-      "kind": "depth",
-      "key": "assessment-adjacent-folds:deep",
-      "file": "depth-assessment-adjacent-folds-deep.md"
-    },
-    {
-      "kind": "depth",
-      "key": "evidence-bare-lf:simple",
-      "file": "depth-evidence-bare-lf-simple.md"
-    },
-    {
-      "kind": "depth",
-      "key": "evidence-bare-lf:deep",
-      "file": "depth-evidence-bare-lf-deep.md"
-    },
-    {
-      "kind": "depth",
-      "key": "assessment-bare-lf:simple",
-      "file": "depth-assessment-bare-lf-simple.md"
-    },
-    {
-      "kind": "depth",
-      "key": "assessment-bare-lf:deep",
-      "file": "depth-assessment-bare-lf-deep.md"
-    },
-    {
-      "kind": "depth",
-      "key": "expansion:deep",
-      "file": "depth-expansion-deep.md"
     },
     {
       "kind": "examples",
@@ -247,11 +140,6 @@
       "kind": "diagram",
       "key": "central",
       "file": "diagram-central.md"
-    },
-    {
-      "kind": "diagram",
-      "key": "buildup",
-      "file": "diagram-buildup.md"
     },
     {
       "kind": "explain",
@@ -379,9 +267,94 @@
       "file": "persona-central-second-opinion.md"
     },
     {
-      "kind": "persona",
-      "key": "central:clarity",
-      "file": "persona-central-clarity.md"
+      "kind": "slower",
+      "key": "central:1",
+      "file": "slower-central-press1.md"
+    },
+    {
+      "kind": "slower",
+      "key": "central:2",
+      "file": "slower-central-press2.md"
+    },
+    {
+      "kind": "slower",
+      "key": "central:3",
+      "file": "slower-central-press3.md"
+    },
+    {
+      "kind": "slower",
+      "key": "expansion:1",
+      "file": "slower-expansion-press1.md"
+    },
+    {
+      "kind": "slower",
+      "key": "expansion:2",
+      "file": "slower-expansion-press2.md"
+    },
+    {
+      "kind": "slower",
+      "key": "g-regex:1",
+      "file": "slower-g-regex-1.md"
+    },
+    {
+      "kind": "slower",
+      "key": "persona:central:1",
+      "file": "slower-persona-central-1.md"
+    },
+    {
+      "kind": "slower",
+      "key": "problem:terms:1",
+      "file": "slower-problem-terms1.md"
+    },
+    {
+      "kind": "slower",
+      "key": "central:terms:1",
+      "file": "slower-central-terms1.md"
+    },
+    {
+      "kind": "slower",
+      "key": "decisions:terms:1",
+      "file": "slower-decisions-terms1.md"
+    },
+    {
+      "kind": "slower",
+      "key": "g-alt:terms:1",
+      "file": "slower-g-alt-terms1.md"
+    },
+    {
+      "kind": "slower",
+      "key": "g-regex:terms:1",
+      "file": "slower-g-regex-terms1.md"
+    },
+    {
+      "kind": "slower",
+      "key": "g-tests:terms:1",
+      "file": "slower-g-tests-terms1.md"
+    },
+    {
+      "kind": "slower",
+      "key": "g-reach:terms:1",
+      "file": "slower-g-reach-terms1.md"
+    },
+    {
+      "kind": "slower",
+      "key": "evidence-adjacent-folds:terms:1",
+      "file": "slower-evidence-adjacent-folds-terms1.md"
+    },
+    {
+      "kind": "slower",
+      "key": "assessment-adjacent-folds:terms:1",
+      "file": "slower-assessment-adjacent-folds-terms1.md"
+    },
+    {
+      "kind": "slower",
+      "key": "evidence-bare-lf:terms:1",
+      "file": "slower-evidence-bare-lf-terms1.md"
+    },
+    {
+      "kind": "slower",
+      "key": "assessment-bare-lf:terms:1",
+      "file": "slower-assessment-bare-lf-terms1.md"
     }
   ]
 }

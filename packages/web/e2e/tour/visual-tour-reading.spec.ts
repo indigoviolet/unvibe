@@ -9,6 +9,7 @@ import { cpuThrottleFromEnv } from "../cpu-throttle.js";
 import { checkLayout } from "../layout-check.js";
 import { hoverFresh } from "../hover-fresh.js";
 import { openPopup } from "../select.js";
+import { selectText } from "../select-text.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { tourCombos } from "../tour-matrix.js";
 import { parseBlocks } from "@unvibe/shared";
@@ -31,6 +32,11 @@ test.beforeAll(async () => {
   mkdirSync(SHOTS, { recursive: true });
   dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-glossary-tour-data-"));
   svc = await startService(dataDir, { agent: "replay" });
+  // Issue #422: the Help-me-understand tour scenes need the Explain-terms gate on.
+  const gate = await apiJson(svc, "PUT", "/api/settings", {
+    experimental: { explainTerms: true, markdownDocs: false },
+  });
+  expect(gate.status).toBe(200);
   const created = await apiJson(svc, "POST", "/api/reviews", { repoId: "demo" });
   reviewId = (created.json as { review: { id: string } }).review.id;
   const deadline = Date.now() + 90_000;
@@ -89,6 +95,138 @@ test("copy as Markdown toolbar icon with tooltip (1440-light)", async ({ page })
   await page.screenshot({ path: path.join(SHOTS, "copy-markdown-1440-light.png") });
 });
 
+// ---- guide copy (#384): the top bar's copy icon with its tooltip ----
+test("guide copy icon with tooltip (1440-light)", async ({ page }) => {
+  if (!svc) throw new Error("service not running");
+  test.setTimeout(240_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+  await expect(page.locator("#C-central")).toBeVisible({ timeout: 60_000 });
+  const button = page.locator("#reviewbar [data-copy-guide]");
+  await expect(button).toBeVisible();
+  await hoverFresh(page, button);
+  await expect(page.locator("#tip")).toContainText("Copy guide as Markdown", { timeout: 10_000 });
+  await checkLayout(page, "guide-copy");
+  // Full page: the frame must show where the icon sits in the top bar.
+  await page.screenshot({ path: path.join(SHOTS, "guide-copy-1440-light.png"), fullPage: true });
+});
+
+
+// ---- help me understand (#387): the card toolbar's icon button with its tooltip ----
+test("Help me understand toolbar icon with tooltip (1440-light)", async ({ page }) => {
+  if (!svc) throw new Error("service not running");
+  test.setTimeout(240_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+  await expect(page.locator("#C-central")).toBeVisible({ timeout: 60_000 });
+  await page.locator("#C-central").scrollIntoViewIfNeeded();
+  const button = page.locator('#C-central > .chead .ctl').getByRole("button", { name: "Help me understand" });
+  await expect(button).toBeVisible();
+  await hoverFresh(page, button);
+  await expect(page.locator("#tip")).toContainText("Help me understand", { timeout: 10_000 });
+  await checkLayout(page, "help-me-understand");
+  // Full page: the frame must show where the icon sits in the card toolbar.
+  await page.screenshot({ path: path.join(SHOTS, "help-me-understand-1440-light.png"), fullPage: true });
+});
+
+// ---- Help me understand menu (#418): the card toolbar button opens the same menu as the persona button ----
+test("Help me understand menu open on a card (1440-light)", async ({ page }) => {
+  if (!svc) throw new Error("service not running");
+  test.setTimeout(240_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+  await expect(page.locator("#C-central")).toBeVisible({ timeout: 60_000 });
+  await page.locator("#C-central").scrollIntoViewIfNeeded();
+  const button = page.locator('#C-central > .chead .ctl').getByRole("button", { name: "Help me understand" });
+  await expect(button).toBeVisible();
+  await button.click();
+  const menu = page.locator('[data-understand-menu-list="central"]');
+  await expect(menu).toBeVisible({ timeout: 15_000 });
+  await expect(menu.getByRole("menuitem", { name: "Simplify" })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "Explain terms…" })).toBeVisible();
+  await checkLayout(page, "understand-menu");
+  // Full page: the frame must show the open menu next to the card
+  // toolbar button that opened it.
+  await page.screenshot({ path: path.join(SHOTS, "understand-menu-1440-light.png"), fullPage: true });
+  await page.keyboard.press("Escape");
+});
+
+// ---- Explain terms picking (#418): the picking card with two terms highlighted and in its tray ----
+test("Explain terms picking with two terms in the tray (1440-light)", async ({ page }) => {
+  if (!svc) throw new Error("service not running");
+  test.setTimeout(240_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+  await expect(page.locator("#C-central")).toBeVisible({ timeout: 60_000 });
+  await page.locator("#C-central").scrollIntoViewIfNeeded();
+  await page.locator('#C-central > .chead .ctl').getByRole("button", { name: "Help me understand" }).click();
+  await page.locator('[data-understand-menu-list="central"]').getByRole("menuitem", { name: "Explain terms…" }).click();
+  await expect(page.getByTestId("explain-tray")).toBeVisible({ timeout: 15_000 });
+  await selectText(page, "#C-central", "obs-fold", 0, undefined, { waitForBar: false });
+  await selectText(page, "#C-central", "HTTPMessage", 0, undefined, { waitForBar: false });
+  await expect(page.getByTestId("explain-term")).toHaveCount(2, { timeout: 15_000 });
+  await expect(page.locator("mark[data-explain-term]")).toHaveCount(2);
+  // The tray's Rewrite is a primary ui Button, Cancel a quiet one.
+  await expect(page.getByTestId("explain-rewrite")).toHaveAttribute("data-variant", "primary");
+  await checkLayout(page, "explain-picking");
+  // Full page: the frame must show both highlights in the card and the
+  // in-card tray with both terms, Rewrite and Cancel.
+  await page.locator("#C-central").scrollIntoViewIfNeeded();
+  await page.screenshot({ path: path.join(SHOTS, "explain-picking-1440-light.png"), fullPage: true });
+  await page.keyboard.press("Escape");
+});
+
+// ---- slower rewrite (#398): the replaced body with its list, example and chips ----
+test("slower rewrite shows the list, example and correctly placed chips (1440-light)", async ({ page }) => {
+  if (!svc) throw new Error("service not running");
+  test.setTimeout(240_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  // Three slower presses against the tour review (replay central:1, :2,
+  // :3): the third reply carries three paragraphs, a numbered list of
+  // steps and an example walk-through, each with its own citations.
+  // Each press waits for its own recorded text, so presses stay ordered.
+  const pressTexts = ["obsolete folded header line", "Start with what the server sends"];
+  for (let press = 0; press < pressTexts.length; press++) {
+    const acted = await apiJson(svc, "POST", `/api/reviews/${reviewId}/actions`, {
+      kind: "slower",
+      cardId: "central",
+    });
+    if (acted.status !== 200) throw new Error(`slower press ${press + 1} failed: ${acted.status}`);
+    await poll(
+      () => snapshot(svc!, reviewId),
+      (s) => JSON.stringify(s.pages.find((p) => p.id === "root")?.cards.find((c) => c.id === "central"))
+        .includes(pressTexts[press]),
+      90_000,
+    );
+  }
+  const acted = await apiJson(svc, "POST", `/api/reviews/${reviewId}/actions`, {
+    kind: "slower",
+    cardId: "central",
+  });
+  if (acted.status !== 200) throw new Error(`slower press 3 failed: ${acted.status}`);
+  await poll(
+    () => snapshot(svc!, reviewId),
+    (s) => {
+      const central = s.pages.find((p) => p.id === "root")?.cards.find((c) => c.id === "central");
+      // Four paragraphs, the numbered list, the example aside.
+      return !!central && central.blocks.length === 6;
+    },
+    90_000,
+  );
+  await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+  await expect(page.locator("#C-central")).toBeVisible({ timeout: 60_000 });
+  const card = page.locator("#C-central");
+  await card.scrollIntoViewIfNeeded();
+  await expect.soft(card.getByText("A slower look at the same change")).toBeVisible({ timeout: 30_000 });
+  await expect.soft(card.locator("ol.lst > li")).toHaveCount(3);
+  await expect.soft(card.locator(".blk.gen-aside .tag")).toContainText("Example");
+  await checkLayout(page, "slower-rewrite");
+  // Full page: center the example aside so the frame shows the list,
+  // the whole example (code, walk-through, its chip) and the
+  // paragraph chips above it.
+  await card.locator(".blk.gen-aside").evaluate((el) => el.scrollIntoView({ block: "center" }));
+  await page.screenshot({ path: path.join(SHOTS, "slower-rewrite-1440-light.png"), fullPage: true });
+});
 
 // ---- j20-critic-concepts-godeeper.spec.ts (frames re-added) ----
 /** J20 (#215/#216/#217): one critic job, concept pages on open, auto go-deeper — real service, replay. */
@@ -126,14 +264,18 @@ test.describe("J20 critic, concepts and go-deeper", () => {
     let svc: RunningService | null = null;
     try {
       svc = await startService(dataDir, { agent: "replay" });
+      // Auto go-deeper is off by default since #389: turn it on so
+      // every go-deeper card fills without a click.
+      await apiJson(svc, "PUT", "/api/settings", { autoGoDeeper: true });
       const reviewId = await createDemoReview(svc);
-      // #217 (default on): every go-deeper card fills without a click, in
+      // #217: every go-deeper card fills without a click, in
       // the background; #215: one critic job; #216: no concept pages yet.
       const snap = await poll(
         () => snapshot(svc!, reviewId),
         (s) => {
           const root = s.pages.find((p) => p.id === "root");
-          return !!root && root.cards.length >= 8 && root.cards.every((c) => !c.pending);
+          // Issue #405 drops the buildup card: 3 guide cards + 4 filled go-deeper cards.
+          return !!root && root.cards.length >= 7 && root.cards.every((c) => !c.pending);
         },
       );
       const root = snap.pages.find((p) => p.id === "root")!;
@@ -210,7 +352,10 @@ test.describe("J20 critic, concepts and go-deeper", () => {
     let svc: RunningService | null = null;
     try {
       svc = await startService(dataDir, { agent: "replay" });
-      // Toggle off in Settings (Limits tab) before the review exists.
+      // The toggle starts on (enabled above the default-off since #389)
+      // so the test can toggle it off in Settings (Limits tab) before
+      // the review exists.
+      await apiJson(svc, "PUT", "/api/settings", { autoGoDeeper: true });
       await page.goto(`${svc.origin}/settings?token=${svc.token}`);
       await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible({ timeout: 30_000 });
       await page.getByRole("tab", { name: "Limits" }).click();
@@ -548,7 +693,6 @@ test.describe("J314 loose numbered lists", () => {
         pageId: "root",
         title: "Loose list",
         blocks: parseBlocks("1. First step\n\n2. Second step\n\n3. Third step\n\n4. Fourth step\n"),
-        level: "standard",
         revision: 1,
         undoStack: [],
         collapsed: false,
@@ -711,14 +855,13 @@ test.describe("J81 code citations outside the diff", () => {
         id,
         pageId: "root",
         title: id,
-        level: "standard",
         collapsed: false,
         revision: 1,
         blocks: [
           {
             type: "paragraph",
             id: `b-${id}`,
-            text: { standard: text },
+            text,
             citations: [{ target, ...(unverified ? { unverified: true } : {}) }],
           },
         ],

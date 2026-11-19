@@ -43,7 +43,7 @@ function goldenValues(): Record<string, RenderValues> {
   const glossary = "## Glossary\n\nUse these exact terms for the things they name: call each thing by this exact term everywhere, never a synonym, abbreviation or paraphrase.\n\n- `HTTPHeaderDict` — Headers view.\n";
   return {
     instructions: {},
-    reader: { source, diff_inline: diff, repo_path: "/tmp/unvibe-wt/branch" },
+    reader: { source, diff_inline: diff, repo_path: "/tmp/unvibe-wt/branch", reviewed_context: "(No prior-review baseline: explain the whole change; write no Changes-since-X section.)" },
     base_pack: { source, diff_inline: diff, pinned_code: pinned, guide, concepts, hunk_summaries: hunkSummaries },
     critic: {},
     hunk_pass: {
@@ -75,16 +75,14 @@ function goldenValues(): Record<string, RenderValues> {
       changed_hunks: "h:conn:h111",
       message: "What about ordering?",
     },
-    depth: { card, level: "deep" },
-    examples: { card, level: "standard" },
-    diagram: { card, level: "standard" },
+    slower: { card, terms: "", guide: "" },
+    examples: { card },
+    diagram: { card },
     go_deeper: { direction: "Data flow: from the socket to HTTPHeaderDict — follows a folded header to both views.", glossary },
-    update_pass: {
-      changed_hunks: "### [[h:conn:h111]] reflowed: +1 −1",
-      stale_cards: "### The central change [[card:c-central]] (2 cited hunks changed)",
-      findings: "### Folds that end in a bare LF are not unfolded (medium) [[page:f-lf]] — still applies",
-      since_context:
-        "## Baseline\n\nB is v1 · aaa1111 · 3 Nov; head is v2 · bbb2222 · 4 Nov. Explain only the 1 changed + 0 new hunks since B.",
+    explain_pass: {
+      x_hunks: "### [[h:conn:h111]] reflowed: +1 −1",
+      x_context:
+        "## Baseline\n\nB is v1 · aaa1111 · 3 Nov; head is v2 · bbb2222 · 4 Nov. Explain only the 1 changed + 0 new hunks since X.",
     },
     consolidate: {
       contributions: '- c1 [fact] "Requests reads the original message" [[diff:tsock:139-146]]\n- c2 [fact] duplicate',

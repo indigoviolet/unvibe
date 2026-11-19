@@ -30,8 +30,8 @@ function replyText(reply: { blocks?: Array<{ type: string }> }): string {
   for (const b of blocks) {
     if (!b || typeof b !== "object") continue;
     if (b["type"] === "paragraph") {
-      const t = b["text"] as Record<string, unknown> | undefined;
-      const s = typeof t?.["standard"] === "string" ? (t["standard"] as string) : "";
+      const t = b["text"];
+      const s = typeof t === "string" ? t : "";
       // Strip tags for export/post text.
       parts.push(s.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim());
     }

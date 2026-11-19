@@ -259,19 +259,6 @@ describe("PageView plotlines", () => {
       }
     });
 
-    it("disables with the read-only tooltip on older versions", async () => {
-      window.history.replaceState({}, "", "/review/demo?version=2");
-      try {
-        await renderRoot();
-        for (const id of ["unfold", "unfold-tests", "other"]) {
-          const box = plotBox(id);
-          expect(box).toBeDisabled();
-          expect(box).toHaveAttribute("aria-label", "Viewing an older version · read-only");
-        }
-      } finally {
-        window.history.replaceState({}, "", "/");
-      }
-    });
   });
 
   it("stays off finding pages", async () => {

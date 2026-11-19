@@ -8,7 +8,7 @@ const TERMS = [
 ];
 
 function para(id: string, html: string): Block {
-  return { type: "paragraph", id, text: { standard: html }, citations: [] };
+  return { type: "paragraph", id, text: html, citations: [] };
 }
 
 describe("linkCardBlocks", () => {
@@ -17,15 +17,15 @@ describe("linkCardBlocks", () => {
       para("b1", "Uses HTTPHeaderDict here."),
       para("b2", "Again HTTPHeaderDict here."),
     ];
-    const out = linkCardBlocks(blocks, TERMS, "standard");
-    expect(out[0].type === "paragraph" && out[0].text.standard).toContain('data-glossary="HTTPHeaderDict"');
-    expect(out[1].type === "paragraph" && out[1].text.standard).not.toContain("data-glossary");
+    const out = linkCardBlocks(blocks, TERMS);
+    expect(out[0].type === "paragraph" && out[0].text).toContain('data-glossary="HTTPHeaderDict"');
+    expect(out[1].type === "paragraph" && out[1].text).not.toContain("data-glossary");
   });
 
   it("does not link inside existing links", () => {
     const blocks: Block[] = [para("b1", 'See <a class="cx" data-link="concept:x">HTTPHeaderDict</a>.')];
-    const out = linkCardBlocks(blocks, TERMS, "standard");
-    expect(out[0].type === "paragraph" && out[0].text.standard).not.toContain("data-glossary");
+    const out = linkCardBlocks(blocks, TERMS);
+    expect(out[0].type === "paragraph" && out[0].text).not.toContain("data-glossary");
   });
 
   it("leaves fenced code blocks alone", () => {
@@ -33,8 +33,8 @@ describe("linkCardBlocks", () => {
       { type: "code", id: "b1", code: "HTTPHeaderDict", citations: [] },
       para("b2", "Uses HTTPHeaderDict here."),
     ];
-    const out = linkCardBlocks(blocks, TERMS, "standard");
+    const out = linkCardBlocks(blocks, TERMS);
     expect(out[0].type).toBe("code");
-    expect(out[1].type === "paragraph" && out[1].text.standard).toContain('data-glossary="HTTPHeaderDict"');
+    expect(out[1].type === "paragraph" && out[1].text).toContain('data-glossary="HTTPHeaderDict"');
   });
 });

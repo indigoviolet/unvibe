@@ -91,6 +91,7 @@ import {
 import {
   canonicalizeD2Source,
   diagramHash,
+  displayCardTitle,
   D2_MIN_VERSION,
   parseReply,
   type DiagramBlock,
@@ -243,7 +244,9 @@ test.describe("L3 guide mock shell", () => {
       await expect.soft(page.locator("#pop")).toBeHidden();
 
       await openPopover(page);
-      await page.mouse.click(300, 20);
+      // Press the demo banner (plain text, no controls); the per-card
+      // Explain-terms picker (#418) leaves the top bar without toggles.
+      await page.mouse.click(200, 64);
       await expect.soft(page.locator("#pop")).toBeHidden();
 
       await openPopover(page);
@@ -1081,6 +1084,7 @@ test.describe("L3 demo guide reading", () => {
   let commentReview = "";
   let criticReview = "";
   let diagramReview = "";
+  let slowerReview = "";
 
   test.beforeAll(async () => {
     dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-l3-data-"));
@@ -1107,7 +1111,6 @@ test.describe("L3 demo guide reading", () => {
           pageId: "root",
           title: "Loose list",
           blocks: parseBlocks("1. First step\n\n2. Second step\n\n3. Third step\n\n4. Fourth step\n"),
-          level: "standard",
           revision: 1,
           undoStack: [],
           collapsed: false,
@@ -1123,12 +1126,23 @@ test.describe("L3 demo guide reading", () => {
       }
     }
     svc = await startService(dataDir, { agent: "replay", label: "l3demo" });
+    // These journeys assert auto-written go-deeper cards, which need the
+    // setting on (off by default since #389); the #418 Help-me-understand
+    // steps need the Explain-terms gate on (issue #422).
+    await apiJson(svc, "PUT", "/api/settings", {
+      autoGoDeeper: true,
+      // Issue #422: the #418 steps need the Explain-terms gate on, and
+      // the #255 code-comment step creates a document review, so the
+      // Markdown-docs gate goes on too.
+      experimental: { explainTerms: true, markdownDocs: true },
+    });
     readReview = await createDemoReview(svc);
     askReview = await createDemoReview(svc);
     explainReview = await createDemoReview(svc);
     commentReview = await createDemoReview(svc);
     criticReview = await createDemoReview(svc);
     diagramReview = await createDemoReview(svc);
+    slowerReview = await createDemoReview(svc);
   });
   test.afterAll(async () => {
     await svc?.stop().catch(() => {});
@@ -1690,7 +1704,9 @@ test.describe("L3 demo guide reading", () => {
         () => snapshot(criticReview),
         (sn) => {
           const root = sn.pages.find((p) => p.id === "root");
-          return !!root && root.cards.length >= 8 && root.cards.every((c) => !c.pending);
+          // Issue #405 drops the buildup card: 3 guide cards + 4 filled
+          // go-deeper cards.
+          return !!root && root.cards.length >= 7 && root.cards.every((c) => !c.pending);
         },
       );
       const root = snap.pages.find((p) => p.id === "root")!;
@@ -1908,81 +1924,350 @@ test.describe("L3 demo guide reading", () => {
       await expect.soft(section).toContainText("host not on the page");
     });
 
-    await test.step("closed explanation → deep → chip → open → back → highlight", async () => {
-      await openReview(page, "j206-seed");
-      await expect.soft(page.locator("#C-g-alt")).toBeVisible({ timeout: 30_000 });
+    await test.step("Help me understand rewrites twice, then undo steps back (#387)", async () => {
+      await openReview(page, slowerReview);
+      await expect.soft(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
 
-      // Create a closed expansion on g-alt#b1 with a standard-only phrase.
-      // Issue #341: the re-recorded deep expansions restate their card, so
-      // no central standard phrase orphans at deep (and raw-HTML staleness
-      // can't span markup). g-alt's deep omits this b1 span, so a
-      // standard→deep step orphans it.
-      const created = await apiJson(s, "POST", `/api/reviews/j206-seed/actions`, {
-        kind: "explain",
-        quote: "The fix has to reach two copies of",
-        anchor: { where: "block", blockId: "g-alt#b1" },
-      });
-      const annId = (created.json as { annotationId: string }).annotationId;
-      if ((created.json as { jobId?: string }).jobId) {
-        const deadline = Date.now() + 60_000;
-        for (;;) {
-          const cur = await apiJson(s, "GET", `/api/reviews/j206-seed`);
-          const ann = ((cur.json as { annotations: { id: string; replies?: { blocks: unknown[] }[] }[] }).annotations ?? []).find(
-            (a) => a.id === annId,
-          );
-          if ((ann?.replies?.[0]?.blocks.length ?? 0) > 0) break;
-          if (Date.now() > deadline) throw new Error("conversation did not fill in time");
-          await new Promise((r) => setTimeout(r, 1000));
+      const paraText = async (): Promise<string> => {
+        const cur = await apiJson(s, "GET", `/api/reviews/${slowerReview}`);
+        const cards = ((cur.json as { pages: { id: string; cards: { id: string; blocks: { type: string; text?: string }[] }[] }[] }).pages ?? [])
+          .find((p) => p.id === "root")?.cards ?? [];
+        const central = cards.find((c) => c.id === "central");
+        return (central?.blocks ?? []).filter((b) => b.type === "paragraph").map((b) => b.text ?? "").join("\n\n");
+      };
+      const before = await paraText();
+      expect.soft(before).toContain("unfolds every");
+
+      // The toolbar reveals on card hover (#274): one icon button with
+      // the Help-me-understand tooltip (no text label, no level pips).
+      // Issue #418: the button opens the menu; Simplify is today's press.
+      await page.locator("#C-central").hover();
+      const help = page.locator("#C-central > .chead .ctl").getByRole("button", { name: "Help me understand" });
+      await expect.soft(help).toBeVisible({ timeout: 15_000 });
+      expect.soft(await help.getAttribute("data-tip")).toBe("Help me understand");
+      const pressSimplify = async (): Promise<void> => {
+        await page.locator("#C-central > .chead .ctl").getByRole("button", { name: "Help me understand" }).click();
+        await page.locator('[data-understand-menu-list="central"]').getByRole("menuitem", { name: "Simplify" }).click();
+      };
+
+      // First press rewrites the card more slowly (replay central:1).
+      await pressSimplify();
+      await expect
+        .poll(async () => paraText(), { timeout: 60_000 })
+        .toContain("obsolete folded header line");
+      const afterFirst = await paraText();
+      expect.soft(afterFirst).not.toBe(before);
+      await expect.soft(page.locator("#C-central")).toContainText("obsolete folded header line", { timeout: 15_000 });
+
+      // Second press slows the rewrite further (replay central:2).
+      await page.locator("#C-central").hover();
+      await pressSimplify();
+      await expect
+        .poll(async () => paraText(), { timeout: 60_000 })
+        .toContain("Start with what the server sends");
+      const afterSecond = await paraText();
+      expect.soft(afterSecond).not.toBe(afterFirst);
+      await expect.soft(page.locator("#C-central")).toContainText("Start with what the server sends", { timeout: 15_000 });
+
+      // Undo steps back through the presses.
+      await page.locator("#C-central").hover();
+      await page.locator("#C-central > .chead .ctl").getByRole("button", { name: "Undo" }).click();
+      await expect.poll(async () => paraText(), { timeout: 60_000 }).toBe(afterFirst);
+      await expect.soft(page.locator("#C-central")).toContainText("obsolete folded header line", { timeout: 15_000 });
+      await expect.soft(page.locator("#C-central")).not.toContainText("Start with what the server sends", { timeout: 15_000 });
+    });
+
+    await test.step("Help me understand replaces the body wholesale: lists, example, own chips (#398)", async () => {
+      await openReview(page, slowerReview);
+      await expect.soft(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
+      type BlockShape = {
+        type: string;
+        text?: string;
+        html?: string;
+        kind?: string;
+        citations?: { target: string }[];
+        items?: { html: string; citations: { target: string }[] }[];
+      };
+      const centralBlocks = async (): Promise<BlockShape[]> => {
+        const cur = await apiJson(s, "GET", `/api/reviews/${slowerReview}`);
+        const cards = ((cur.json as { pages: { id: string; cards: { id: string; blocks: BlockShape[] }[] }[] }).pages ?? [])
+          .find((p) => p.id === "root")?.cards ?? [];
+        return cards.find((c) => c.id === "central")?.blocks ?? [];
+      };
+      // Two presses in: replay central:1 then central:2 (the step above
+      // undid once, so the card holds the first rewrite and the press
+      // ordinal is 1 — the next press replays central:2 again, then the
+      // third press replays central:3).
+      // Issue #418: the button opens the menu; Simplify is today's press.
+      const pressSimplify = async (): Promise<void> => {
+        await page.locator("#C-central > .chead .ctl").getByRole("button", { name: "Help me understand" }).click();
+        await page.locator('[data-understand-menu-list="central"]').getByRole("menuitem", { name: "Simplify" }).click();
+      };
+      // Re-apply the second press to reach the two-press state.
+      await page.locator("#C-central").hover();
+      await pressSimplify();
+      await expect
+        .poll(async () => centralBlocks().then((b) => b.filter((x) => x.type === "paragraph").map((x) => x.text ?? "").join("\n\n")), { timeout: 60_000 })
+        .toContain("Start with what the server sends");
+
+      // Third press (replay central:3): three paragraphs, a numbered
+      // list of steps and an example walk-through, each citing its own
+      // paragraph — the whole reply becomes the body.
+      await page.locator("#C-central").hover();
+      await pressSimplify();
+      await expect
+        .poll(async () => page.locator("#C-central").getByText("A slower look at the same change").count(), { timeout: 90_000 })
+        .toBeGreaterThan(0);
+      const blocks = await centralBlocks();
+      expect.soft(blocks.map((b) => b.type)).toEqual(["paragraph", "paragraph", "paragraph", "paragraph", "list", "aside"]);
+      expect.soft(blocks[0].citations?.map((c) => c.target)).toEqual(["diff:src-urllib3-connection.py:80-88"]);
+      expect.soft(blocks[1].citations?.map((c) => c.target)).toEqual([
+        "diff:src-urllib3-connection.py:91-110",
+        "diff:src-urllib3-connection.py:647-651",
+      ]);
+      expect.soft(blocks[2].citations?.map((c) => c.target)).toEqual(["diff:src-urllib3-connection.py:91-110"]);
+      // The list's lead-in line is its own uncited paragraph.
+      expect.soft(blocks[3].citations ?? []).toEqual([]);
+      const list = blocks[4];
+      expect.soft(list.items?.length).toBe(3);
+      expect.soft(list.items?.[0].citations.map((c) => c.target)).toEqual(["diff:src-urllib3-connection.py:80-88"]);
+      expect.soft(list.items?.[2].citations.map((c) => c.target)).toEqual([
+        "diff:src-urllib3-connection.py:91-110",
+        "diff:test-test_connection.py:218",
+      ]);
+      const aside = blocks[5];
+      expect.soft(aside.kind).toBe("Example");
+
+      // Every reply block renders: the three list items, the example
+      // aside with its walk-through.
+      await expect.soft(page.locator("#C-central ol.lst")).toHaveCount(1);
+      await expect.soft(page.locator("#C-central ol.lst > li")).toHaveCount(3);
+      await expect.soft(page.locator("#C-central ol.lst > li").nth(0)).toContainText("Set-Cookie");
+      await expect.soft(page.locator("#C-central ol.lst > li button.lk").first()).toBeVisible({ timeout: 15_000 });
+      const example = page.locator("#C-central .blk.gen-aside");
+      await expect.soft(example).toHaveCount(1);
+      await expect.soft(example.locator(".tag")).toContainText("Example");
+      await expect.soft(example).toContainText("replaces all three parts with a single space");
+
+      // Each citation chip sits on its own paragraph (API targets above;
+      // here the rendered rows: paragraph chips render inside the
+      // prose itself — the first paragraph's chip names 80-88 and not
+      // 91-110, the second's names 91-110).
+      const paraChips = async (n: number): Promise<string[]> => {
+        const refs = page.locator("#C-central .blk").nth(n).locator("p.prose button.lk");
+        return refs.evaluateAll((els) => els.map((el) => el.getAttribute("data-refs") ?? ""));
+      };
+      const firstRefs = (await paraChips(0)).join(" ");
+      expect.soft(firstRefs).toContain("80-88");
+      expect.soft(firstRefs).not.toContain("91-110");
+      expect.soft((await paraChips(1)).join(" ")).toContain("91-110");
+
+      // Undo twice steps back through the presses to the first rewrite:
+      // the original text and chips are back, the list and example gone.
+      await page.locator("#C-central").hover();
+      await page.locator("#C-central > .chead .ctl").getByRole("button", { name: "Undo" }).click();
+      await expect
+        .poll(async () => page.locator("#C-central").getByText("Start with what the server sends").count(), { timeout: 60_000 })
+        .toBeGreaterThan(0);
+      await page.locator("#C-central").hover();
+      await page.locator("#C-central > .chead .ctl").getByRole("button", { name: "Undo" }).click();
+      await expect
+        .poll(async () => page.locator("#C-central").getByText("obsolete folded header line").count(), { timeout: 60_000 })
+        .toBeGreaterThan(0);
+      await expect.soft(page.locator("#C-central ol.lst")).toHaveCount(0);
+      await expect.soft(page.locator("#C-central .blk.gen-aside")).toHaveCount(0);
+      await expect.soft((await paraChips(0)).join(" ")).toContain("80-88");
+    });
+  });
+
+  test("Help me understand menu: Simplify rewrites one card; Explain terms picks and rewrites one card (#418)", async ({
+    page,
+  }) => {
+    test.setTimeout(300_000);
+    const s = service();
+    if (!s) throw new Error("no service");
+
+    type CardShape = { id: string; blocks: { type: string; text?: string }[] };
+    const cardParas = async (reviewId: string): Promise<Map<string, string>> => {
+      const cur = await apiJson(s, "GET", `/api/reviews/${reviewId}`);
+      const pages = ((cur.json as { pages: { id: string; cards: CardShape[] }[] }).pages ?? []);
+      const m = new Map<string, string>();
+      for (const p of pages) {
+        for (const c of p.cards) {
+          const t = c.blocks
+            .filter((b) => b.type === "paragraph")
+            .map((b) => b.text ?? "")
+            .join("\n\n");
+          if (t) m.set(c.id, t);
         }
       }
-      // Close it so only the dotted highlight remains.
-      await apiJson(s, "POST", `/api/reviews/j206-seed/actions`, {
-        kind: "close",
-        annotationId: annId,
-      });
-      await page.reload();
-      await expect.soft(page.locator("#C-g-alt")).toBeVisible({ timeout: 30_000 });
+      return m;
+    };
+    // A settled guide: every job done, so captures are stable.
+    const waitSettled = async (reviewId: string): Promise<void> => {
+      await expect
+        .poll(
+          async () => {
+            const snap = await apiJson(s, "GET", `/api/reviews/${reviewId}`);
+            const jobs = ((snap.json as { jobs?: { state: string }[] }).jobs ?? []);
+            return jobs.length > 0 && jobs.every((j) => j.state === "done" || j.state === "error" || j.state === "cancelled");
+          },
+          { timeout: 120_000 },
+        )
+        .toBe(true);
+    };
+    // Open the card's Help-me-understand menu (hover-revealed toolbar).
+    const openUnderstandMenu = async (cardId: string): Promise<void> => {
+      await page.locator(`#C-${cardId}`).hover();
+      await page.locator(`#C-${cardId} [data-understand-menu="${cardId}"]`).click();
+      await expect(page.locator(`[data-understand-menu-list="${cardId}"]`)).toBeVisible({ timeout: 15_000 });
+    };
+    // The latest slower job's prompt snapshot.
+    const lastSlowerPrompt = async (reviewId: string): Promise<string> => {
+      const res = await apiJson(s, "GET", `/api/jobs?review=${reviewId}`);
+      const jobs = (res.json as { jobs: { id: string; kind: string }[] }).jobs.filter((j) => j.kind === "slower");
+      expect(jobs.length).toBeGreaterThan(0);
+      const full = await apiJson(s, "GET", `/api/jobs/${jobs.at(-1)!.id}`);
+      return (full.json as { job: { promptSnapshot: string } }).job.promptSnapshot;
+    };
 
-      // At standard the dotted highlight lands and the footnote stays hidden.
-      const mark = page.locator(`#C-g-alt mark.anc.exl[data-jump="${annId}"]:not(.fnote)`).first();
-      await expect.soft(mark).toBeVisible({ timeout: 15_000 });
-      const chip = page.locator(`#C-g-alt .lo mark.fnote.exl[data-jump="${annId}"]`);
-      await expect.soft(chip).toBeHidden({ timeout: 10_000 });
+    await test.step("the menu has both items; the top-bar ? button is gone", async () => {
+      const menuReview = await createDemoReview(s);
+      await openReview(page, menuReview);
+      await expect(page.locator("#C-problem")).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByTestId("question-toggle")).toHaveCount(0);
+      await openUnderstandMenu("central");
+      const menu = page.locator('[data-understand-menu-list="central"]');
+      // The existing menu component, not chips.
+      await expect(menu).toHaveClass(/fmenu/);
+      await expect(menu.getByRole("menuitem", { name: "Simplify" })).toBeVisible();
+      await expect(menu.getByRole("menuitem", { name: "Explain terms…" })).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(menu).toBeHidden();
+    });
 
-      // Step to deep (stored levels: instant, no agent). The phrase is gone,
-      // so the highlight drops and the chip appears on the citations line.
-      // The toolbar reveals on card hover (#274).
-      await page.locator("#C-g-alt").hover();
-      await page.locator("#C-g-alt > .chead .ctl").getByRole("button", { name: "Deeper" }).click();
-      await expect.soft(page.locator(`#C-g-alt mark.anc.exl[data-jump="${annId}"]:not(.fnote)`)).toHaveCount(0, {
-        timeout: 15_000,
-      });
-      await expect.soft(chip).toBeVisible({ timeout: 15_000 });
-      // The chip shares the citations row, not a full-width stub: the chip's
-      // closest `.lo` also holds the <> citations chip.
-      const sameRow = await chip.evaluate((el) => {
-        const lo = el.closest(".lo");
-        return !!lo && !!lo.querySelector("button.lk[data-refs]");
-      });
-      expect.soft(sameRow).toBe(true);
-      await expect.soft(page.locator("#C-g-alt .linkstub")).toHaveCount(0);
+    await test.step("Simplify rewrites only that card; Undo restores", async () => {
+      const simplifyReview = await createDemoReview(s);
+      await openReview(page, simplifyReview);
+      await waitSettled(simplifyReview);
+      const before = await cardParas(simplifyReview);
+      await openUnderstandMenu("central");
+      await page.locator('[data-understand-menu-list="central"]').getByRole("menuitem", { name: "Simplify" }).click();
+      await expect
+        .poll(async () => (await cardParas(simplifyReview)).get("central"), { timeout: 120_000 })
+        .not.toBe(before.get("central"));
+      const after = await cardParas(simplifyReview);
+      for (const [cid, txt] of before) {
+        if (cid === "central") continue;
+        expect.soft(after.get(cid)).toBe(txt);
+      }
+      // No terms ride an ordinary press.
+      expect(await lastSlowerPrompt(simplifyReview)).not.toContain("Terms the reader doesn't understand");
+      // Undo restores only that card.
+      await page.locator("#C-central").hover();
+      await page.locator("#C-central > .chead .ctl").getByRole("button", { name: "Undo" }).click();
+      await expect.poll(async () => (await cardParas(simplifyReview)).get("central"), { timeout: 60_000 }).toBe(before.get("central"));
+    });
 
-      // Clicking the chip re-opens the explanation in place.
-      await chip.click();
-      const expCard = page.locator(`#C-g-alt [data-thread="${annId}"]`).first();
-      await expect.soft(expCard).toBeVisible({ timeout: 15_000 });
+    await test.step("Explain terms: pick two in the card, × removes one, Rewrite carries the other", async () => {
+      const explainReview = await createDemoReview(s);
+      await openReview(page, explainReview);
+      await waitSettled(explainReview);
+      await expect(page.locator("#C-problem")).toBeVisible({ timeout: 30_000 });
+      const before = await cardParas(explainReview);
+      await openUnderstandMenu("problem");
+      await page.locator('[data-understand-menu-list="problem"]').getByRole("menuitem", { name: "Explain terms…" }).click();
+      const tray = page.getByTestId("explain-tray");
+      await expect(tray).toBeVisible({ timeout: 15_000 });
+      // ui Buttons, Rewrite disabled with no terms; picked terms are chips.
+      await expect(page.getByTestId("explain-rewrite")).toHaveClass(/ui-btn/);
+      await expect(page.getByTestId("explain-rewrite")).toHaveAttribute("data-variant", "primary");
+      await expect(page.getByTestId("explain-rewrite")).toBeDisabled();
+      await expect(page.getByTestId("explain-cancel")).toHaveClass(/ui-btn/);
 
-      // Close it again so the return trip asserts the closed highlight path.
-      await expCard.getByRole("button", { name: "Close" }).click();
-      await expect.soft(page.locator(`#C-g-alt [data-thread="${annId}"]`)).toHaveCount(0, { timeout: 10_000 });
+      // Pick two terms in the card: both highlight where picked.
+      await selectText(page, "#C-problem", "obs-fold", 0, undefined, { waitForBar: false });
+      await expect(page.getByTestId("explain-term")).toHaveCount(1);
+      await expect(page.locator("#C-problem mark[data-explain-term]")).toHaveCount(1);
+      await selectText(page, "#C-problem", "HTTPMessage", 0, undefined, { waitForBar: false });
+      await expect(page.getByTestId("explain-term")).toHaveCount(2);
+      await expect(page.locator("#C-problem mark[data-explain-term]")).toHaveCount(2);
+      await expect(page.getByTestId("explain-rewrite")).toBeEnabled();
 
-      // Switching back restores the highlight and hides the chip.
-      await page.locator("#C-g-alt").hover();
-      await page.locator("#C-g-alt > .chead .ctl").getByRole("button", { name: "Simpler" }).click();
-      await expect.soft(page.locator(`#C-g-alt mark.anc.exl[data-jump="${annId}"]:not(.fnote)`).first()).toBeVisible({
-        timeout: 15_000,
-      });
-      await expect.soft(chip).toBeHidden({ timeout: 10_000 });
+      // × removes one term and its highlight.
+      await page.getByRole("button", { name: 'Remove "obs-fold"' }).click();
+      await expect(page.getByTestId("explain-term")).toHaveCount(1);
+      await expect(page.locator("mark[data-explain-term]")).toHaveCount(1);
+
+      // Rewrite changes only that card; the prompt carries the
+      // remaining term's list entry and not the removed one's.
+      await page.getByTestId("explain-rewrite").click();
+      await expect(tray).toBeHidden({ timeout: 30_000 });
+      await expect(page.locator("mark[data-explain-term]")).toHaveCount(0);
+      await expect
+        .poll(async () => (await cardParas(explainReview)).get("problem"), { timeout: 120_000 })
+        .not.toBe(before.get("problem"));
+      const after = await cardParas(explainReview);
+      for (const [cid, txt] of before) {
+        if (cid === "problem") continue;
+        expect.soft(after.get(cid)).toBe(txt);
+      }
+      const prompt = await lastSlowerPrompt(explainReview);
+      expect(prompt).toContain('- "HTTPMessage"');
+      expect(prompt).not.toContain('- "obs-fold"');
+
+      // Undo restores the card.
+      await page.locator("#C-problem").hover();
+      await page.locator("#C-problem > .chead .ctl").getByRole("button", { name: "Undo" }).click();
+      await expect.poll(async () => (await cardParas(explainReview)).get("problem"), { timeout: 60_000 }).toBe(before.get("problem"));
+    });
+
+    await test.step("Cancel and Escape clear the highlights; other cards keep the toolbar", async () => {
+      const cancelReview = await createDemoReview(s);
+      await openReview(page, cancelReview);
+      await waitSettled(cancelReview);
+      await expect(page.locator("#C-problem")).toBeVisible({ timeout: 30_000 });
+
+      // Cancel clears the tray and the highlights, with no rewrite.
+      await openUnderstandMenu("problem");
+      await page.locator('[data-understand-menu-list="problem"]').getByRole("menuitem", { name: "Explain terms…" }).click();
+      await selectText(page, "#C-problem", "obs-fold", 0, undefined, { waitForBar: false });
+      await expect(page.getByTestId("explain-term")).toHaveCount(1);
+      await page.getByTestId("explain-cancel").click();
+      await expect(page.getByTestId("explain-tray")).toBeHidden();
+      await expect(page.locator("mark[data-explain-term]")).toHaveCount(0);
+
+      // Escape clears too.
+      await openUnderstandMenu("problem");
+      await page.locator('[data-understand-menu-list="problem"]').getByRole("menuitem", { name: "Explain terms…" }).click();
+      await selectText(page, "#C-problem", "obs-fold", 0, undefined, { waitForBar: false });
+      await expect(page.getByTestId("explain-term")).toHaveCount(1);
+      await page.keyboard.press("Escape");
+      await expect(page.getByTestId("explain-tray")).toBeHidden();
+      await expect(page.locator("mark[data-explain-term]")).toHaveCount(0);
+
+      // Selecting text in another card still shows the normal toolbar
+      // (plain prose — the first "obs-fold" sits inside a glossary
+      // link, which keeps the popover instead of the toolbar).
+      await openUnderstandMenu("problem");
+      await page.locator('[data-understand-menu-list="problem"]').getByRole("menuitem", { name: "Explain terms…" }).click();
+      await selectText(page, "#C-central", "unfolds");
+      await expect(page.locator("#selbar")).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByTestId("explain-term")).toHaveCount(0);
+      await page.keyboard.press("Escape");
+
+      // One picking card at a time: opening another card's picker
+      // clears the first card's terms and highlights.
+      await openUnderstandMenu("problem");
+      await page.locator('[data-understand-menu-list="problem"]').getByRole("menuitem", { name: "Explain terms…" }).click();
+      await selectText(page, "#C-problem", "HTTPMessage", 0, undefined, { waitForBar: false });
+      await expect(page.getByTestId("explain-term")).toHaveCount(1);
+      await openUnderstandMenu("central");
+      await page.locator('[data-understand-menu-list="central"]').getByRole("menuitem", { name: "Explain terms…" }).click();
+      await expect(page.locator("mark[data-explain-term]")).toHaveCount(0);
+      await expect(page.locator('#C-central [data-testid="explain-tray"]')).toBeVisible();
+      await expect(page.locator('#C-problem [data-testid="explain-tray"]')).toHaveCount(0);
+      await page.keyboard.press("Escape");
     });
   });
 
@@ -2098,10 +2383,10 @@ test.describe("L3 demo guide reading", () => {
         /^Hiding \d+ of \d+ hunks/,
       );
       // #241: Refresh lives in the review top bar now (next to the status
-      // icon), tooltip exactly "Refresh" — and no longer in the diff toolbar.
-      const refresh = page.locator("#reviewbar").getByRole("button", { name: "Refresh" });
-      await expect.soft(refresh).toHaveAttribute("data-tip", "Refresh");
-      await expect.soft(page.locator(".dtool").getByRole("button", { name: "Refresh" })).toHaveCount(0);
+      // icon), tooltip says it pulls new commits (#420) — and no longer in the diff toolbar.
+      const refresh = page.locator("#reviewbar").getByRole("button", { name: "Pull new commits from GitHub" });
+      await expect.soft(refresh).toHaveAttribute("data-tip", "Pull new commits from GitHub");
+      await expect.soft(page.locator(".dtool").getByRole("button", { name: "Pull new commits from GitHub" })).toHaveCount(0);
 
       // Review filter: funnel icon, action-only tooltip, active dot.
       // (#296: new reviews hide existing GitHub comments by default, so the
@@ -2128,6 +2413,50 @@ test.describe("L3 demo guide reading", () => {
       }
 
       await checkLayout(page, "j225-diff");
+    });
+  });
+
+  test("plotline rows carry no summary tooltip; picking one marks its row (#406)", async ({ page }) => {
+    test.setTimeout(240_000);
+    const s = service();
+    // Filter state is mutable: a fresh review, never shared.
+    const reviewId = await createDemoReview(s);
+    await openReview(page, reviewId);
+    const box = page.locator(".plotlines");
+    await expect(box).toBeVisible({ timeout: 15_000 });
+
+    await test.step("the summary carries no tooltip", async () => {
+      const desc = box.locator("[data-plotpick] .pldesc").first();
+      await expect.soft(desc).toBeVisible();
+      // The summary text is already the row body: no tooltip repeats it.
+      await expect.soft(desc).not.toHaveAttribute("data-tip");
+      const summary = ((await desc.textContent()) ?? "").trim().replace(/\s+/g, " ");
+      expect.soft(summary.length).toBeGreaterThan(0);
+      // Hover the summary past the tooltip delay: the shared tooltip
+      // may show the row's action hint, but never the summary text.
+      await hoverFresh(page, desc);
+      await expect.soft(page.locator("#tip")).toContainText("Show only", { timeout: 10_000 });
+      expect.soft((await page.locator("#tip").textContent()) ?? "").not.toContain(summary);
+    });
+
+    await test.step("picking a plotline marks its row; clearing unmarks it", async () => {
+      const row = box.locator("[data-plotpick]").first();
+      await expect.soft(row).not.toHaveAttribute("aria-current");
+      await expect.soft(row).not.toHaveClass(/sel/);
+      await row.click();
+      const fchip = page.locator('[data-filterchip="plotline"]');
+      await expect.soft(fchip).toContainText("Plotline:", { timeout: 15_000 });
+      // The picked row reads selected: the existing sunk-row tint plus
+      // the aria-current mark (role="button", so not aria-selected).
+      await expect.soft(row).toHaveAttribute("aria-current", "true");
+      await expect.soft(row).toHaveClass(/sel/);
+      // Clearing the filter unmarks the row.
+      await row.click();
+      await expect.soft(fchip).toHaveCount(0, { timeout: 15_000 });
+      await expect.soft(row).not.toHaveAttribute("aria-current");
+      await expect.soft(row).not.toHaveClass(/sel/);
+
+      await checkLayout(page, "j406-plotlines");
     });
   });
 
@@ -2161,6 +2490,54 @@ test.describe("L3 demo guide reading", () => {
       if (cites.length > 0) {
         expect.soft(clip).toContain("https://github.com/urllib3/urllib3/blob/");
       }
+    });
+  });
+
+  test("review top bar copies the whole guide as Markdown (#384)", async ({ page, context }) => {
+    test.setTimeout(180_000);
+    const s = service();
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]).catch(() => {});
+    await openReview(page, readReview);
+
+    await test.step("the review top bar carries a Copy guide as Markdown control with a tooltip", async () => {
+      const button = page.locator("#reviewbar [data-copy-guide]");
+      await expect.soft(button).toBeVisible();
+      await hoverFresh(page, button);
+      await expect.soft(page.locator("#tip")).toContainText("Copy guide as Markdown", { timeout: 10_000 });
+    });
+
+    await test.step("clicking it copies the title, every card heading in order, and a citation", async () => {
+      await page.locator("#reviewbar [data-copy-guide]").click();
+      await expect.soft(page.locator("#toast")).toContainText("Copied as Markdown", { timeout: 10_000 });
+      const clip = await page.evaluate(() => navigator.clipboard.readText()).catch(() => "");
+      // The review title as `#`.
+      expect.soft(clip.startsWith("# ")).toBe(true);
+      expect.soft(clip.split("\n")[0].length).toBeGreaterThan(2);
+      // One `##` per main card, in guide order (pending cards skipped).
+      type SnapProbe = {
+        pages: {
+          id: string;
+          cards: { id: string; title: string | null; blocks: unknown[]; pending?: unknown }[];
+        }[];
+      };
+      const snap = await apiJson(s, "GET", `/api/reviews/${readReview}`);
+      const root = ((snap.json as unknown as SnapProbe).pages ?? []).find((p) => p.id === "root");
+      const expected = (root?.cards ?? [])
+        .filter((c) => !c.pending && c.blocks.length > 0)
+        .map((c) => `## ${displayCardTitle(c.title, c.blocks as never[])}`);
+      const headings = clip.split("\n").filter((l) => l.startsWith("## "));
+      expect.soft(headings.length).toBeGreaterThanOrEqual(2);
+      expect.soft(headings).toEqual(expected);
+      // The demo is a PR review: cited ranges are head-commit permalinks.
+      const cites = (root?.cards ?? []).flatMap((c) =>
+        (c.blocks as { citations?: { target?: string }[] }[]).flatMap((b) => b.citations ?? []),
+      );
+      if (cites.length > 0) {
+        expect.soft(clip).toContain("https://github.com/urllib3/urllib3/blob/");
+      }
+      // Prose only: no code fences, no link tokens.
+      expect.soft(clip).not.toContain("```");
+      expect.soft(clip).not.toContain("[[");
     });
   });
 
@@ -2373,14 +2750,13 @@ test.describe("L3 scratch file tabs", () => {
           id,
           pageId: "root",
           title: id,
-          level: "standard",
           collapsed: false,
           revision: 1,
           blocks: [
             {
               type: "paragraph",
               id: `b-${id}`,
-              text: { standard: text },
+              text,
               citations: [{ target, ...(unverified ? { unverified: true } : {}) }],
             },
           ],
@@ -2552,8 +2928,8 @@ test.describe("L3 scratch file tabs", () => {
         let root = snap.pages.find((p) => p.id === "root");
         if (!root) { root = { id: "root", kind: "root", title: "Guide", cards: [] }; snap.pages.unshift(root); }
         const card = (id: string, text: string, target: string): unknown => ({
-          id, pageId: "root", title: id, level: "standard", collapsed: false, revision: 1,
-          blocks: [{ type: "paragraph", id: `b-${id}`, text: { standard: text }, citations: [{ target }] }],
+          id, pageId: "root", title: id, collapsed: false, revision: 1,
+          blocks: [{ type: "paragraph", id: `b-${id}`, text, citations: [{ target }] }],
           undoStack: [],
         });
         root.cards.push(
@@ -2700,8 +3076,9 @@ const D2_LIFTED_SOURCE = [
 ].join("\n");
 
 const D2_LIFTED_HASH = diagramHash(canonicalizeD2Source(D2_LIFTED_SOURCE), D2_MIN_VERSION);
-// Issue #341: the re-recorded fixture pre-renders two on-demand diagrams.
-const D2_SEEDED_HASHES = new Set([D2_SEED_HASH, "22365f71688744f3"]);
+// Issue #341: the re-recorded fixture pre-renders the central on-demand
+// diagram (#405: the buildup diagram is gone with its card).
+const D2_SEEDED_HASHES = new Set([D2_SEED_HASH]);
 
 function seedD2Review(dataDir: string): void {
   const snapshot = JSON.parse(readFileSync(path.join(D2_FIXTURE_DIR, "snapshot.json"), "utf8")) as {

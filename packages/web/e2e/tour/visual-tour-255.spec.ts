@@ -53,6 +53,11 @@ test.beforeAll(async () => {
   await makeScratchRepo(repoDir);
   await git(repoDir, "update-ref", "refs/remotes/origin/main", "HEAD");
   svc = await startService(dataDir, { agent: "replay" });
+  // Issue #422: the document review below needs the Markdown-docs gate on.
+  const gate = await apiJson(svc, "PUT", "/api/settings", {
+    experimental: { explainTerms: false, markdownDocs: true },
+  });
+  expect(gate.status).toBe(200);
 
   // Guide review: the bundled demo (replay agent), then a python code
   // block seeded into its problem card (DB seed, the J222 pattern —

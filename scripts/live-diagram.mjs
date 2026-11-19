@@ -38,6 +38,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { liveModelPatch } from "./live-pi-lib.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CLI = path.join(ROOT, "packages", "service", "dist", "index.js");
@@ -418,10 +419,13 @@ async function main() {
       const central = snap0?.pages?.find((p) => p.id === "root")?.cards?.find((c) => c.id === "central");
       if (!central) throw new Error(`${provider}: demo review has no central card`);
 
-      // Point the main role at this provider (keep the offered model).
+      // Point the main role (the Guide persona, #414) at this provider,
+      // keeping the Guide's current model.
       const settings = (await api("GET", "/api/settings", undefined, token)).json;
-      const model = settings.main.provider === provider ? settings.main.model : settings.main.model;
-      await api("PUT", "/api/settings", { main: { provider, model }, autoGoDeeper: false }, token);
+      const guide = (settings.personas ?? []).find((p) => p.id === "guide");
+      if (!guide) throw new Error(`${provider}: settings have no Guide persona`);
+      const model = guide.model;
+      await api("PUT", "/api/settings", { ...liveModelPatch({ provider, model }, ["main"], settings), autoGoDeeper: false }, token);
       report.providers[provider].model = `${provider}/${model}`;
 
       const firstBlock = (central.blocks ?? []).find((b) => b.type === "paragraph" || b.type === "code");

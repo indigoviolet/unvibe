@@ -33,6 +33,7 @@ import type {
   JobsResponse,
   ModelsResponse,
   PickFolderResponse,
+  PromptForksResponse,
   PromptsResponse,
   ReadinessResponse,
   RefreshResponse,
@@ -69,7 +70,7 @@ import type {
   UpdateFileRequest,
   UpdateHunkRequest,
   UpdateViewRequest,
-  UpdateReviewResponse,
+  ExplainReviewResponse,
   UpdateStatusResponse,
   UpdateSwitchRequest,
   UpdateSwitchResponse,
@@ -348,8 +349,13 @@ const realApi = {
   deleteReview: (id: string): Promise<{ ok: boolean }> =>
     request(`/api/reviews/${encodeURIComponent(id)}`, { method: "DELETE" }),
   /** #115: re-do the guide (delete + create in one call); answers with the new loading review. */
-  redoReview: (id: string): Promise<ReviewSnapshot> =>
-    post(`/api/reviews/${encodeURIComponent(id)}/redo`),
+  redoReview: (id: string, personaId?: string): Promise<ReviewSnapshot> =>
+    post(
+      `/api/reviews/${encodeURIComponent(id)}/redo`,
+      ...(personaId !== undefined ? [{ personaId } satisfies { personaId: string }] : []),
+    ),
+  /** Issue #393: prompt-fork status per persona (Re-do menu + drift warning). */
+  promptForks: (): Promise<PromptForksResponse> => get("/api/prompt-forks"),
   resetData: (): Promise<ResetDataResponse> => post("/api/reset"),
   /** #311: stored data format vs this build's; `mismatch` gates the whole app on the reset notice. */
   dataFormat: (): Promise<DataFormatStatusResponse> => get("/api/data-format"),
@@ -361,13 +367,15 @@ const realApi = {
   goBackDataFormat: (): Promise<DataFormatGoBackResponse> => post("/api/data-format/go-back"),
   readiness: (force?: boolean): Promise<ReadinessResponse> =>
     get(`/api/readiness${force ? "?force=1" : ""}`),
-  review: (id: string, version?: number): Promise<ReviewSnapshot> =>
-    get(`/api/reviews/${encodeURIComponent(id)}${version !== undefined ? `?version=${version}` : ""}`),
+  review: (id: string): Promise<ReviewSnapshot> =>
+    get(`/api/reviews/${encodeURIComponent(id)}`),
   refresh: (id: string): Promise<RefreshResponse> => post(`/api/reviews/${encodeURIComponent(id)}/refresh`),
   /** Re-enqueue the pipeline stages that never finished (guide error-state Retry). */
   resume: (id: string): Promise<ResumeReviewResponse> => post(`/api/reviews/${encodeURIComponent(id)}/resume`),
-  update: (id: string): Promise<UpdateReviewResponse> => post(`/api/reviews/${encodeURIComponent(id)}/update`),
-  /** Issue #351: pick the baseline B (earlier version or commit sha) the next update explains from. */
+  /** Issue #413: explain changes since X (earlier version or commit sha). */
+  explain: (id: string, body?: SetSinceBaselineRequest): Promise<ExplainReviewResponse> =>
+    post(`/api/reviews/${encodeURIComponent(id)}/explain`, body ?? {}),
+  /** Issue #351/#413: record the X the next Explain explains from. */
   setSinceBaseline: (id: string, body: SetSinceBaselineRequest): Promise<SetSinceBaselineResponse> =>
     post(`/api/reviews/${encodeURIComponent(id)}/since-baseline`, body),
   /** Issue #351 step 2: clear a picked baseline (back to the default B). */
@@ -477,6 +485,9 @@ const realApi = {
   settings: (): Promise<Settings> => get("/api/settings"),
   saveSettings: (body: Partial<Settings>): Promise<Settings> =>
     request("/api/settings", { method: "PUT", body: JSON.stringify(body) }),
+  /** Issue #404: keys the user explicitly saved (unsaved roles take live defaults). */
+  savedSettingsKeys: (): Promise<import("@unvibe/shared").SavedKeysResponse> =>
+    get("/api/settings/saved-keys"),
   models: (provider: string): Promise<ModelsResponse> =>
     get(`/api/models?provider=${encodeURIComponent(provider)}`),
   /** Providers the pickers offer (issue #279): pi only when detected. */

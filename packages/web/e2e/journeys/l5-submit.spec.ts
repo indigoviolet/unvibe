@@ -468,7 +468,7 @@ test.describe("L5 submit mix on the demo", () => {
       const deadline = Date.now() + 90_000;
       for (;;) {
         const snap = await apiJson(s, "GET", `/api/reviews/${reviewId}`);
-        const anns = (snap.json as { annotations?: { id: string; anchor?: { host?: { kind: string; fileKey?: string; line?: number } }; replies?: { suggested?: boolean; blocks?: { type: string; text?: { standard?: string } }[] }[] }[] }).annotations ?? [];
+        const anns = (snap.json as { annotations?: { id: string; anchor?: { host?: { kind: string; fileKey?: string; line?: number } }; replies?: { suggested?: boolean; blocks?: { type: string; text?: string }[] }[] }[] }).annotations ?? [];
         const hit = anns
           .filter((a) => a.anchor?.host?.kind === "diff-line")
           .flatMap((a) => (a.replies ?? []).map((r) => ({ a, r })))
@@ -478,7 +478,7 @@ test.describe("L5 submit mix on the demo", () => {
           if (hit.a.anchor?.host?.kind === "diff-line" && hit.a.anchor.host.line) sugLine = hit.a.anchor.host.line;
           if (hit.a.anchor?.host?.kind === "diff-line" && hit.a.anchor.host.fileKey) sugFile = hit.a.anchor.host.fileKey;
           sugText = (hit.r.blocks ?? [])
-            .map((b) => (b.type === "paragraph" ? (b.text?.standard ?? "") : ""))
+            .map((b) => (b.type === "paragraph" ? (b.text ?? "") : ""))
             .join(" ")
             .replace(/<[^>]*>/g, " ")
             .replace(/\s+/g, " ")
@@ -1368,6 +1368,12 @@ test.describe("L5 inline confirm removes reviews and documents", () => {
       label: "l5confirm",
       extraEnv: { SHELL: fakeShell, PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ""}` },
     });
+    // Issue #422: this suite creates a document review through the UI,
+    // so the Markdown-docs gate goes on.
+    const gate = await apiJson(svc, "PUT", "/api/settings", {
+      experimental: { explainTerms: false, markdownDocs: true },
+    });
+    expect(gate.status).toBe(200);
     const added = await apiJson(svc, "POST", "/api/repos", { path: repoDir });
     expect(added.status).toBe(200);
     repoId = (added.json as { repos: { id: string; localPath: string }[] }).repos.find(

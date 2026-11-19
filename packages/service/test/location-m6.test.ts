@@ -15,8 +15,10 @@ import { BASE_SHA, deletedFile, HEAD_SHA, renamedFile, sourceFile } from "./m6-h
 
 function snapshotWith(annotations: Thread[], files = [sourceFile()], pages: ReviewSnapshot["pages"] = []): ReviewSnapshot {
   return {
-    review: { id: "rv", repoId: "rp", branch: "b", prNumber: 7, versions: [], currentVersion: 1, createdAt: 1 },
+    review: { id: "rv", repoId: "rp", branch: "b", prNumber: 7, versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: 1 },
     version: { n: 1, headSha: HEAD_SHA, mergeBaseSha: BASE_SHA, baseRef: "main", fetchedAt: 1, idMapping: {} },
+    // Issue #421: the fixture guide describes this head.
+    guideHead: { version: 1, sha: HEAD_SHA },
     files,
     pages,
     annotations,
@@ -42,8 +44,7 @@ function diffThread(fileKey: string, line: number, text = "body", extra: Partial
       kind: "comment",
       who: "you",
       question: null,
-      blocks: [{ type: "paragraph", id: "b1", text: { standard: text }, citations: [] }],
-      level: "standard",
+      blocks: [{ type: "paragraph", id: "b1", text: text, citations: [] }],
       revision: 1,
       undoStack: [],
     }],
@@ -139,11 +140,10 @@ describe("locateThread", () => {
             id: "c1",
             pageId: "p1",
             title: "C",
-            level: "standard",
             collapsed: false,
             revision: 1,
             blocks: [
-              { type: "paragraph", id: "b1", text: { standard: "see code" }, citations: [{ target: `diff:a-py:3@${HEAD_SHA}` }] },
+              { type: "paragraph", id: "b1", text: "see code", citations: [{ target: `diff:a-py:3@${HEAD_SHA}` }] },
             ],
             undoStack: [],
           },
@@ -156,7 +156,7 @@ describe("locateThread", () => {
       anchor: { host: { kind: "block", blockId: "b1" }, quotedText: "", prefix: "", suffix: "", position: 0, version: 1 },
       open: false,
       pinned: false,
-      replies: [{ id: "ans_t1", seq: 1, kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "guide q" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
+      replies: [{ id: "ans_t1", seq: 1, kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: "guide q", citations: [] }], revision: 1, undoStack: [] }],
       post: true,
     };
     const snap = snapshotWith([t], [sourceFile()], pages);
@@ -174,10 +174,9 @@ describe("locateThread", () => {
             id: "c1",
             pageId: "p1",
             title: "C",
-            level: "standard",
             collapsed: false,
             revision: 1,
-            blocks: [{ type: "paragraph", id: "b9", text: { standard: "no cites" }, citations: [] }],
+            blocks: [{ type: "paragraph", id: "b9", text: "no cites", citations: [] }],
             undoStack: [],
           },
         ],
@@ -189,7 +188,7 @@ describe("locateThread", () => {
       anchor: { host: { kind: "block", blockId: "b9" }, quotedText: "", prefix: "", suffix: "", position: 0, version: 1 },
       open: false,
       pinned: false,
-      replies: [{ id: "ans_t1", seq: 1, kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "g" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
+      replies: [{ id: "ans_t1", seq: 1, kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: "g", citations: [] }], revision: 1, undoStack: [] }],
       post: true,
     };
     const desc: Thread = {
@@ -198,7 +197,7 @@ describe("locateThread", () => {
       anchor: { host: { kind: "description", paragraphId: "d-p1" }, quotedText: "", prefix: "", suffix: "", position: 0, version: 1 },
       open: true,
       pinned: false,
-      replies: [{ id: "ans_t1", seq: 1, kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "d" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
+      replies: [{ id: "ans_t1", seq: 1, kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: "d", citations: [] }], revision: 1, undoStack: [] }],
       post: true,
     };
     const snap = snapshotWith([guide, desc], [sourceFile()], pages);
@@ -220,7 +219,7 @@ describe("locateThread", () => {
       },
       open: true,
       pinned: false,
-      replies: [{ id: "ans_t1", seq: 1, kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "Is beta still the right default?" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }],
+      replies: [{ id: "ans_t1", seq: 1, kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: "Is beta still the right default?", citations: [] }], revision: 1, undoStack: [] }],
       post: true,
     };
     const snap = snapshotWith([t]);
@@ -232,7 +231,7 @@ describe("locateThread", () => {
     // No repo to link to: the plain text stands alone. An empty comment
     // stays empty, so Submit still refuses it instead of posting a bare link.
     expect(locateThreadWithText(snap, t).text).toBe("Is beta still the right default?");
-    const empty: Thread = { ...t, id: "t-code-empty", replies: [{ id: "ans_t1", seq: 1, kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "" }, citations: [] }], level: "standard", revision: 1, undoStack: [] }] };
+    const empty: Thread = { ...t, id: "t-code-empty", replies: [{ id: "ans_t1", seq: 1, kind: "comment", who: "you", question: null, blocks: [{ type: "paragraph", id: "b1", text: "", citations: [] }], revision: 1, undoStack: [] }] };
     expect(locateThreadWithText(snap, empty, { owner: "octo", name: "hello" }).text).toBe("");
     // Single-line citations link #Lx, not #Lx-Lx.
     const single: Thread = {
@@ -258,8 +257,7 @@ describe("locateThread", () => {
       kind: "comment",
       who,
       question: null,
-      blocks: [{ type: "paragraph", id: "b1", text: { standard: text }, citations: [] }],
-      level: "standard",
+      blocks: [{ type: "paragraph", id: "b1", text: text, citations: [] }],
       revision: 1,
       undoStack: [],
       ...(suggested ? { suggested: true } : {}),
@@ -275,6 +273,6 @@ describe("locateThread", () => {
     };
     expect(threadPostText(base)).toBe("mine");
     expect(threadPostText({ ...base, draft: "d" })).toBe("d");
-    expect(threadPostText({ ...base, replies: [{ id: "ans_t1", seq: 1, kind: "comment", who: "agent", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "s" }, citations: [] }], level: "standard", revision: 1, undoStack: [], suggested: true }] })).toBe("s");
+    expect(threadPostText({ ...base, replies: [{ id: "ans_t1", seq: 1, kind: "comment", who: "agent", question: null, blocks: [{ type: "paragraph", id: "b1", text: "s", citations: [] }], revision: 1, undoStack: [], suggested: true }] })).toBe("s");
   });
 });

@@ -414,9 +414,12 @@ function makeNoSummarySnapshot(): import("@unvibe/shared").ReviewSnapshot {
       branch: "nosum",
       versions: [],
       currentVersion: 1,
+      guidePersonaId: "guide",
       createdAt: Date.now(),
     },
     version: { n: 1, headSha: "abc1234", mergeBaseSha: "def5678", baseRef: "main", fetchedAt: Date.now(), idMapping: {} },
+    // Issue #421: the fixture guide describes this head.
+    guideHead: { version: 1, sha: "abc1234" },
     files: [
       {
         fileKey: "gen-gen-u1-ts",
@@ -494,10 +497,13 @@ function makeOverLimitSnapshot(): import("@unvibe/shared").ReviewSnapshot {
       branch: "over",
       versions: [],
       currentVersion: 1,
+      guidePersonaId: "guide",
       createdAt: Date.now(),
     },
     version: { n: 1, headSha: "abc1234", mergeBaseSha: "def5678", baseRef: "main", fetchedAt: Date.now(), idMapping: {} },
     files,
+    // Issue #421: the fixture guide describes this head.
+    guideHead: { version: 1, sha: "abc1234" },
     ingest: { status: "ready" },
     pages: [],
     annotations: [],

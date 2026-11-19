@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 import type { ReviewSnapshot } from "@unvibe/shared";
-import { canonicalRevealTarget, citationChip, resolveCitation } from "./citations.js";
+import { canonicalRevealTarget, citationChip, resolveCitation, resolveHunkTarget } from "./citations.js";
 import type { ResolvedCitation } from "./citations.js";
 
 const CONN = "src-urllib3-connection.py";
@@ -19,9 +19,12 @@ function snapshot(): ReviewSnapshot {
       prNumber: 5020,
       versions: [],
       currentVersion: 1,
+      guidePersonaId: "guide",
       createdAt: 0,
     },
     version: { n: 1, headSha: "h", mergeBaseSha: "m", baseRef: "main", fetchedAt: 0, idMapping: {} },
+    // Issue #421: the fixture guide describes this head.
+    guideHead: { version: 1, sha: "h" },
     ingest: { status: "ready" },
     files: [
       {
@@ -178,5 +181,18 @@ describe("canonicalRevealTarget", () => {
     expect(canonicalRevealTarget(snap, `diff:${CONN}:80`, ALIASES)).toBe(`diff:${CONN}:80`);
     expect(canonicalRevealTarget(snap, "desc:d-p1", ALIASES)).toBe("desc:d-p1");
     expect(canonicalRevealTarget(snap, "bogus", ALIASES)).toBe("bogus");
+  });
+});
+
+describe("resolveHunkTarget (#413)", () => {
+  it("resolves an h: citation to its head line range", () => {
+    expect(resolveHunkTarget(snapshot(), `h:${CONN}:abc`)).toBe(`diff:${CONN}:80-89`);
+  });
+  it("returns null for unknown file keys, gone hashes and non-h targets", () => {
+    const snap = snapshot();
+    expect(resolveHunkTarget(snap, "h:nope:abc")).toBeNull();
+    expect(resolveHunkTarget(snap, `h:${CONN}:gone`)).toBeNull();
+    expect(resolveHunkTarget(snap, `diff:${CONN}:80-81`)).toBeNull();
+    expect(resolveHunkTarget(snap, "bogus")).toBeNull();
   });
 });

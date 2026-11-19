@@ -15,7 +15,7 @@
  * local git tip only, where that is already resolvable — no fetch.
  */
 import type { Repo, ReviewStatusUpdate } from "@unvibe/shared";
-import { displayedReviewDecision, ingestStatusOf, isDocumentReview, prStateFromGh } from "@unvibe/shared";
+import { displayedReviewDecision, hasNewCommits, ingestStatusOf, isDocumentReview, prStateFromGh } from "@unvibe/shared";
 import type { DatabaseSync } from "../store/index.js";
 import type { CommandRunner } from "../exec/index.js";
 import { runGh } from "../exec/index.js";
@@ -173,7 +173,7 @@ export async function refreshRepoReviewStatuses(
               ? { prState: prStateFromGh(snap.description.state, snap.description.isDraft) }
               : {}),
             ...(snap.description?.reviewDecision !== undefined ? { reviewDecision: snap.description.reviewDecision } : {}),
-            stale: (snap.versionStatus?.stale ?? false) || (snap.pendingHeadSha !== undefined && snap.pendingHeadSha !== currentHead),
+            stale: hasNewCommits(snap.versionStatus) || (snap.pendingHeadSha !== undefined && snap.pendingHeadSha !== currentHead),
           });
           continue;
         }
@@ -189,7 +189,7 @@ export async function refreshRepoReviewStatuses(
       }
 
       const headMoved = headSha !== "" && headSha !== currentHead;
-      const stale = (snap.versionStatus?.stale ?? false) || headMoved;
+      const stale = hasNewCommits(snap.versionStatus) || headMoved;
       // Stored raw state for the mutate comparison (same shape #230 writes).
       let rawState: string | undefined;
       let isDraft = false;

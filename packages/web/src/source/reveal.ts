@@ -12,7 +12,7 @@
  */
 import { isDocumentReview } from "@unvibe/shared";
 import { toast } from "../floating/Toast.js";
-import { canonicalRevealTarget } from "../guide/citations.js";
+import { canonicalRevealTarget, resolveHunkTarget } from "../guide/citations.js";
 import { useReview } from "../state/store.js";
 import { REVEAL_EVENT, revealSource as diffReveal } from "./diff/revealSource.js";
 import { openFileForCitation } from "./file/openFile.js";
@@ -38,6 +38,23 @@ function flashParagraph(paragraphId: string): void {
 
 export function revealSource(target: string, opts?: { keepFilters?: boolean }): void {
   const snapshot = useReview.getState().snapshot;
+  // Issue #413: an `h:` citation names a hunk by content hash — resolve
+  // it to its head line range first. `parseDiffRef` only reads `diff:`
+  // locations, so without this every `h:` chip fell through to the
+  // "couldn't find" toast with nothing unfolded. Unknown file keys
+  // and gone hashes fail loudly like any other missing target.
+  if (target.startsWith("h:")) {
+    if (!snapshot) {
+      toast("The review is still loading");
+      return;
+    }
+    const resolved = resolveHunkTarget(snapshot, target);
+    if (!resolved) {
+      toast("Couldn't find the cited code in this version");
+      return;
+    }
+    target = resolved;
+  }
   const canonical = snapshot ? canonicalRevealTarget(snapshot, target) : target;
   // Issue #222: a document citation scrolls to its block in the left pane.
   if (target.startsWith("doc:")) {
@@ -66,7 +83,7 @@ export function revealSource(target: string, opts?: { keepFilters?: boolean }): 
     toast("Couldn't open the cited file");
     return;
   }
-  if (target.startsWith("diff:") || target.startsWith("h:") || target.startsWith("code:")) {
+  if (target.startsWith("diff:") || target.startsWith("code:")) {
     if (!snapshot) {
       toast("The review is still loading");
       return;
@@ -77,3 +94,4 @@ export function revealSource(target: string, opts?: { keepFilters?: boolean }): 
   }
   toast("Couldn't open that link");
 }
+

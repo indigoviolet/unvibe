@@ -129,6 +129,11 @@ test.describe("L11 document review", () => {
     repo3Dir = mkdtempSync(path.join(os.tmpdir(), "unvibe-l11-repo3-"));
     await makeContextRepo(repo3Dir, "hello from the third repo");
     svc = await startService(dataDir, { agent: "replay", label: "l11doc" });
+    // Issue #422: the document flow needs the Markdown-docs gate on.
+    const gate = await apiJson(svc, "PUT", "/api/settings", {
+      experimental: { explainTerms: false, markdownDocs: true },
+    });
+    expect(gate.status).toBe(200);
     const added = await apiJson(svc, "POST", "/api/repos", { path: repoDir });
     expect(added.status).toBe(200);
     repoId = (added.json as { repos: { id: string; localPath: string }[] }).repos.find(
@@ -262,7 +267,7 @@ test.describe("L11 document review", () => {
       timeout: 15_000,
     });
     const snap = await apiJson(svc, "GET", `/api/reviews/${reviewId}`);
-    type Reply = { kind?: string; who?: string; suggested?: boolean; blocks?: { text?: { standard?: string } }[] };
+    type Reply = { kind?: string; who?: string; suggested?: boolean; blocks?: { text?: string }[] };
     const annotations = (snap.json as { annotations: { replies?: Reply[]; post: boolean }[] }).annotations;
     // The replayed Explain answer contributes an open question, offered
     // as an AI-suggested comment thread (#181): skip suggested threads
@@ -272,7 +277,7 @@ test.describe("L11 document review", () => {
         (r) =>
           r.kind === "comment" &&
           !r.suggested &&
-          (r.blocks ?? []).some((b) => b.text?.standard?.includes("Please expand this part.")),
+          (r.blocks ?? []).some((b) => b.text?.includes("Please expand this part.")),
       ),
     );
     expect(comment?.post).toBe(true);
@@ -317,11 +322,10 @@ test.describe("L11 document review", () => {
               {
                 type: "paragraph",
                 id: "b-cite",
-                text: { standard: "The greeting lives in the third repo." },
+                text: "The greeting lives in the third repo.",
                 citations: [{ target: `code:src/app.ts:2@${sha3}` }],
               },
             ],
-            level: "standard",
             revision: 1,
             undoStack: [],
           },

@@ -8,18 +8,13 @@
  * `<a class="cx" data-link="…">` (see `packages/shared/src/content/parse.ts`).
  * Everything here accepts both.
  */
-import type { Block, Card, DepthLevel, Job, Page } from "@unvibe/shared";
+import type { Block, Card, Job, Page } from "@unvibe/shared";
 import { displayCardTitle } from "@unvibe/shared";
 import { stagePhrase } from "./stageLabels.js";
 
 const stripTags = (s: string): string => s.replace(/<[^>]+>/g, " ");
 
-/** The per-depth text for a paragraph at the card's level (PRD §4.4). */
-export function depthText(text: { simple?: string; standard: string; deep?: string }, level: DepthLevel): string {
-  if (level === "simple") return text.simple ?? text.standard;
-  if (level === "deep") return text.deep ?? text.standard;
-  return text.standard;
-}
+
 
 /** Plain-text preview of a card (prototype `preview`). */
 export function cardPreview(card: Card): string {
@@ -28,7 +23,7 @@ export function cardPreview(card: Card): string {
   );
   let raw = "";
   if (!block) return raw;
-  if (block.type === "paragraph") raw = depthText(block.text, card.level);
+  if (block.type === "paragraph") raw = block.text;
   else if (block.type === "list") raw = block.items[0]?.html ?? "";
   else raw = block.code;
   return stripTags(raw).replace(/\s+/g, " ").trim();
@@ -39,7 +34,7 @@ export function pagePreview(page: Page): string {
   for (const card of page.cards) {
     for (const block of card.blocks) {
       if (block.type === "paragraph") {
-        const text = stripTags(depthText(block.text, card.level))
+        const text = stripTags(block.text)
           .replace(/\s+/g, " ")
           .trim();
         if (text) return text;
@@ -58,7 +53,7 @@ export function pagePreviewHtml(page: Page): string | null {
   for (const card of page.cards) {
     if (card.pending) continue;
     for (const block of card.blocks) {
-      if (block.type === "paragraph") return depthText(block.text, card.level);
+      if (block.type === "paragraph") return block.text;
     }
   }
   return null;
@@ -112,9 +107,7 @@ export function linkedPages(page: Page, lookup: (id: string) => Page | undefined
   };
   const walk = (b: Block): void => {
     if (b.type === "paragraph") {
-      scan(b.text.standard);
-      scan(b.text.simple);
-      scan(b.text.deep);
+      scan(b.text);
     } else if (b.type === "list") {
       b.items.forEach((i) => scan(i.html));
     } else if (b.type === "finding-link") {

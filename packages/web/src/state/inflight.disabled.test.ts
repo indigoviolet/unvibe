@@ -11,7 +11,7 @@ import { INFLIGHT_TTL_MS, inflightExpired, useReview } from "./store.js";
 function job(over: Partial<Job> = {}): Job {
   return {
     id: "job-1",
-    kind: "depth",
+    kind: "slower",
     provider: "claude",
     model: "mock",
     reviewId: "rv_inflight",
@@ -24,7 +24,7 @@ function job(over: Partial<Job> = {}): Job {
 
 function snap(rev: number, jobs: Job[] = []): ReviewSnapshot {
   return {
-    review: { id: "rv_inflight", repoId: "r", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
+    review: { id: "rv_inflight", repoId: "r", branch: "b", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: 0 },
     version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
     files: [],
     pages: [],
@@ -44,16 +44,16 @@ beforeEach(() => {
 
 describe("in-flight action lifecycle", () => {
   test("begin sets the entry synchronously", () => {
-    useReview.getState().beginInflight("c1", "depth");
+    useReview.getState().beginInflight("c1", "slower");
     const entry = useReview.getState().inflight["c1"];
-    expect(entry).toMatchObject({ kind: "depth", targetId: "c1" });
+    expect(entry).toMatchObject({ kind: "slower", targetId: "c1" });
     expect(entry?.jobId).toBeUndefined();
   });
 
   test("the entry survives a snapshot resync while still in flight", () => {
     const api = useReview.getState();
     api.setSnapshot(snap(5));
-    api.beginInflight("c1", "depth");
+    api.beginInflight("c1", "slower");
     // A newer confirmed snapshot with no jobs yet: the action is still
     // waiting for its job to appear, so the entry stays.
     useReview.getState().setSnapshot(snap(6));
@@ -64,7 +64,7 @@ describe("in-flight action lifecycle", () => {
   test("attaching a job hands over without clearing while it runs", () => {
     const api = useReview.getState();
     api.setSnapshot(snap(5));
-    api.beginInflight("c1", "depth");
+    api.beginInflight("c1", "slower");
     api.attachInflightJob("c1", "job-1");
     // The request returned before the job reached the snapshot: unknown
     // job ids never clear the entry.
@@ -83,7 +83,7 @@ describe("in-flight action lifecycle", () => {
     (state) => {
       const api = useReview.getState();
       api.setSnapshot(snap(5, [job()]));
-      api.beginInflight("c1", "depth");
+      api.beginInflight("c1", "slower");
       api.attachInflightJob("c1", "job-1");
       useReview.getState().setSnapshot(snap(6, [job({ state })]));
       expect(useReview.getState().inflight["c1"]).toBeUndefined();
@@ -93,7 +93,7 @@ describe("in-flight action lifecycle", () => {
   test("a terminal job clears the entry through patch and job events", () => {
     const api = useReview.getState();
     api.setSnapshot(snap(5, [job()]));
-    api.beginInflight("c1", "depth");
+    api.beginInflight("c1", "slower");
     api.attachInflightJob("c1", "job-1");
     const done = job({ state: "done" });
     useReview.getState().applyEvent({ type: "job", job: done });
@@ -113,7 +113,7 @@ describe("in-flight action lifecycle", () => {
   test("job events upsert jobs created after the snapshot was fetched", () => {
     const api = useReview.getState();
     api.setSnapshot(snap(5));
-    api.beginInflight("c1", "depth");
+    api.beginInflight("c1", "slower");
     api.attachInflightJob("c1", "job-1");
     // The service's job events are the only channel carrying the new job:
     // the client must adopt it, not drop it, or the entry sticks.
@@ -127,7 +127,7 @@ describe("in-flight action lifecycle", () => {
   test("attaching to an already-settled job clears immediately", () => {
     const api = useReview.getState();
     api.setSnapshot(snap(5, [job({ state: "done" })]));
-    api.beginInflight("c1", "depth");
+    api.beginInflight("c1", "slower");
     // The fill finished before the response was processed: no waiting.
     api.attachInflightJob("c1", "job-1");
     expect(useReview.getState().inflight["c1"]).toBeUndefined();
@@ -135,9 +135,9 @@ describe("in-flight action lifecycle", () => {
 
   test("begins assign distinct generations for stale-response guards", () => {
     const api = useReview.getState();
-    api.beginInflight("c1", "depth");
+    api.beginInflight("c1", "slower");
     const first = useReview.getState().inflight["c1"]?.seq;
-    api.beginInflight("c1", "depth");
+    api.beginInflight("c1", "slower");
     const second = useReview.getState().inflight["c1"]?.seq;
     expect(first).toBeDefined();
     expect(second).toBeDefined();
@@ -163,7 +163,7 @@ describe("in-flight action lifecycle", () => {
   test("a lingering entry expires via the TTL even with no store events", () => {
     vi.useFakeTimers();
     try {
-      useReview.getState().beginInflight("c1", "depth");
+      useReview.getState().beginInflight("c1", "slower");
       expect(useReview.getState().inflight["c1"]).toBeDefined();
       vi.advanceTimersByTime(INFLIGHT_TTL_MS + 1000);
       expect(useReview.getState().inflight["c1"]).toBeUndefined();
@@ -177,7 +177,7 @@ describe("in-flight action lifecycle", () => {
     try {
       const api = useReview.getState();
       api.setSnapshot(snap(5, [job({ state: "running" })]));
-      api.beginInflight("c1", "depth");
+      api.beginInflight("c1", "slower");
       api.attachInflightJob("c1", "job-1");
       // Well past the TTL: the running job holds the entry (timer
       // re-arms, resyncs reap nothing).
@@ -198,7 +198,7 @@ describe("in-flight action lifecycle", () => {
     try {
       const api = useReview.getState();
       api.setSnapshot(snap(5));
-      api.beginInflight("c1", "depth");
+      api.beginInflight("c1", "slower");
       // The response attached a job id the snapshot never learns: the
       // wait lapses instead of sticking forever.
       api.attachInflightJob("c1", "job-ghost");
@@ -213,7 +213,7 @@ describe("in-flight action lifecycle", () => {
     vi.useFakeTimers();
     try {
       const api = useReview.getState();
-      api.beginInflight("c1", "depth");
+      api.beginInflight("c1", "slower");
       // Re-begin just before the first TTL lapses: the first timer fires
       // while the newer entry is still fresh.
       vi.advanceTimersByTime(INFLIGHT_TTL_MS - 1000);
@@ -230,14 +230,14 @@ describe("in-flight action lifecycle", () => {
 
   test("clear wipes in-flight state", () => {
     const api = useReview.getState();
-    api.beginInflight("c1", "depth");
+    api.beginInflight("c1", "slower");
     api.clear();
     expect(useReview.getState().inflight).toEqual({});
   });
 
   describe("inflightExpired", () => {
     const entry = (over: Partial<import("./store.js").InFlightAction> = {}) => ({
-      kind: "depth" as const,
+      kind: "slower" as const,
       targetId: "c1",
       startedAt: 1000,
       seq: 1,

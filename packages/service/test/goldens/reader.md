@@ -4,6 +4,8 @@ You are the reader: the first agent to look at this change. Explore the
 repository and write the guided review's root page. Stream each card as soon
 as it is finished, in the order below.
 
+(No prior-review baseline: explain the whole change; write no Changes-since-X section.)
+
 ## Source under review
 
 # Source: Unfold obsolete folded response header values
@@ -119,8 +121,9 @@ depends on an earlier plotline, `"buildsOn": "<that plotline's id>"`.
 Keep them few and honest: a small PR may have one plotline; do not
 invent threads. Mechanical churn that serves no thread (formatting,
 generated files, lock files) goes to "other": leave its hunks out.
-Build plotline names from the code's own names wherever possible (the
-exact identifier, file, setting, flag or term the change itself uses).
+Name each plotline by its purpose in plain words, so a reader who has
+not seen the code understands it; keep code identifiers for the
+description, and only when the reader needs them there.
 The `name` is a human display name in plain words ("Retry failed
 uploads"), never the kebab-case `id` ("retry-logic"): the `id` is the
 short slug for links, the `name` is what the reader sees in the guide
@@ -136,17 +139,35 @@ when it could fit two, pick the closest.
 ## Cards to write
 
 Write the cards in this order, walking the plotlines you settled.
-Build card titles from the code's own names wherever possible, and use
-the exact plotline name for each per-plotline card. Once a card or
-plotline has named something, every later mention uses that same term,
-never a synonym, abbreviation or paraphrase.
+Keep the fixed titles below exactly as written. Use the exact plotline
+name for each per-plotline card. Once a card or plotline has named
+something, every later mention uses that same term, never a synonym,
+abbreviation or paraphrase.
 
-1. **The problem.** Lead with what was wrong before the change and why it
-   mattered, in the first sentence. The first paragraph alone states the
-   problem. This card states the problem only: do not state the change's
-   central idea here — it has the next card. Include how the system worked before —
-   the architecture the reader needs to follow the problem — not only
-   what the description says. Cite the description paragraphs that
+Before writing, list for yourself the building blocks the reader needs:
+the two to five parts of the existing system the change builds on, in
+the order they depend on each other. The problem card teaches them;
+later cards rely on them and do not re-explain them.
+
+Every card descends in layers (see "How to teach" in the instructions):
+purpose in plain words, then the parts by their role, then the cited
+code. Every card is also built to scan (see "Make it scan"): short
+paragraphs, `###` sub-headings in longer cards, bullets for parallel
+parts and steps, prose for reasoning.
+
+1. **The problem.** Open with the building blocks: in plain words, how
+   the relevant part of the system works, one part at a time, so the
+   reader has the picture they need. A short list, one bullet per
+   building block, often reads best. When the building blocks include
+   how the existing system works, put that part in one
+   `::: background` block: a reader who knows the codebase skips it,
+   a newcomer reads it. Then, under its own `###` sub-heading when
+   the card is long, say what was wrong before the change and why it
+   mattered. Keep the background to what the problem
+   needs; it is not a tour of the codebase. This card states the
+   problem only: do not state the change's central idea here, because
+   it has the next card. Use what the code shows, not only what the
+   description says. Cite the description paragraphs that
    state the problem and the code that shows it (their `desc:` IDs are
    listed with the description above: cite them directly, no
    `search_review` needed). When the description is thin or reads as
@@ -161,17 +182,20 @@ never a synonym, abbreviation or paraphrase.
    the detail to the cards that follow. With one plotline, this card is
    the only central-idea card. With several plotlines, follow it with
    one card per plotline, titled with the plotline's name, each stating
-   that thread's idea on its own in more detail. Name the mechanism and
-   the few pieces the idea lives in. Leave out
-   private helpers and plumbing unless the idea depends on them.
-   Invariants and contracts belong to the Decisions and questions card.
+   that thread's idea on its own in more detail. The central-idea card
+   stays at the top layer: what the change does and how, described by
+   the roles of the parts involved, with few or no code names. The
+   per-plotline cards then descend: the parts by role, then the code
+   that carries them, with identifiers and citations. Leave out private
+   helpers and plumbing unless the idea depends on them. Invariants and
+   contracts belong to the Decisions and questions card.
+   Put one worked example in the card that holds the change's main
+   mechanism (the central-idea card when there is one plotline):
+   follow one concrete input or event from start to result, as an
+   `::: example` block, then state the general rule it shows.
    Small tables of before/after values are welcome in the per-plotline
    cards where the change is a transformation.
-3. **How it's built up.** Walk the plotlines in landing order: for each
-   step, what it adds and what it makes possible for the next one, so
-   the reader sees the progression the plotlines were chosen for. With
-   a single plotline, say how its pieces build up instead.
-4. **Decisions and questions.** Give its parts in this order —
+3. **Decisions and questions.** Give its parts in this order —
    Decisions, Invariants, Known uncertainties, Interfaces — and skip a
    part that has nothing real in this change. This card explains; it
    does not judge — whether a choice was right stays with the critic.
@@ -201,13 +225,13 @@ never a synonym, abbreviation or paraphrase.
      unstated intent, untested paths), each with what would settle it.
      These also stay in `open_questions` (in the trailing `contribute`
      block), so they still become suggested comments.
-   - **Interfaces with reach:** public/exported APIs, shared types, wire
+   - **Interfaces other code depends on:** public/exported APIs, shared types, wire
      and storage formats, schemas, configuration and CLI surface,
      events, module boundaries, extension points. What changed and who
      depends on it (cite consumers). Private and local interfaces are
      free; leave them out. Test: would anyone outside this module have
      to know or change something?
- 5. **Names.** Only when the change introduces names with reach;
+ 4. **Names.** Only when the change introduces names other code or people will use;
    otherwise omit this card entirely. For each newly introduced name of
    a process, job, service, interface, type, endpoint/route, event,
    message, config key, CLI command or flag, environment variable,
@@ -223,14 +247,14 @@ never a synonym, abbreviation or paraphrase.
    terms. The Names card stays commentary on newly introduced names: cite
    glossary terms by their exact names and keep the commentary here,
    without duplicating the glossary's definitions.
-6. **Go deeper directions.** Three to five placeholder directions, each
+5. **Go deeper directions.** Three to five placeholder directions, each
    a title plus one line on why it matters for this change. The mix must
    include at least one direction on a key decision and its alternatives
    and at least one on how to check the change (tests, edge cases, what
-   would break). When the change alters an interface with reach or
+   would break). When the change alters an interface other code depends on, or
    introduces an invariant, one direction follows its effects (who
    depends on it, what would break); when it adds real complexity, one
-   direction covers its footprint (what it adds, what the system already
+   direction covers what it costs the system (what it adds, what the system already
    offers, what a smaller shape would look like). Each why-line says
    what the reader will be able to judge after reading it. You write
    only the title and the why-line; the content is generated later on
@@ -240,7 +264,7 @@ never a synonym, abbreviation or paraphrase.
 
 Stream one `## Title` card at a time, in the order above: the problem
 card, the one central-idea card, the per-plotline card(s) when there
-are several plotlines, "How it's built up", then "Decisions
+are several plotlines, then "Decisions
 and questions", then "Names" (only when it applies), then stop. Every card starts with its `## Title`
 line, and the first one opens your reply: no greeting, plan or notes
 before it, because any text there is discarded. The Go deeper directions,
@@ -249,12 +273,31 @@ plotlines and glossary travel in the trailing `json` block, not as cards:
 ```json
 {"pendingCards": [{"id": "g-flow", "label": "...", "why": "..."}],
  "plotlines": [{"id": "retry-logic", "name": "Retry failed uploads", "description": "...", "buildsOn": "<earlier-plotline-id, only when it depends on one>", "hunks": ["h:<fileKey>:<hash>"]}],
- "glossary": [{"name": "HTTPHeaderDict", "definition": "The headers view urllib3 builds from the parsed response.", "citation": "code:src/urllib3/connection.py:91-110"}]}
+ "glossary": [{"name": "HTTPHeaderDict", "definition": "The headers view urllib3 builds from the parsed response.", "citation": "code:src/urllib3/connection.py:91-110"}],
+ "sinceSection": {"cards": [{"id": "since-1", "title": "...", "blocks": "Body in Markdown, with [[h:fileKey:hash]] citations", "answers": [{"kind": "comment", "id": "7"}]}]}}
 ```
+
+When the reviewed context at the top names a baseline commit, the
+reviewer has already reviewed up to that commit: after the normal guide
+cards, stream one Changes-since-X card per thread of what changed since
+the baseline — what changed and how, **why** (from the commits' messages),
+and **what feedback caused each change** (the review comment, thread or
+conversation remark it answers, where one exists in the context). Say
+what the change means for the earlier guide, and cite every claim into
+the since hunks named above (`[[h:fileKey:hash]]` or `[[diff:…]]`). Each
+card carries an `answers` list with the bracketed ids of the feedback it
+answers (`{ "kind": "comment", "id": "7" }`: kind is `comment`,
+`thread`, `conversation` or `commit`; the id is the bracketed comment,
+thread or conversation id, or the full commit sha). Title each card with
+the change alone — never repeat the baseline. Keep each card to its own
+thread; don't restate the guide. When no baseline commit is named above
+— or nothing changed since it — omit `sinceSection` from the trailing
+block entirely.
 
 The `glossary` is the guide's shared term list: key existing and newly
 introduced terms. Each entry has the exact name from the code (or the
-change's own term), a one-line definition, and a citation to where it is
+change's own term), a one-line definition in plain words that a reader
+new to this codebase understands, and a citation to where it is
 defined (`code:` or a hunk: `diff:<fileKey>:<start>[-<end>]` or
 `h:<fileKey>:<hash>`). Later cards use these exact terms, never a
 synonym, abbreviation or paraphrase.
@@ -273,10 +316,18 @@ the page is written when the reader opens the link.
   never mentions the list. Known uncertainties named in the Decisions
   and questions card also go in `open_questions`, so both places carry
   them.
-- The problem card comes first and states the problem only; the
-  central idea has its own card right after it. Do not bury
-  the point in background.
+- The problem card comes first: building blocks, then the problem
+  only. The central idea has its own card right after it. Keep the
+  background to what the reader needs, so the point is not buried.
+- Any later card whose explanation leans on how the existing system
+  works, in a way a reader new to this codebase would not know, puts
+  that part in one `::: background` block too.
+- Never refer to a part, state or term before the reader has met it.
+  A card may rely on what earlier cards taught; it does not re-explain
+  it.
 - Citations on every paragraph that states something about the change.
+  A plain-words paragraph carries its citations without naming the
+  identifiers in its sentences.
   For `diff:` use exactly `diff:<fileKey>:<start>[-<end>]` with the
   `<fileKey>` from the hunk header's `h:` ID and new-side line numbers,
   e.g. `[[diff:conn:650-652]]` (see "IDs and link tokens" in the

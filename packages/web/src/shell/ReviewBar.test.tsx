@@ -3,13 +3,12 @@
  * link (PR reviews only, #235: no separate open-externally button, no
  * PR title, no preview/full-access badges), the Debug icon button, the
  * Guide|Source selector, and Comments + primary Submit side by side.
- * Issue #120: the version selector lives here next to the identity
- * (rendered once, also with the guide pane hidden); the current version
- * is annotated in the dropdown and an older shown version flags the select.
+ * Issue #427: no version selector anywhere (the old #120 switcher is
+ * gone); the history menu owns the timeline now.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router";
 import { api } from "../api/client.js";
 import { resetMockState } from "../mock/index.js";
@@ -89,9 +88,9 @@ describe("ReviewBar", () => {
     expect(debug).toHaveAttribute("href", "/review/r-old/debug");
     expect(debug).toHaveAttribute("title", "Debug");
     // #241: Refresh lives in the bar now (next to the status icon),
-    // tooltip exactly "Refresh".
-    const refresh = screen.getByRole("button", { name: "Refresh" });
-    expect(refresh).toHaveAttribute("data-tip", "Refresh");
+    // tooltip says it pulls new commits from GitHub (#420).
+    const refresh = screen.getByRole("button", { name: "Pull new commits from GitHub" });
+    expect(refresh).toHaveAttribute("data-tip", "Pull new commits from GitHub");
     expect(document.getElementById("reviewbar")).toContainElement(refresh);
     expect(screen.getByRole("button", { name: "Guide" })).toHaveAttribute("aria-pressed", "true");
     expect(document.getElementById("toggleRight")).toHaveTextContent("Source");
@@ -162,7 +161,7 @@ describe("ReviewBar", () => {
 
   it("shows Refresh in the bar, hidden for document reviews (#241)", async () => {
     await renderBar("r-old", "urllib3/urllib3#5011");
-    expect(screen.getByRole("button", { name: "Refresh" })).toHaveAttribute("data-tip", "Refresh");
+    expect(screen.getByRole("button", { name: "Pull new commits from GitHub" })).toHaveAttribute("data-tip", "Pull new commits from GitHub");
     cleanup();
     useReview.getState().clear();
     const snap = await api.review("demo");
@@ -177,7 +176,7 @@ describe("ReviewBar", () => {
       </MemoryRouter>,
     );
     await screen.findByRole("button", { name: "Guide" });
-    expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Pull new commits from GitHub" })).toBeNull();
   });
 
   it("document reviews show a document icon plus the short name, not the first context repo (#254)", async () => {
@@ -204,7 +203,7 @@ describe("ReviewBar", () => {
     expect(docid!.querySelector("svg.ic")).not.toBeNull();
     expect(bar).not.toHaveTextContent("urllib3/urllib3");
     expect(screen.queryByRole("link", { name: "Open PR on GitHub" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Pull new commits from GitHub" })).toBeNull();
     // The browser tab names the document.
     expect(document.title).toBe("Design note");
     cleanup();
@@ -436,6 +435,57 @@ describe("ReviewBar", () => {
       expect(screen.getByTestId("loc").textContent).toMatch(/^\/review\/mock-loading-/);
     });
 
+    it("offers Re-do with for a guide-capable persona and records it", async () => {
+      // Issue #393: the mock hook simulates a forked setup (fresh
+      // installs have no guide-capable persona, so no menu).
+      localStorage.setItem(
+        "unvibe.mock.forks",
+        JSON.stringify({
+          forks: [
+            { personaId: "guide", name: "Guide", enabled: true, guideCapable: false, drifted: [] },
+            { personaId: "tutor", name: "Tutor", enabled: true, guideCapable: true, drifted: [] },
+            { personaId: "quiet", name: "Quiet", enabled: false, guideCapable: true, drifted: [] },
+          ],
+        }),
+      );
+      await renderBarWithLocation("r-old");
+      fireEvent.click(screen.getByRole("button", { name: "Re-do guide" }));
+      const menu = await screen.findByTestId("redo-menu");
+      const items = within(menu);
+      // The plain choice stays; disabled personas are never offered.
+      expect(items.getByRole("menuitem", { name: "Re-do guide" })).toBeInTheDocument();
+      expect(items.getByRole("menuitem", { name: "Re-do with Tutor" })).toBeInTheDocument();
+      expect(items.queryByRole("menuitem", { name: "Re-do with Quiet" })).toBeNull();
+      const redo = vi.spyOn(api, "redoReview");
+      fireEvent.click(items.getByRole("menuitem", { name: "Re-do with Tutor" }));
+      await screen.findByText("Confirm re-do with Tutor");
+      fireEvent.click(screen.getByRole("button", { name: "Confirm re-do with Tutor" }));
+      await waitFor(() => expect(screen.getByTestId("loc")).not.toHaveTextContent("/review/r-old"));
+      expect(redo).toHaveBeenCalledWith("r-old", "tutor");
+      const newId = (screen.getByTestId("loc").textContent ?? "").replace("/review/", "");
+      expect((await api.review(newId)).review.guidePersonaId).toBe("tutor");
+    });
+
+    it("Escape closes the menu without calling", async () => {
+      localStorage.setItem(
+        "unvibe.mock.forks",
+        JSON.stringify({
+          forks: [
+            { personaId: "guide", name: "Guide", enabled: true, guideCapable: false, drifted: [] },
+            { personaId: "tutor", name: "Tutor", enabled: true, guideCapable: true, drifted: [] },
+          ],
+        }),
+      );
+      await renderBarWithLocation("r-old");
+      const redo = vi.spyOn(api, "redoReview");
+      fireEvent.click(screen.getByRole("button", { name: "Re-do guide" }));
+      await screen.findByTestId("redo-menu");
+      fireEvent.keyDown(document, { key: "Escape" });
+      await waitFor(() => expect(screen.queryByTestId("redo-menu")).toBeNull());
+      expect(redo).not.toHaveBeenCalled();
+      expect(screen.getByTestId("loc")).toHaveTextContent("/review/r-old");
+    });
+
     it("cancel closes the confirmation without calling", async () => {
       await renderBarWithLocation("r-old");
       const redo = vi.spyOn(api, "redoReview");
@@ -535,62 +585,16 @@ describe("ReviewBar", () => {
     });
   });
 
-  describe("version selector (#120)", () => {
-    it("renders once in the bar for a multi-version review, hidden for one version", async () => {
-      // r-old carries two versions; the demo only one.
+  describe("no version selector (#427)", () => {
+    it("never renders a version switcher, even for a multi-version review", async () => {
+      // r-old carries two versions; the demo only one — neither shows one.
       await renderBar("r-old", "urllib3/urllib3#5011");
-      const switches = screen.getAllByTestId("version-switcher");
-      expect(switches).toHaveLength(1);
-      expect(document.getElementById("reviewbar")).toContainElement(switches[0]);
-      const pick = screen.getByLabelText("View version");
-      expect(pick).toHaveTextContent("v2 · e4f5a6b7 · current");
-      expect(pick).toHaveClass("ui-select");
-      // The current version is annotated in the dropdown.
-      fireEvent.click(pick);
-      const texts = (await screen.findAllByRole("option")).map((o) => o.textContent?.replace("✓", "").trim());
-      expect(texts).toContain("v2 · e4f5a6b7 · current");
-      expect(texts).toContain("v1 · bdcc1e49");
+      expect(screen.queryByTestId("version-switcher")).toBeNull();
+      expect(screen.queryByLabelText("View version")).toBeNull();
       cleanup();
       useReview.getState().clear();
       await renderBar("demo", "urllib3/urllib3#5020");
       expect(screen.queryByTestId("version-switcher")).toBeNull();
-    });
-
-    it("stays in the bar with the guide pane hidden", async () => {
-      useReview.getState().setSnapshot(await api.review("r-old"));
-      render(
-        <MemoryRouter initialEntries={["/review/r-old"]}>
-          <ReviewBar reviewId="r-old" guideOpen={false} sourceOpen onToggleGuide={noop} onToggleSource={noop} />
-        </MemoryRouter>,
-      );
-      await screen.findByText("urllib3/urllib3#5011", {}, { timeout: 5000 });
-      expect(screen.getByTestId("version-switcher")).toBeInTheDocument();
-    });
-
-    it("flags an older shown version and annotates current as the way back", async () => {
-      window.history.replaceState({}, "", "/review/r-old?version=1");
-      try {
-        useReview.getState().setSnapshot(await api.review("r-old"));
-        render(
-          <MemoryRouter initialEntries={["/review/r-old?version=1"]}>
-            <ReviewBar reviewId="r-old" guideOpen sourceOpen onToggleGuide={noop} onToggleSource={noop} />
-          </MemoryRouter>,
-        );
-        await screen.findByText("urllib3/urllib3#5011", {}, { timeout: 5000 });
-        // The select shows the older version with the warning state; the
-        // bar itself carries no notice and no back button.
-        const switcher = screen.getByTestId("version-switcher");
-        expect(switcher).toHaveAttribute("data-ro", "1");
-        expect(screen.queryByRole("button", { name: "Back to current" })).toBeNull();
-        expect(switcher).not.toHaveTextContent("read-only");
-        const pick = screen.getByLabelText("View version");
-        expect(pick).toHaveTextContent("v1 · bdcc1e49");
-        fireEvent.click(pick);
-        const texts = (await screen.findAllByRole("option")).map((o) => o.textContent?.replace("✓", "").trim());
-        expect(texts).toContain("v2 · e4f5a6b7 · current");
-      } finally {
-        window.history.replaceState({}, "", "/");
-      }
     });
   });
 });

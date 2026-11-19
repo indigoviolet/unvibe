@@ -143,9 +143,9 @@ UI); nothing below was edited by this pass.
   full-width source per #83, Comments + primary Submit; at narrow widths
   the title gives way first and the selector never truncates; no Settings
   gear) — met
-  (`ReviewBar.tsx`, `VersionSwitcher.tsx`, `AppShell.test.tsx`,
-  `journeys/j245-reviewbar-pr.spec.ts` (+ `journeys/j12-refresh.spec.ts`
-  for the older-version read-only side); `docs/screenshots/55-review.png`,
+  (`ReviewBar.tsx`, `AppShell.test.tsx`,
+  `journeys/j245-reviewbar-pr.spec.ts`; old-version viewing removed in
+  #427; `docs/screenshots/55-review.png`,
   `55-review-800px.png`, `55-review-dark.png`,
   `83-source-full-width.png`, `120-wide-light.png`,
   `120-narrow-light.png`, `120-wide-dark.png`, `120-narrow-dark.png`,
@@ -241,8 +241,7 @@ UI); nothing below was edited by this pass.
   note once above the lists.
 - Authoring / review-requested / branches / prior reviews with
   unread+stale (“new commits · Update”) — met (`repos/changes.ts`,
-  `reviews/list.ts`, `e2e/start.spec.ts`, `settings-versions-service.spec.ts`
-  refresh banner counts).
+  `reviews/list.ts`, `e2e/start.spec.ts`).
 - Reviews-list statuses fresh on load/Refresh (#298) — met
   (`repos/review-statuses.ts`: one batched GraphQL query per repo
   covers every PR-backed review — state, displayed decision and head
@@ -362,14 +361,16 @@ needed (that deviation is closed, not added).
    bundled-demo examples, so malformed `diff:` IDs (the 6 failures in
    the #124 re-measure) are less likely to need a repair turn
    (`prompts.test.ts` pins every concrete `diff:` example to the parser).
-- Depth −/+ stepper, 3 dots, in-place rewrite, underlying principle at
-  deepest, on-demand + kept — met (`actions/depth.ts`,
-  `actions-m4.test.ts` “depth round-trips”). While a depth change runs,
-  + and − keep their icons and are disabled, with no dots inside the
-  control, in both directions — one shared control for page cards and
-  conversation answers (issue #129; the target-pip pulse was dropped as
-  allowed — `guide/DepthControl.tsx`, `DepthControl.test.tsx`,
-  `depth-principle-service.spec.ts`).
+- Help me understand (replaces the depth stepper, #387): one icon button
+  per card toolbar rewrites the card more slowly than its current text —
+  repeatable and relative, no levels; undo steps back through the
+  presses. Applies to page cards, thread replies and persona variants;
+  card/guide copy copies the shown text. Stored `level` and per-level
+  paragraph text are gone (`DATA_FORMAT` 8).
+  Supersedes the depth-stepper verdict below.
+- ? mode (#388): superseded by #418 below — the top-bar toggle, the
+  guide-wide picking, the global tray, `question-rewrite` and their
+  journeys/frames are removed, nothing left over.
 - Examples / Add diagram inserts, never duplicated — met
   (`actions/examples.ts`, `diagram.ts`, dedupe in apply; audit-10 adds
   upfront `reused:true` short-circuit so repeats cost no agent call —
@@ -433,7 +434,7 @@ needed (that deviation is closed, not added).
   bytes. Not fixed in app code (overriding the family would break D2's
   tight box layout); shorter labels + inline/overlay zoom are the
   mitigations.
-- Undo (depth/examples/diagram, no redo, comments/nested cards survive)
+- Undo (slower/examples/diagram, no redo, comments/nested cards survive)
   — met (`actions/undo.ts`, `actions-m4.test.ts`).
 - Read state removed as a feature (#136, owner decision): no Mark read
   control and no stored read state on any card (guide or
@@ -1073,8 +1074,8 @@ needed (that deviation is closed, not added).
   (lazy Shiki core/engine/grammars, class-based theme colours, content-hash
   cache); unshipped languages stay plain — met
   (`source/diff/highlight/*.test.ts(x)`, `e2e/shiki-highlight.spec.ts`).
-- New-commits banner; stale/outdated per §8 — met
-  (`settings-versions-service.spec.ts` “refresh banners counts”).
+- Timeline menu per §8 (dot + counting tooltip, guide entry,
+  guide/new/latest hints) — met (`e2e/journeys/l7-since.spec.ts`).
 - Expand beyond hunks, by lines (issue #133, stage 1) — met:
   `GET /api/reviews/:id/file` serves raw ranges at a commit through the
   shared `readCodeSlice` source with a per-request cap
@@ -1161,6 +1162,9 @@ needed (that deviation is closed, not added).
   Settings → Environment); readiness, Doctor,
   jobs and second-opinion labels use the same format; `opus` (Opus 5.5)
   outranks dated `claude-opus-5` (older Opus 5) in defaults + tests.
+  The "no longer offered" error shows only for a model the user saved
+  that the adapter dropped (issue #404: `GET /api/settings/saved-keys`
+  provenance; a never-saved static default never accuses the user).
 - Live role defaults (#88) — met: tiers opus | sol > sonnet | terra >
   haiku | luna with newest version per tier, never Fable/Astra, matched on
   family plus highest version (aliases lose to versioned ids, `opus` beats
@@ -1389,25 +1393,23 @@ needed (that deviation is closed, not added).
   reviews, ask-about, follow-ups, hunk cards, suggestions) place by text
   match as before; no migration — reset for exact anchors on old
   reviews.
-- New head SHA → version + ID mapping; old versions viewable — met
-  (`versions/refresh.ts`, `review_version_files`, `GET ?version=n`,
-  the selector rendered once in the review bar per #120 with the current
-  version annotated in the dropdown, `versions-refresh.test.ts`,
-  `settings-versions-service.spec.ts` “v1 viewable”).
-- Rebase-vs-branch by content hash + `range-diff` — met
-  (`versions/compare.ts`, `rangeDiff.ts`; refresh test (a): rebase
+- New head SHA → version + ID mapping — met
+  (`versions/refresh.ts`, `review_version_files` for carry-over,
+  `versions-refresh.test.ts`).
+- Rebase-vs-branch by content hash — met
+  (`versions/compare.ts`; refresh test (a): rebase
   no-conflicts → “no change”, state preserved — ran).
 - Hunk state kept by hash / cleared+regen+note-kept — met (test (b)).
 - Code comments moved vs outdated (+snippet + new-code link) — met
   (tests (b)(c)(e)).
-- Cards stale badge + Update; findings rechecked; pinned code re-pinned;
-  threads' change lists — met (`versions/citations.ts`, `update.ts`,
-  `versions-update.test.ts`; #52: pins in files the new diff does not touch
+- Cards carry no stale flags and findings carry no recheck state (#413); pinned code is found again by content;
+  threads' change lists — met (`versions/citations.ts`, `versions/explain.ts`,
+  `versions-explain.test.ts`; #52: pins in files the new diff does not touch
   are decided by content at the new head — unchanged kept, moved remapped,
   gone/missing/binary/large/unreadable flagged — `versions/refresh.ts`,
   `versions-refresh.test.ts` (h)–(m)).
-- Manual update only (fetch/compare free on open/refresh; pass on Update)
-  — met (`routes/reviews.ts` refresh vs update; update pass jobs).
+- Manual explain only (fetch/compare free on open/refresh; one agent call on Explain click)
+  — met (`routes/reviews.ts` refresh vs explain; explain-pass jobs).
 - Table row “Pinned code / Thread in progress” — met
   (`secondopinion/excerpts.ts` re-pin; `sharedctx/threads.ts` change lists).
 
@@ -1424,8 +1426,8 @@ needed (that deviation is closed, not added).
   names only real tools (`get_hunk`, `search_review`, `resolve`,
   `get_code`); `buildHunkSummaries`/`buildHiddenHunksSection` obey the
   same cap; reader, base, second-opinion, prompt preview and debug page
-  all build from the one ladder call; the update pass caps
-  `changed_hunks`. Under the budgets every builder is byte-identical to
+  all build from the one ladder call; the explain pass caps
+  `x_hunks`. Under the budgets every builder is byte-identical to
   before (`prompt-goldens.test.ts` unchanged). Follow-up: the cap holds
   for the assembled base message, not per section — `buildBasePack`
   gives hunk summaries only what is left of the cap after L1+L1b+L2
@@ -1514,9 +1516,10 @@ needed (that deviation is closed, not added).
 1. Ingest (PR detection, fetch, merge-base diff, IDs, classification,
    budget check, worktree) — met (`ingest/*`; 300-file ingest 0.15 s —
    ran).
-2. Reader (explore, plotlines settled first, then problem (the problem
-   only) / one central-idea card (always, even with several plotlines;
-   per-plotline cards follow it when several) / "How it's built up" /
+2. Reader (explore, plotlines settled first, then problem (building
+   blocks first, the problem only) / one central-idea card (always,
+   even with several plotlines; per-plotline cards follow it when
+   several; #405 drops the "How it's built up" card) /
    "Decisions and questions" (parts in the order Decisions, Invariants,
    Known uncertainties, Interfaces; no "What it adds and removes" part;
    a decision that introduces a second way of doing something the
@@ -1561,7 +1564,7 @@ needed (that deviation is closed, not added).
    "Summaries for X of Y hunks · Summarize more" whenever hunks lack
    summaries, and the trace's `review.skipped` counts every hunk without
    a summary to match.
-6. On demand (depth/go-deeper — automatic in the background by default (#217; an auto-written card stays collapsed, title and why-line, until the reader opens it, and opening shows the written content with no new job), or on Generate when the setting is off — /explain/examples/diagrams/answers/concepts/
+6. On demand (depth/go-deeper — on Generate by default (#389), or automatic in the background when the setting is on (#217; an auto-written card stays collapsed, title and why-line, until the reader opens it, and opening shows the written content with no new job) — /explain/examples/diagrams/answers/concepts/
    second opinions) — met (`pipeline/actions/*`, `actions-m4.test.ts`).
    Full concept pages may draw a `d2` diagram inline, same rule as
    explain/go_deeper (#69; the template used to recommend one in prose).
@@ -1574,8 +1577,8 @@ needed (that deviation is closed, not added).
    thread replies still show the raw D2 source (`<pre class="d2">`, no
    on-demand render — storing thread replies as blocks would be a
    storage change, deliberately not built).
-7. Update pass (changed/new hunks only) — met (`versions/update.ts`,
-   `enqueueUpdatePass`, `versions-update.test.ts`).
+7. Explain-since-X pass (X→head hunks only) — met (`versions/explain.ts`,
+   `enqueueExplainPass`, `versions-explain.test.ts`).
 
 ## §12 Models and concurrency — all met (audit-10)
 
@@ -1812,7 +1815,7 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
 - One-review submit (`gh api …/reviews event=COMMENT`) + `gh pr edit
   --body-file` — met (`submit/submit.ts:232`, exact-payload test).
 - `git worktree add <managed-path> <head>` — met (`ingest/source.ts:198`).
-- `range-diff` rebase comparison — met (`versions/rangeDiff.ts`).
+- Content-hash rebase comparison — met (`versions/compare.ts`).
 - Description round-trip (unedited paragraphs byte-identical) — met
   (`submit/description.ts` + goldens).
 - `GITHUB_TOKEN` unset for all `gh` — met (`exec/gh.ts:12`,
@@ -1915,8 +1918,9 @@ no-queue/no-ctx 501 fallbacks, which never trigger in production wiring.
   issue #32).
 - M4 comments/submit — met (threads ×3, Comments menu + Outbox drafts,
   suggested comments, author-gated description edit, one-review submit).
-- M5 versions — met (refresh mapping, stale/outdated UI, hash-preserved
-  hunk state, update pass, rebase-no-change test (a)).
+- M5 versions — met (refresh mapping, the #427 timeline menu,
+  hash-preserved hunk state, explain-since-X pass, rebase-no-change
+  test (a)).
 - M6 second opinion + settings — met (blind/check, models/prompt-
   templates/limits settings page; jobs + expanded prompts + usage on the
   per-review debug page, issue #32; isolation e2e on the real prompt).
@@ -2433,7 +2437,7 @@ those tools are manager shims (the command runner spawns whatever
 - Checkout/clone cwd, load-bearing: ingest (`git fetch`,
   `worktree add/remove`, `gh pr view` — throws), submit (`gh pr …`
   posts), repos/refresh (`git merge-base`, `rev-list`, `show`,
-  `range-diff`, `gh api`). Unvibe-managed clones
+  `gh api`). Unvibe-managed clones
   (`<dataDir>/repos/<owner>/<name>`) hold the reviewed repo's config,
   untrusted like the worktree; user checkouts hold the user's own
   (trusted) config.
@@ -2603,6 +2607,27 @@ hunk coverage) is reported for a separate issue, not fixed here.
   `test/changes-pr-lists.test.ts` (direct/team/both, sorting, missing
   fields, call counts), `StartPage.requested.test.tsx`,
   `e2e/start.spec.ts` lists section.
+- **#385 (start page, §4.2):** "Waiting on your review" also lists open
+  PRs you already reviewed (extra `reviewed-by:@me is:open -author:@me`
+  search per load; a reviewed PR still in a requested result keeps that
+  group, every other reviewed PR reads as direct) and, with a typed
+  author, that author's other open PRs under "Not requested of you"
+  (extra `author:<login> is:open` search, scope `"other"`, shown only
+  during an author search). Every author choice runs the server search
+  (dropdown pick and typed Enter alike); the client-side author filter
+  stays only as the reload-restore fallback. Drafts and approval status
+  never filter any group; the empty text reads "No open PRs by
+  <login>." only when every group is empty; paging, progressive
+  landing and kept lists cover the new searches. Evidence:
+  `test/changes-reviewed-385.test.ts` (union/dedupe, minus-shown,
+  minus-own, author on all searches, own-login lists as other, no
+  draft/approval filtering, reviewed paging), updated
+  `changes-pr-lists` / `changes-requested-union-307` / `changes-paging-297`
+  suites, `StartPage.loadmore297.test.tsx` (third group only during a
+  search, new empty text, every choice server-side),
+  `journeys/l1-start.spec.ts` "already-reviewed and typed-author lists",
+  tour frames `start-385-default-1440-light.png` +
+  `start-385-author-1440-light.png` (looked at).
 - **#131 (start page, §4.2):** the one recency filter sits below Reviews
   and applies to every list below it — "Your PRs" (newest first with the
   same relative time) and Recent branches (by last commit date, newest
@@ -2689,7 +2714,7 @@ hunk coverage) is reported for a separate issue, not fixed here.
   Retry (re-ingest) and Remove work as for #92's failed state, and the
   start page shows the message with a "no changes" tag. A refresh that
   empties the diff records `versionStatus.empty`, shows the same message
-  in the banner and diff (no Update offered), and the update pass refuses
+  in the diff and guide empty states (no Explain offered), and the explain route refuses
   with 409 so no agent time is spent. Evidence:
   `test/reviews-empty-diff.test.ts`, `GuideLoading.test.tsx` (EmptyOpen),
   `e2e/journeys/j18-empty-diff.spec.ts`.
@@ -3178,8 +3203,8 @@ hunk coverage) is reported for a separate issue, not fixed here.
   bottoms within 2px + `checkLayout`).
 - **#241 (Refresh moves to the review top bar):** Refresh moved from the
   diff toolbar to the review bar next to the status icon, bottom-aligned
-  (`ib bd`), tooltip exactly "Refresh". Same handler/check/banner UI via
-  shared `refreshStore.ts` + `useRefresh.ts`; removed from the toolbar;
+  (`ib bd`), tooltip exactly "Refresh". Same handler/check via shared
+  `useRefresh.ts`; removed from the toolbar;
   hidden for document reviews. Evidence: `ReviewBar.test.tsx`,
   `journeys/j245-reviewbar-pr.spec.ts`, `diff.spec.ts`, J12/J16/J18/J230/settings-versions
   (Refresh in `#reviewbar`), J225 (tooltip "Refresh").
@@ -4295,6 +4320,34 @@ one-variant union today).
   green; journey/tour runs pending the v0.0.18 gate. Full gates not yet
   run.
 
+## Addendum: #384 (branch `feat/384-copy-guide`)
+
+- **Copy guide as Markdown (§4.4):** one copy icon in the review top
+  bar with the other review-level icon buttons (Refresh / Debug; same
+  icon, tooltip shape and "Copied as Markdown" toast as the card
+  control), hidden wherever there is no guide (document reviews,
+  loading / failed / empty opens). It copies the whole root guide:
+  then each main root card in guide order with its heading as `##` and
+  its Guide-version prose at that card's shown depth. A pure converter
+  (`guideToMarkdown`, next to #377's in
+  `packages/shared/src/content/copy-markdown.ts`) reuses the card block
+  rendering with a guide flag: citations stay exactly as #377 renders
+  them (head-commit permalinks on PR reviews, `path:lines` otherwise);
+  diagrams become `_[Diagram: <caption>]_` / `_[Diagram]_`;
+  code blocks (including fences embedded in list items), finding and
+  comment links, follow-ups, the plotlines list, answers and "Updated
+  since…" addenda are left out; collapsed cards copy at their level,
+  pending (Generate) cards are skipped, and cards left with no prose
+  render no heading. The output never contains `[[…]]` tokens or code
+  fences. No new settings, jobs or agent calls. Additive only, so
+  `DATA_FORMAT` stays 7.
+  Evidence: `packages/shared/test/copy-markdown-384.test.ts` (12 tests;
+  `copy-markdown-377.test.ts` passes unchanged), journey steps in
+  `l3-reading` (header icon, tooltip, title/headings/citation,
+  no-fence/no-token asserts), tour frame
+  `packages/web/visual-tour/guide-copy-1440-light.png` (git-ignored,
+  header icon + tooltip, full page at 1440 light).
+
 ## Addendum: #383 — progressive start-page loading (branch `feat/383-progressive-start`)
 
 - **Progressive lists (§4.2):** the three PR/branch list calls land
@@ -4325,3 +4378,383 @@ one-variant union today).
   stub `gh` holding the review-requested call; fast lists and kept
   Reviews render first, exactly one fetch per load). No tour frame: the
   visible page barely changes. Full gates not yet run.
+
+## Addendum: #388 — ? mode rewrites the guide for picked terms (branch `feat/388-question-mode`; SUPERSEDED by #418)
+
+- **? toggle + tray (§4.4):** one icon button (tooltip "Pick terms you don't understand") in the review top bar with the other review-only buttons (hidden where they hide, plus the static demo). While on, guide-card selections become picked terms — highlighted where picked, listed in a small tray (× each) with Rewrite cards / Cancel; the selection toolbar is suspended; mode off / Cancel clears terms and highlights. Rewrite posts one `question-rewrite` action fanning out one ordinary #387 press per written guide card (same dedupe shape, same undo push, same slower-rewrite log scope), one agent call per card through the job queue's existing limits, each turn carrying the terms plus the whole guide; Guide version only, persona variants and thread replies untouched. Nothing new stored beyond #387's shape. `prompts/slower.md` gains `{{terms}}` / `{{guide}}` splice points that render empty for an ordinary press (byte-identical prompt, pinned by a unit test); the terms/whole-guide blocks are composed in `slower.ts`. Per-card Undo works; cards show the usual writing state mid-rewrite.
+  Evidence: service `test/question-388.test.ts` (prompt carries terms + whole-guide context, every card targeted with one job each, one press each, undo restores one card only, variants untouched; ordinary press renders the golden bytes), `test/snapshot.test.ts` (12 hand-authored `slower-*-terms1` replay recordings validate with zero unverified citations), journey `e2e/journeys/l3-reading.spec.ts` "? mode picks terms across cards and rewrites every card", tour frame `packages/web/visual-tour/question-mode-1440-light.png` (git-ignored, ? mode on with two terms and the tray, full page at 1440 light). Full gates not yet run.
+
+  SUPERSEDED by #418 (branch `feat/card-explain-terms`): the ? toggle, guide-wide picking, global tray, `questionMode` and `question-rewrite` are removed — no flag, nothing left over. Explain terms is a per-card action (see the #418 addendum).
+
+## Addendum: #418 — Explain terms becomes a per-card action (branch `feat/card-explain-terms`)
+
+- **Help-me-understand menu (§4.4):** the card's icon-only "Help me understand" button (no caret) opens a menu exactly the way the persona button does (same `.fmenu` portal menu). Two items: Simplify runs today's press unchanged (one agent call on that card, undoable, persona-aware); Explain terms… puts that card alone into term picking. One picking card at a time; opening another card's picker cancels the first.
+- **Per-card picking (§4.4):** selecting text inside the picking card adds a term, highlighted where picked; selections in any other card keep the normal selection toolbar. A small in-card tray lists the terms as the app's existing remove chips (`.fchip` with ×), with Rewrite (primary ui Button) and Cancel (quiet ui Button) — no labels restating the controls. Rewrite posts one `slower` press on that card with the terms attached (the existing terms prompt path: terms block + whole guide, Guide version only); Escape, Cancel and Rewrite clear the highlights before any text changes, and any other agent action on the card ends its picking first. Nothing new stored beyond #387's shape.
+  Evidence: service `test/slower-398.test.ts` (per-card `slower` with terms: terms + whole-guide context in the prompt, only that card changes, one press, undo restores; non-array terms rejected; ordinary press renders the golden bytes), journey `e2e/journeys/l3-reading.spec.ts` "Help me understand menu" (menu items, no top-bar toggle; Simplify rewrites one card; pick two, × removes one, Rewrite carries the remaining term in the job's prompt snapshot; Cancel/Escape clear; Undo restores; other cards keep the toolbar; ui-component assertions), tour frames `packages/web/visual-tour/understand-menu-1440-light.png` and `explain-picking-1440-light.png` (git-ignored, full page at 1440 light). Full gates not yet run.
+  With #422 the menu is experimental-gated (see the #422 addendum): the #418 journey and tour setups turn the gate on.
+
+## Addendum: #422 — Experimental settings gating Explain terms and Markdown docs (branch `feat/experimental-settings`)
+
+- **Gates (§4.14):** `Settings.experimental` (`{ explainTerms, markdownDocs }`, both off by default) through the shared type, service defaults, validator (non-boolean leaves and unknown leaves rejected; partial updates merge leaf-wise) and mock parity. Settings → Experimental flips them with ui checkboxes; no restart, no `DATA_FORMAT` bump (a defaulted key keeps stored data readable).
+- **Explain terms:** gate off, the card's Help-me-understand button is the plain pre-#418 Simplify press (same icon, same tooltip, one click runs Simplify, no menu) and term picking is unreachable — the #418 menu item is the only `setExplainPickCard` setter. Gate on, today's #418 menu.
+- **Markdown docs:** gate off hides the top-bar Documents link, shows the "Markdown docs is an experimental feature; turn it on in Settings → Experimental" notice on `/documents` (replacing the document form and list) and on direct document-review URLs, and `POST /api/reviews` `kind: "document"` refuses with 403; the side-panel Web pages group and the panel ask API stay (they are not experimental). Existing doc reviews stay in storage (the API still reads them), just unreachable. The start page holds no doc entry to gate.
+  Evidence: `packages/service/test/settings.test.ts` (defaults, validation, leaf-merge), `packages/service/test/document-222.test.ts` (403 while off, storage kept), web `CardView.test.tsx` (menu/plain by gate) and `ScreenTopBar.test.tsx` (link by gate), journey `e2e/journeys/l16-experimental.spec.ts` (off/on for both gates, UI toggles with no reload, storage kept), gate-on setups in the #418 and document journeys and tour scenes, and the Experimental tour frame (Settings → every tab, 1440 light). Full gates not yet run.
+
+## Addendum: #387 — Help me understand replaces the depth stepper (branch `feat/387-help-me-understand`)
+
+- **One icon button, no levels (§4.4):** the − ●● + stepper, the
+  simple/standard/deep levels and the Underlying-principle block are gone.
+  Each press of "Help me understand" rewrites the card more slowly than
+  its current text (skipped steps filled in, terms defined at first use,
+  one concrete walk-through, smaller leaps, the "why" stated), never
+  shorter by dropping content, citations kept on their paragraph,
+  structure/examples/diagrams kept. The new `prompts/slower.md` replaces
+  `prompts/depth.md`; the turn carries the Guide writing-style lens like
+  the other main turns. Undo steps back through the presses. Ask stays
+  the way to say what is confusing.
+- **Wherever depth applied:** page cards, thread replies and persona
+  variants (rewritten as that persona); card/guide copy copies the shown
+  text (no level to select). `autoGoDeeper` is untouched — it drives the
+  separate go-deeper placeholder cards, not the removed levels.
+- **Stored shape:** `level` fields and per-level paragraph text are gone;
+  `DATA_FORMAT` 7 → 8 with no fallback, so existing data needs a reset.
+  The Settings → Prompts list and the Debug → Prompts expansion serve
+  `slower` (with its `{{card}}` variable) instead of `depth`.
+  Evidence: service `test/actions-m4.test.ts` (slower presses stack,
+  prompt carries the current text, undo restores), `test/guide-379.test.ts`
+  (Guide lens on the slower turn; persona variant rewritten as that
+  persona), `test/reuse.test.ts` (every press is a fresh turn; dedupe key
+  carries the revision), `test/persona-variants-349.test.ts` (variant
+  rewrite), journey `e2e/journeys/l3-reading.spec.ts` "Help me understand
+  rewrites twice, then undo steps back", tour frame
+  `packages/web/visual-tour/help-me-understand-1440-light.png`
+  (git-ignored, toolbar icon + tooltip, full page at 1440 light). Full
+  gates not yet run.
+
+## Addendum: #393 — Guide personas own their prompts, Re-do with (branch `feat/393-guide-prompt-forks`)
+
+- **Whole-file forks:** a persona id owns `prompts/personas/<id>/`
+  (Clarity already had the folder); any same-named template there
+  replaces the shared file whole for every task that persona's guide
+  runs, with fallback to `prompts/` and no section merging. Files
+  matching no shared template are never templates. A forked template
+  must declare exactly its base's variables (slower.md's
+  `{{terms}}`/`{{guide}}` included) — anything else fails loudly at
+  load, naming the persona and file. `loadPersonaLibrarySync` in
+  `packages/service/src/prompts/personas.ts`.
+- **Guide-capable:** a folder with `reader.md` can write a whole guide
+  (own provider/model, or following main) with its lens as the writing
+  style. The review records `guidePersonaId` (required; `DATA_FORMAT`
+  8 → 9, no fallback). Every main-agent task (reader, go-deeper,
+  slower, examples, diagrams, concept pages, update pass, critic,
+  hunk pass) resolves templates, model and lens through it; card
+  personas keep their model but follow the review's main role when
+  they follow main (adapter-default effort always), and their base
+  instructions come from the fork. The built-in Guide resolves
+  exactly as before (byte-identical prompts, same models, same base
+  sharing); a fork Guide additionally styles its listed main turns.
+- **Re-do with:** `POST /api/reviews/:id/redo` takes an optional
+  `personaId` (same confirm/delete/create semantics and refusals;
+  unknown → 404, disabled or not guide-capable → 409); the new review
+  records it. The review bar offers one `Re-do with <name>` choice per
+  enabled guide-capable persona next to Re-do guide
+  (`RedoGuideButton.tsx` + `GET /api/prompt-forks`); no picker when
+  opening.
+- **Manifest + drift:** each fork carries `fork.json` (per-file base
+  hashes). `mise run persona:fork -- <id> [template ...]` copies
+  missing base files (never overwrites) and rewrites the manifest, so
+  re-running it after a manual merge clears the warning. Drifted
+  files surface in Settings on the persona row
+  (`PersonasSection.tsx`) and through `GET /api/prompt-forks`.
+- Evidence: `packages/service/test/guide-forks-393.test.ts` (overlay,
+  capability, manifest/drift, loud variable failures, reader/slower/
+  hunk on the fork with its model and lens, Clarity on fork
+  instructions under its lens, redo validation + stamping, endpoint,
+  helper round-trip), real-service journey
+  `e2e/journeys/j393-guide-forks.spec.ts` (redo with a Tutor fork,
+  fork prompts on the re-done review, drift warning), tour frames
+  `redo-with-menu`, `redo-with-confirm`, `fork-drift` (inspected).
+  Full gates not yet run.
+
+## Addendum: #401 — Default guide persona (branch `feat/401-default-guide`)
+
+- **Setting:** `defaultGuidePersonaId` (default `"guide"`) on
+  `Settings`, a per-key settings row (no `DATA_FORMAT` change).
+  Settings → Personas gets one `Default guide` picker listing the
+  enabled guide-capable personas (Guide and any fork with
+  `reader.md`); new reviews and plain Re-do guide runs record it
+  (`POST /api/reviews`, extension open, `POST /api/reviews/:id/redo`
+  with no `personaId`), while `Re-do with <persona>` still picks
+  explicitly. Document and demo reviews keep `guide`.
+- **Validation + fallback:** saving a default that is unknown,
+  disabled, or not guide-capable is a 400 naming the persona (checked
+  against the personas list the update leaves behind). Read sites
+  resolve the effective default at read time and never write it back:
+  a deleted, disabled, or de-forked default resolves to Guide, with a
+  one-line notice in Settings — a guide never fails to start because
+  of it.
+- Evidence: `packages/service/test/default-guide-401.test.ts`
+  (shape, capability 400s, read-time fallback, create/redo default
+  resolution), real-service journey `e2e/journeys/j393-guide-forks.spec.ts`
+  (default Tutor: new review runs the fork `reader.md` on the Tutor
+  model, plain Re-do re-runs it, Re-do with Guide stays explicit),
+  tour frame `personas-default-guide-1440-light` (inspected).
+  Full gates not yet run.
+
+## Addendum: #398 — Help me understand replaces the body wholesale (branch `fix/398-slower-replace-body`)
+
+- **Wholesale replacement (§4.4):** a "Help me understand" press replaces
+  the card body with the reply's parsed blocks wholesale — paragraphs AND
+  lists, asides/examples, headings, tables — each with its OWN citations.
+  The old positional paragraph-slot merge (`mergeSlowerText`, deleted) is
+  gone: it dropped reply blocks beyond the old paragraph count and kept
+  the old paragraphs' citations on the wrong text. Same path for page
+  cards, thread replies, persona variants (rewritten as that persona) and
+  the per-card Explain-terms rewrite (one ordinary press with terms, #418).
+- **Undo / anchors / citations / diagrams / follow-ups:** the pre-press
+  blocks ride the undo stack as before, so Undo restores the exact
+  previous body; `markStaleAnchors` runs after every replacement
+  (threads whose quoted text vanished get the footnote chip); citation
+  validation with its single repair turn is unchanged (it already runs
+  inside `runInFork` for every template, slower included). A diagram the
+  reply drops is kept, re-inserted at its old index among blocks; an
+  unconsumed follow-up block the reply drops is kept the same way (the
+  prompt never asks the agent to echo it). A reply carrying its own
+  follow-ups takes over. Reply blocks whose fresh parser IDs collide
+  with a kept block's ID are restamped (`-cN`, kept IDs win), so stored
+  bodies stay duplicate-free (#116). Blocks the reply drops and does not
+  echo (e.g. an accepted-correction paragraph the reply does not carry)
+  are gone from the body — Undo is the way back.
+- **Prompt:** `prompts/slower.md` now says the reply is the WHOLE new
+  card body (paragraphs, lists, numbered steps, one example, each with
+  its own citations), keeps the title, need not repeat diagrams and
+  follow-ups (re-attached anyway), keeps every citation on its claim,
+  and never gets shorter. Terms/guide blocks and the trailing JSON
+  contract are unchanged. `test/goldens/slower.md` re-rendered; the
+  byte-identical ordinary-press test passes against the new golden.
+- **Stored shape:** unchanged (blocks + revision + undoStack), so no
+  `DATA_FORMAT` change.
+- Evidence: service `test/slower-398.test.ts` (rich reply replaces the
+  body exactly with per-paragraph citations, undo restores byte-identical
+  blocks, dropped diagram kept at position through rewrite and undo,
+  invalid citations take the repair turn, persona variant + thread reply
+  + bulk rewrite share the replacement), `test/actions-m4.test.ts`
+  (stack/undo/concurrency updated to wholesale semantics),
+  `test/expansion-block-ids.test.ts` (IDs unique, no longer stable
+  across a slower rewrite; undo restores), `test/snapshot.test.ts`
+  (new `slower-central-press3` replay recording validates clean),
+  journey `e2e/journeys/l3-reading.spec.ts` "Help me understand replaces
+  the body wholesale" (third press replays a list + example, every reply
+  block renders with its chip on the right paragraph, two undos restore
+  text and chips), tour frame
+  `packages/web/visual-tour/slower-rewrite-1440-light.png`
+  (git-ignored, rewritten card at 1440 light with list, example and
+  chips), `test/expansion-block-ids.test.ts` (unconsumed follow-up
+  survives with a restamped colliding reply ID; undo restores). Full
+  gates not yet run.
+
+## Addendum: #411 — Since cards show no body after an update pass (branch `fix/since-card-bodies`)
+
+- **Cause (prompt, not render or apply):** `prompts/update_pass.md`
+  told the model to "Write the Since-B cards" as prose `##` cards with
+  an `answers` list, but never named the trailing-JSON shape —
+  contrast `prompts/reader.md`, which shows `"sinceSection": {"cards":
+  [{"id", "title", "blocks", "answers"}]}`. `JsonBlockReplyParser`
+  reads Since cards only from the trailing JSON, and
+  `buildSinceSectionCards` stores `blocks: []` when `blocks` is
+  missing; `CardView` then renders the title plus `<SinceAnswers>`
+  with zero body blocks — exactly the reported title + "Answers:
+  …" line under an expanded chevron. Evidence: the symptom matches
+  `blocks: []` + resolved answers; prose `##` cards in an update
+  reply are discarded (the parser reads only the fenced block).
+- **Prompt fix (root):** task 1 now returns the cards only in the
+  trailing block's `sinceSection.cards` (`id`, `title`, `blocks`,
+  `answers`), task 2 returns addenda in `addenda` (`cardId`,
+  `blocks`, `answers`), and the Rules line states both travel only in
+  that block, never as prose cards. `test/goldens/update_pass.md`
+  re-rendered (only that golden changed).
+- **Failed-card rule:** a model Since card with no body blocks is
+  dropped in `buildSinceSectionCards` — shared by the update pass and
+  the reader no-review path, like a blockless finding in
+  `criticApplyAll` — and both callers store the section only when
+  built cards remain. No new mechanism, no new surface.
+- **Excerpt trimming:** `excerpt` (`since.ts`, service-side,
+  cap 160/200 as before) cuts at the last sentence boundary (`.`,
+  `!`, `?` + space/end) within the limit, else the last word
+  boundary, with `…` and no trailing space; short text passes
+  through. Recordings need no fix: the `update-pass.md` fixture card
+  carries one body block and the addendum one block.
+- **Stored shape:** unchanged (cards still carry `blocks`/`answers`),
+  so no `DATA_FORMAT` change. Existing reviews with stored title-only
+  cards need a re-run of the update pass to gain bodies (a reset also
+  works but is not required); new passes store bodies.
+- Evidence: service `test/versions-since-411.test.ts` (bodyless cards
+  dropped incl. the all-bodyless empty build, sentence/word/space
+  trimming, boundary-cut commit excerpt through `resolveSinceAnswers`),
+  updated `test/versions-since-commit.test.ts` (kept card now carries
+  a body), journey `e2e/journeys/l7-since.spec.ts` (every expanded
+  Since card shows non-empty `p.prose` body text), tour scene `sinceB`
+  at 1440 light. Full gates not yet run.
+
+## Addendum: #413 — Explain changes since X replaces Update/addenda (branch `feat/413-explain-changes-since`)
+
+Owner-approved redesign around one goal: explaining a commit range
+("what changed since X, and why"). The deferred baseline picker, the
+Update button, addenda, and every stale marker are gone.
+
+- **One action, any time:** "Explain changes since [X]" where X is an
+  earlier version, any PR commit, or the reviewer's last GitHub review
+  (end always the head). The banner ("New commits · vN → vM") offers
+  it after new commits; the guide side (`ExplainControlSlot` when no
+  section exists, the section header once it does) offers it otherwise.
+  Choosing X never stores or runs — one agent call, only on click
+  (`POST /api/reviews/:id/explain {version}|{sha}|{}`, 202 +
+  `explain-pass` job; 400 on a bad X, 502 on an unfetchable commit,
+  409 only while loading/failed or on an empty diff).
+- **The result** is a self-contained, collapsible Changes-since-X
+  section at the guide root (`SinceSection.tsx`): cards grouped by
+  change (one card may span commits; a commit may split across
+  cards), every card with a body and claims cited into the X→head
+  hunks, feedback-only Answers (commit-only lines hidden in
+  `SinceAnswers.tsx`). The header always names X; a re-run with a
+  different X replaces the section whole (`applyExplainResult`).
+- **The old guide is untouched:** no addenda (`Card.addenda` and
+  `stripAddendumPrefix` removed), no revised cards, no finding
+  rechecks, no new findings, no hunk summaries, no plotline placement,
+  no re-pinning, no stale clearing. The requested X wins over the
+  agent's echo (`enqueueExplainPass`); commit answers still resolve
+  and store (the UI hides them).
+- **No stale markers anywhere** (owner answer 1): no banner stale
+  state, no card "N cited hunks changed" badges or card Update
+  button, no findings `needsRecheck`/`recheckStatus`, and refresh
+  sets none of them (`staleChangedHunks`/`staleHunks` gone from
+  `Card`, `stale` gone from `VersionStatus`). Hunk-level
+  `reviewed`/`needsSummary`/diff "changed since reviewed" mechanics
+  are unchanged. Citations are still remapped on refresh.
+- **Since filter kept, now section-backed** (owner answer 3; later removed entirely, see the Since-filter-removed addendum below): the
+  diff chip reads the section's cited X→head hunks
+  (`sinceSectionHunkIds`, shared by chip label/count and the
+  reveal), shows only when a section exists, and names the section's
+  X. A section citation turns the filter on and reveals the hunk
+  (`revealCitationFrom`, DOM-scoped via `data-since-section`,
+  through the persisted `diffFilter` — the toolbar chip can go away
+  later without touching the reveal). Plotline `+N`/`new since`
+  markers are dropped (`Plotline.newSinceBaseline` and
+  `markNewSincePlotlines` removed).
+- **Pre-guide offer kept** (`PriorReviewOffer.tsx`): the checkbox
+  records X before the guide run; the reader writes guide + section
+  in the one run (`formatReaderReviewedContext`,
+  `buildSinceSectionCards`); no extra call.
+- **Data format 9 → 10:** stored reviews with addenda/stale data
+  need a reset (export Outbox drafts first).
+- Evidence: service `versions-explain.test.ts` (route + job +
+  section replacement + parser), rewritten `versions-since-b` /
+  `versions-since-commit` / `versions-refresh` / `huge-pr-107` /
+  `guide-forks-393` / copy-markdown / replay-match specs, journey
+  `e2e/journeys/l7-since.spec.ts` (version/commit/last-review X →
+  Explain → section with bodies, grouped cards, header naming X;
+  re-run replacement; citation → range diff; old guide unchanged;
+  banner offering "Explain changes since v1"), tour banner +
+  section frames at 1440 light, regenerated prompt goldens
+  (`explain_pass.md`). Fake runner only. Full gates not yet run.
+
+## Addendum: #413 follow-up — diff Since filter removed (branch `fix/413-since-chip`)
+
+Owner decision (2026-11-18): remove the diff "Since" filter chip entirely; the diff always shows the whole PR.
+
+- **Removed:** the chip in `DiffView`, `sinceBaseline` in the diff filter (`DiffFilter` / `UpdateDiffFilterRequest` in shared, the `PATCH …/diff-filter` route, the mock), the `sinceSectionHunkIds` / `sinceIds` / `sinceHidden` plumbing in `DiffView`, `FileSection` and `diffLogic`, and `revealCitationFrom` (the citation path that turned the filter on). Its unit tests, journey asserts and the `since-filter` / `since-commit-filter` tour frames are gone.
+- **Now:** section citations reveal and highlight their hunk through `revealSource`, like every other citation, with all hunks visible. The route accepts only `plotline`; a `sinceBaseline` patch is a 400.
+- **Kept:** `snapshot.sinceBaseline` (the stored X for Explain defaults and the pre-guide offer) and `sinceHunks` (the explain pass's X→head context). Neither is the diff filter.
+- **Data:** no `DATA_FORMAT` bump. Old stored filters with `sinceBaseline: true` stay readable; the key is ignored and dropped on the next filter write.
+- **Tests:** `l7-since` asserts a section citation reveals its hunk with every hunk still shown, no `[data-filterchip="since"]` exists, and no diff filter is stored. `versions-since-b` asserts the route refuses `sinceBaseline`.
+
+## Addendum: #421 — Explain changes from a toolbar menu; the Changes section becomes one panel (branch `feat/421-explain-toolbar-menu`)
+
+Owner-approved redesign (2026-11-18): the in-guide Explain picker is
+gone; one toolbar menu is the only entry, and the Changes section is
+one grouped panel with a commit-range header.
+
+- **Toolbar menu** (`shell/ExplainMenu.tsx`): a review-bar icon-only
+  borderless `button.ib` (Tabler `history`) right after Pull, tooltip
+  and aria-label "Explain changes since…". It opens the same `.fmenu`
+  portal menu PersonaButton uses: a "Commits" group with every PR
+  commit oldest first as `<sha8> <subject>`, the head commit shown
+  disabled with a quiet "latest" hint (the shared menu code gains the
+  disabled-row rule in `prototype.css`; the group label reuses the
+  existing `.fgroup`), plus a "Your last GitHub review" row (sha +
+  date hint) when one exists and isn't the head. No versions
+  anywhere. Picking runs Explain at once through the existing
+  explain route (one agent call); the button shows the busy state
+  while it runs. Failures and the empty result toast — the toolbar
+  sits above both panes, so a toast reaches the reader wherever they
+  are (the section/banner inline slots may be on the other pane or
+  off-screen). Hidden wherever Pull hides (document reviews, static
+  demo) plus old versions and when nothing is pickable.
+- **In-guide picker removed:** `ExplainControlSlot`, the section
+  header re-run control, `ExplainXSelect` / `useExplainEntries` and
+  their tests are deleted. The pre-guide "focus on changes since your
+  last review?" checkbox, versions and the version switcher stay.
+- **One panel** (`SinceSection.tsx`): the section is a single grouped
+  inset panel matching the Contents box (same `UiCard` inset, header
+  row and 14px card rhythm), header at the top and cards inside;
+  collapsing folds the whole panel to its header. The old "never a
+  box holding cards" rule is gone.
+- **Range header:** "Changes `<fromSha8>` → `<toSha8>` · `<date>`",
+  where `to` is the head the section was written at (stored on the
+  section as `SinceSection.headSha`) and a version baseline resolves
+  through its stored head. A re-run replaces the panel whole. When
+  the PR has newer commits than `to`, a quiet note reads "N newer
+  commits since this was written" (hidden when the old head is gone
+  after a rewrite). No "vN" anywhere.
+- **Banner** (`VersionBanner.tsx`): "N new commits since the guide
+  was written" plus one primary "Explain changes" button, explaining
+  from the commit the current guide was written at
+  (`snapshot.guideHead`, stamped when the reader lands so it follows
+  a Re-do) up to the head. No picker in the banner.
+- **Data format 10 → 11:** `SinceSection` gains required `headSha`
+  and the snapshot gains required `guideHead`; stored data without
+  them needs a reset.
+- **Tests:** rewritten journey `l7-since.spec.ts` (menu lists all
+  commits oldest first with the head disabled and not clickable;
+  picking runs Explain and the panel appears with a range header;
+  collapse folds the panel; a re-run replaces it; after a Pull the
+  header notes newer commits and the banner recounts from the
+  guide's commit; banner text and button; no in-guide picker rows;
+  menu hidden on the old version; static demo hides the menu),
+  `ExplainMenu.test.tsx` (button, menu rows, head disabled, pick
+  runs + busy + empty toast, hidden when nothing pickable), tour
+  frames `since-expanded` / `since-collapsed` / `since-feedback`
+  (panel), `since-commit-section` + `since-commit-menu`,
+  `since-menu-groups` + `since-unfetchable-menu`, `367` banner +
+  `explain-menu` (all at 1440 light). Fake runner only. Full gates
+  not yet run.
+
+## Addendum: #423 — Remove the Clarity persona (branch `fix/remove-clarity-persona`)
+
+Owner decision (2026-11-18): delete the built-in **Clarity** persona.
+The built-ins are Guide and Second opinion.
+
+- **Deleted:** `prompts/personas/clarity/` (`lens.md`, `fork.json`,
+  `evals.jsonl`), `CLARITY_PERSONA` / `CLARITY_PERSONA_ID` and its
+  place in `defaultPersonas()`, `packages/service/test/clarity-359.test.ts`,
+  and the `central:clarity` fixture recording + manifest entry. Every
+  other reference (settings defaults comment, persona colour comment,
+  server prompt-fork comment, web mock + `PersonasSection` copy, journeys,
+  tour, docs) now names only Guide and Second opinion. Persona colours
+  are unchanged (the freed slot stays free).
+- **Stored data:** no `DATA_FORMAT` bump. Settings load merges stored
+  keys over defaults with no shape re-validation, and a stored Clarity
+  entry is still a valid persona shape — so an existing install keeps
+  its Clarity entry as an ordinary user persona. Owner note:
+  existing installs keep a 'Clarity' persona until you delete it in
+  Settings → Personas.
+- **Tests:** `personas.test.ts` seeds exactly `[guide, second-opinion]`;
+  `personas-349.test.ts` asserts the two-seed list; `guide-379.test.ts`
+  runs its followMain case on a custom follower persona (no built-in
+  follows main any more); `guide-forks-393.test.ts`, `j393` and the
+  personas tour/journey scenes run their lens checks on Second opinion;
+  the Clarity follow-main, Clarity-run and Clarity-frame scenes are
+  deleted; Settings → Personas asserts exactly Guide and Second opinion
+  on a fresh install (API ids plus the absent `persona-clarity` row).
+  `snapshot.test.ts` counts 64 recordings (was 65). Fake runner only.
+  Full gates not yet run.

@@ -670,11 +670,16 @@ async function verifyInstall({ prefix, port, label, cacheDir, npmOut, home, data
       try {
         const s = JSON.parse(got.body);
         const root = (s.pages ?? []).find((p) => p.id === "root");
+        // Issue #389: "Go deeper" cards are written on demand, so their
+        // placeholders stay `pending`; completion is every job finished
+        // without error plus the guide's cards and pages.
+        const jobs = s.jobs ?? [];
         done =
           got.code === 200 &&
           (root?.cards ?? []).length >= 6 &&
-          !(root?.cards ?? []).some((c) => c.pending) &&
-          (s.pages ?? []).filter((p) => p.kind === "finding").length >= 2;
+          (s.pages ?? []).filter((p) => p.kind === "finding").length >= 2 &&
+          jobs.length > 0 &&
+          jobs.every((j) => j.state === "done");
         if (done) {
           assert(true, `${label}: demo pipeline completes from the installed copy`);
           const hunks = (s.hunkStates ?? []).filter((h) => h.summary).length;

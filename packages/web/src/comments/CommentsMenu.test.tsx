@@ -43,8 +43,7 @@ function mkReply(text: string): import("@unvibe/shared").Reply {
     kind: "comment",
     who: "you",
     question: null,
-    blocks: [{ type: "paragraph", id: "b1", text: { standard: esc }, citations: [] }],
-    level: "standard",
+    blocks: [{ type: "paragraph", id: "b1", text: esc, citations: [] }],
     revision: 1,
     undoStack: [],
   };
@@ -132,7 +131,7 @@ describe("two tabs", () => {
     thread("t-plain", "Plain review thought"),
     thread("t-outbox", "Outbox thought", { post: true }),
     thread("t-posted", "Posted thought", { post: true, postedAt: 123 }),
-    thread("t-ai", "Suggested tweak", { replies: [{ id: "ans_ai1", seq: 1, kind: "comment", who: "agent", question: null, blocks: [{ type: "paragraph", id: "b1", text: { standard: "Suggested tweak" }, citations: [] }], level: "standard", revision: 1, undoStack: [], suggested: true }] }),
+    thread("t-ai", "Suggested tweak", { replies: [{ id: "ans_ai1", seq: 1, kind: "comment", who: "agent", question: null, blocks: [{ type: "paragraph", id: "b1", text: "Suggested tweak", citations: [] }], revision: 1, undoStack: [], suggested: true }] }),
   ];
 
   it("opening shows the Comments tab; the Outbox lives on its own tab", () => {

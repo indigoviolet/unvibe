@@ -9,7 +9,7 @@
  *
  * Agent-starting kinds (verified against
  * `packages/service/src/pipeline/actions/`): explain, ask, reply, retry,
- * depth, examples, diagram, generate, followup, concept,
+ * slower, examples, diagram, generate, followup, concept,
  * plus the update pass (`POST …/update`). Local-only kinds — collapse,
  * note, promote, close, delete, undo — need nothing.
  */
@@ -19,7 +19,7 @@ import { isLiveJobState, type InFlightAction, type InFlightKind } from "../state
 /** Fixed plain label per action (no streamed text, no progress strings). */
 export function inflightLabel(kind: InFlightKind): string {
   switch (kind) {
-    case "depth":
+    case "slower":
       return "Rewriting…";
     case "examples":
       return "Adding examples…";
@@ -42,15 +42,15 @@ export function inflightLabel(kind: InFlightKind): string {
     case "persona":
       return "Persona is writing…";
     case "update":
-      return "Updating…";
+      return "Explaining changes…";
   }
 }
 
 /** Fallback label when only the snapshot job is known (no in-flight entry). */
 export function jobLabel(kind: JobKind): string {
   switch (kind) {
-    case "depth":
-      return inflightLabel("depth");
+    case "slower":
+      return inflightLabel("slower");
     case "examples":
       return inflightLabel("examples");
     case "diagram":
@@ -63,7 +63,7 @@ export function jobLabel(kind: JobKind): string {
       return inflightLabel("concept");
     case "persona":
       return inflightLabel("persona");
-    case "update-pass":
+    case "explain-pass":
       return inflightLabel("update");
     default:
       return "Working…";
@@ -73,11 +73,11 @@ export function jobLabel(kind: JobKind): string {
 /**
  * Rewrite of existing content (the card/expansion stays visible under a
  * left border) versus new content (a placeholder appears where it lands):
- * depth changes and examples/diagram inserts rewrite; everything else is
- * new content.
+ * slower rewrites and examples/diagram inserts rewrite; everything else
+ * is new content.
  */
 export function isRewriteKind(kind: InFlightKind | JobKind): boolean {
-  return kind === "depth" || kind === "examples" || kind === "diagram";
+  return kind === "slower" || kind === "examples" || kind === "diagram";
 }
 
 /** Live (queued/running/backing-off) job working on a card or answer. */
@@ -200,9 +200,9 @@ export function blockIdsMatch(entryBid: string, hostBlockId: string): boolean {
 
 // --- entry keys -----------------------------------------------------------
 
-/** Stale-card Update / banner Update for a review. */
-export function updateKey(reviewId: string): string {
-  return `update:${reviewId}`;
+/** Banner / section Explain run for a review (not a text Explain). */
+export function explainRunKey(reviewId: string): string {
+  return `explain-run:${reviewId}`;
 }
 
 function anchorSuffix(anchor: ActionAnchor): string {

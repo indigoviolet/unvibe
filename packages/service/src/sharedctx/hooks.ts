@@ -2,9 +2,8 @@
  * Interaction hook (PRD §9.3): how pipeline stages and UI actions feed the
  * append-only log.
  *
- * The interaction-actions agent owns `pipeline/actions/` and calls
- * `recordInteraction(event)` for things like new expansions, depth rewrites,
- * examples, diagrams, settled threads and deletions. It defines the same
+ * `recordInteraction(event)` for things like new expansions, slower
+ * rewrites, examples, diagrams, settled threads and deletions. It defines the same
  * interface with a no-op default in `packages/service/src/interaction/`; this
  * module is the shared-context side of that seam. Both export the same names
  * (`InteractionEvent`, `recordInteraction`, `setInteractionHandler`) so the
@@ -12,19 +11,19 @@
  * the default is a no-op until the service wires the real one in `app.ts`.
  *
  * Event kinds (PRD §9.3 taxonomy):
- * - logged card-local: `example-added`, `diagram-added`, `depth-rewrite`
+ * - logged card-local: `example-added`, `diagram-added`, `slower-rewrite`
  *   (only for conversations anchored on that card — `cardId` required);
  * - logged global: `thread-settled` (one line once a thread settles),
  *   `new-card` / `new-finding` (in full), `out-of-base-answer` (answers that
  *   cited something outside the base, in full), `item-deleted` (one line for
  *   a deleted item that had been shared);
- * - accepted but never logged (UI state): `read`, `collapse`,
- *   `depth-state`, `open`, `close`, Outbox marking (`mark-for-pr`), `undo`.
+ * - accepted but never logged (UI state): `read`, `collapse`, `open`,
+ *   `close`, Outbox marking (`mark-for-pr`), `undo`.
  */
 export type InteractionEventKind =
   | "example-added"
   | "diagram-added"
-  | "depth-rewrite"
+  | "slower-rewrite"
   | "thread-settled"
   | "new-card"
   | "new-finding"
@@ -32,7 +31,6 @@ export type InteractionEventKind =
   | "item-deleted"
   | "read"
   | "collapse"
-  | "depth-state"
   | "open"
   | "close"
   | "mark-for-pr"

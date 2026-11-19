@@ -48,6 +48,7 @@ function makeSnapshot(rev = 1): ReviewSnapshot {
       branch: "feature",
       versions: [],
       currentVersion: 1,
+      guidePersonaId: "guide",
       createdAt: 0,
     },
     version: {
@@ -58,6 +59,8 @@ function makeSnapshot(rev = 1): ReviewSnapshot {
       fetchedAt: 0,
       idMapping: {},
     },
+    // Issue #421: the fixture guide describes this head.
+    guideHead: { version: 1, sha: "abc" },
     files: [],
     pages: [],
     annotations: [],

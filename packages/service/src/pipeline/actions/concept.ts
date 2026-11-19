@@ -50,7 +50,6 @@ export async function conceptAction(
             id: `cc-${slug}`,
             pageId,
             title: null,
-            level: "standard",
             collapsed: false,
             revision: 1,
             blocks: [],

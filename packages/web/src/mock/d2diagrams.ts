@@ -9,12 +9,10 @@
 import type { DiagramBlock, DiagramTheme } from "@unvibe/shared";
 import { DiagramStatusError } from "../api/diagram.js";
 // `?raw` keeps the SVGs out of TS's NodeNext import-attribute rules.
-// Issue #341: hashes are the re-recorded on-demand diagrams
-// (diagram-central, diagram-buildup).
+// Issue #341: hash is the re-recorded on-demand diagram
+// (diagram-central; #405 drops the buildup card and its diagram).
 import centralLight from "../../../../fixtures/urllib3-5020/diagrams/8d6ea4e980ea839e.light.svg?raw";
 import centralDark from "../../../../fixtures/urllib3-5020/diagrams/8d6ea4e980ea839e.dark.svg?raw";
-import buildupLight from "../../../../fixtures/urllib3-5020/diagrams/22365f71688744f3.light.svg?raw";
-import buildupDark from "../../../../fixtures/urllib3-5020/diagrams/22365f71688744f3.dark.svg?raw";
 
 /** Stand-in for cases the fixtures cannot cover (see module docs). */
 function standIn(theme: DiagramTheme): string {
@@ -40,7 +38,6 @@ function standIn(theme: DiagramTheme): string {
 /** hash → per-theme SVG text, mirroring the fixture file layout. */
 const BY_HASH: Record<string, { light: string; dark: string }> = {
   "8d6ea4e980ea839e": { light: centralLight, dark: centralDark },
-  "22365f71688744f3": { light: buildupLight, dark: buildupDark },
   "mock-d2-added": { light: standIn("light"), dark: standIn("dark") },
   "mock-d2-unverified": { light: standIn("light"), dark: standIn("dark") },
   "mock-d2-multiline": { light: multiline("light"), dark: multiline("dark") },

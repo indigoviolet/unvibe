@@ -8,9 +8,8 @@
  */
 import { Fragment, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { Card, Page, Plotline } from "@unvibe/shared";
-import { DEFAULT_GUIDE_TITLE, isDefaultGuideTitle, PLOTLINE_OTHER_ID, sinceBaselineLabel } from "@unvibe/shared";
+import { DEFAULT_GUIDE_TITLE, isDefaultGuideTitle, PLOTLINE_OTHER_ID } from "@unvibe/shared";
 import { api } from "../api/client.js";
-import { useIsReadOnlyVersion } from "../comments/readOnly.js";
 import { ErrorBoundary, InlineFallback } from "../components/ErrorBoundary.js";
 import { toast } from "../floating/Toast.js";
 import { Icon } from "../components/Icon.js";
@@ -31,27 +30,6 @@ interface Props {
   lookupPage: (pageId: string) => Page | undefined;
   onOpenPage: (pageId: string | null) => void;
   onJumpToCard: (cardId: string) => void;
-}
-
-/** Finding recheck status line (PRD §8): set by refresh / the update pass. */
-function RecheckStatus({ page }: { page: Page }) {
-  if (page.kind !== "finding") return null;
-  const { needsRecheck, recheckStatus, recheckNote } = page;
-  if (!needsRecheck && !recheckStatus) return null;
-  const text =
-    recheckStatus === "still-applies"
-      ? "Rechecked · still applies"
-      : recheckStatus === "resolved"
-        ? "Rechecked · resolved"
-        : recheckStatus === "changed"
-          ? "Rechecked · changed"
-          : "Cited code changed · not rechecked yet";
-  return (
-    <div className="meta" data-recheck={recheckStatus ?? "pending"}>
-      <span>{text}</span>
-      {recheckNote ? <span>{recheckNote}</span> : null}
-    </div>
-  );
 }
 
 /** Display form of a page title: the default shows as "Guide". */
@@ -106,14 +84,35 @@ function PlotlineReviewedBox({
  * between Contents and the cards. Each row jumps to its first hunk in
  * the diff; hunks no plotline claimed read as "Other".
  */
+/**
+ * A plotline name clamped to two lines (CSS). Issue #406: it carries the
+ * full plain name as a tooltip only while the clamp actually cuts it
+ * (measured, re-checked on resize); a name that fits has no tooltip, so
+ * hovering it shows the row's own "Show only …" hint.
+ */
+function PlotName({ name }: { name: string }): ReactNode {
+  const ref = useRef<HTMLSpanElement | null>(null);
+  const [cut, setCut] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const check = (): void =>
+      setCut(el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1);
+    check();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [name]);
+  return (
+    <span ref={ref} className="plname" {...(cut ? { "data-tip": stripCodeSpans(name) } : {})}>
+      <InlineCode text={name} />
+    </span>
+  );
+}
+
 function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
   const snapshot = useReview((s) => s.snapshot);
-  // Issue #351: the baseline label (`v1` or a short sha) the
-  // `+N`/new markers are relative to. Never the letter "B".
-  const sinceLabel = snapshot?.sinceBaseline ? sinceBaselineLabel(snapshot.sinceBaseline) : null;
-  // Issue #343: older versions are view-only — the checkbox disables
-  // with the usual tooltip, like the diff's other read-only controls.
-  const readOnly = useIsReadOnlyVersion();
   const plotlines: Plotline[] = snapshot?.plotlines ?? [];
   if (plotlines.length === 0) return null;
   const files = snapshot?.files ?? [];
@@ -153,10 +152,6 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
   // them) or unmark them all — the same per-hunk path as the diff's
   // per-file mark-all, so one request goes out per hunk.
   const markPlotline = (plotId: string, target: boolean): void => {
-    if (readOnly) {
-      toast("Viewing an older version · read-only");
-      return;
-    }
     const hashes: string[] = [];
     for (const f of files) {
       for (const h of f.hunks) {
@@ -171,24 +166,6 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
   // countOf never filters them), so shares sum to the total.
   const totalHunks = files.reduce((n, f) => n + f.hunks.length, 0);
   const otherCount = countOf(undefined);
-  // Issue #351: new-side `h:` IDs in the delta, for the per-row
-  // `+N since B` markers.
-  const sinceIds = (() => {
-    const since = snapshot?.sinceHunks;
-    if (!since) return null;
-    return new Set([...since.added, ...since.changed]);
-  })();
-  const sinceCountOf = (plotId: string | undefined): number => {
-    if (!sinceIds) return 0;
-    let n = 0;
-    for (const f of files) {
-      for (const h of f.hunks) {
-        if (!sinceIds.has(`h:${f.fileKey}:${h.contentHash}`)) continue;
-        if ((states.get(h.contentHash)?.plotline ?? PLOTLINE_OTHER_ID) === (plotId ?? PLOTLINE_OTHER_ID)) n += 1;
-      }
-    }
-    return n;
-  };
   const plotlineOf = (id: string | undefined): Plotline | undefined =>
     id === undefined ? undefined : plotlines.find((p) => p.id === id);
   const nameOf = (id: string | undefined): string | undefined => {
@@ -226,8 +203,6 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
         count: countOf(p.id),
         reviewed: reviewedOf(p.id),
         ref: firstRefOf(p.id),
-        sinceN: sinceCountOf(p.id),
-        sinceNew: p.newSinceBaseline === true,
       };
     }),
     ...(otherCount > 0
@@ -242,8 +217,6 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
             count: otherCount,
             reviewed: reviewedOf(undefined),
             ref: firstRefOf(undefined),
-            sinceN: sinceCountOf(undefined),
-            sinceNew: false,
           },
         ]
       : []),
@@ -284,12 +257,10 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
           const reviewState = plotlineReviewedState(r.reviewed, r.count);
           const plotChecked = reviewState === "checked";
           const plotPartial = reviewState === "partial";
-          const plotDisabled = readOnly || r.count === 0;
-          const plotLabel = readOnly
-            ? "Viewing an older version · read-only"
-            : plotChecked
-              ? "Mark plotline unreviewed"
-              : "Mark plotline reviewed";
+          const plotDisabled = r.count === 0;
+          const plotLabel = plotChecked
+            ? "Mark plotline unreviewed"
+            : "Mark plotline reviewed";
           return (
             <li key={r.id}>
               <ListRow
@@ -299,6 +270,7 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
                       role: "button",
                       tabIndex: 0,
                       "aria-pressed": active,
+                      "aria-current": active ? "true" : undefined,
                       "data-plotpick": r.id,
                       "data-tip": active ? "Show all hunks" : `Show only ${stripCodeSpans(r.name)}`,
                       onClick: () => pick(r.id, r.ref),
@@ -312,14 +284,19 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
                   : {})}
                 primary={
                   // Issue #353: names are stored whole; the row clamps to
-                  // two lines (CSS), code spans render as code, and the
-                  // plain full name is in the tooltip.
-                  <span className="plname" data-tip={stripCodeSpans(r.name)}><InlineCode text={r.name} /></span>
+                  // two lines (CSS) and code spans render as code. #406:
+                  // the plain full name is a tooltip only when the clamp
+                  // actually cuts it.
+                  <PlotName name={r.name} />
                 }
                 meta={
                   <>
+                    {/* Issue #406: the summary below carries no tooltip — it
+                      would repeat the row's own text verbatim. The row keeps
+                      its action hint ("Show only …"); the name shows its
+                      full-name tooltip only when it is truncated. */}
                     {r.desc ? (
-                      <span className="pldesc" data-tip={stripCodeSpans(r.desc)}>
+                      <span className="pldesc">
                         <InlineCode text={r.desc} />
                       </span>
                     ) : null}
@@ -348,16 +325,6 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
                     <Badge tone="outline">
                       {totalHunks === 0 ? "no hunks" : `${r.count}/${totalHunks}`}
                     </Badge>
-                    {sinceLabel !== null && r.sinceN > 0 && !r.sinceNew ? (
-                      <Badge tone="outline" data-since-n={r.id}>
-                        +{r.sinceN} since {sinceLabel}
-                      </Badge>
-                    ) : null}
-                    {sinceLabel !== null && r.sinceNew ? (
-                      <Badge tone="outline" data-since-new={r.id}>
-                        new since {sinceLabel}
-                      </Badge>
-                    ) : null}
                     <PlotlineReviewedBox
                       checked={plotChecked}
                       partial={plotPartial}
@@ -479,9 +446,8 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
         <h1 className="title">{rootTitle}</h1>
       </div>
       {isFinding && page.summary ? <div className="meta">{page.summary}</div> : null}
-      <RecheckStatus page={page} />
       {page.kind === "root" && review ? (
-        <SinceSection reviewId={reviewId} review={review} renderCard={(card) => renderCard(card, 0)} />
+        <SinceSection renderCard={(card) => renderCard(card, 0)} />
       ) : null}
       {conceptWorking ? (
         <div className="working" role="status">

@@ -186,8 +186,8 @@ describe("empty diff (#179)", () => {
       const snap = after.json() as ReviewSnapshot;
       expect(snap.files).toEqual([]);
       expect(snap.versionStatus?.empty).toBe(true);
-      // Update pass must not spend agent time on an empty diff.
-      const update = await app.inject({ method: "POST", url: `/api/reviews/${id}/update`, headers: authed });
+      // Explain must not spend agent time on an empty diff.
+      const update = await app.inject({ method: "POST", url: `/api/reviews/${id}/explain`, headers: authed });
       expect(update.statusCode).toBe(409);
       expect((update.json() as { error: string }).error).toMatch(/empty|No changes/);
     } finally {

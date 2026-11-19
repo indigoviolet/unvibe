@@ -22,5 +22,5 @@ The socket test proves the wiring and the real parser input. The unit tests prov
 - Is there a way to prove `http.client` leaves the CRLF in? | ask: How could a test show that `http.client` itself keeps `\r\n` in a folded value, so the socket test fails if the stdlib starts unfolding?
 
 ```json
-{"anchor": {"quote": "A socket-level test covers the whole path", "hostBlock": "card:buildup"}, "contribute": {"open_questions": ["Does the socket-level test pass on a stdlib that already unfolds values, i.e. does it isolate the normalizer's contribution at all?"]}}
+{"contribute": {"open_questions": ["Does the socket-level test pass on a stdlib that already unfolds values, i.e. does it isolate the normalizer's contribution at all?"]}}
 ```

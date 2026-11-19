@@ -4,7 +4,7 @@
  *
  * On-demand only (`mise run visual-tour`): the persona states the owner
  * reviews as frames — the personas list, the add/edit/delete forms and
- * confirm, and the persona dropdown/version/clarity states. Behaviour
+ * confirm, and the persona dropdown/version states. Behaviour
  * for all of these lives in `e2e/journeys/l8-personas.spec.ts`; this
  * file keeps just enough asserts to prove each framed state.
  *
@@ -17,9 +17,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "../network-guard.js";
 import { cpuThrottleFromEnv } from "../cpu-throttle.js";
+import { openPopup } from "../select.js";
 import { selectText } from "../select-text.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
-import { apiJson, createSeededDemoReview } from "../journeys/journey-helpers.js";
+import { TUTOR_LENS, apiJson, createSeededDemoReview, makeTutorForkPrompts } from "../journeys/journey-helpers.js";
 import { checkLayout } from "../layout-check.js";
 
 test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
@@ -60,23 +61,35 @@ async function gotoPersonas(
 test.describe("J349 personas settings", () => {
   let dataDir = "";
   let svc: RunningService | null = null;
+  let promptDirs: string[] = [];
 
   test.beforeAll(async () => {
     mkdirSync(SHOTS, { recursive: true });
     dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j349-data-"));
-    svc = await startService(dataDir, { agent: "none" });
+    // Issue #405: the default-guide frame needs a non-Guide guide-capable
+    // choice, so this service boots over the Tutor fixture fork (#393).
+    const prompts = makeTutorForkPrompts("tourpersonas");
+    promptDirs.push(prompts.dir);
+    svc = await startService(dataDir, {
+      agent: "none",
+      extraEnv: { UNVIBE_PROMPTS_DIR: prompts.dir },
+    });
   });
 
   test.afterAll(async () => {
     await svc?.stop().catch(() => {});
     svc = null;
     rmSync(dataDir, { recursive: true, force: true });
+    for (const d of promptDirs) rmSync(d, { recursive: true, force: true });
+    promptDirs = [];
   });
 
   test("built-ins are seeded and listed", async ({ page }) => {
     if (!svc) throw new Error("service not running");
     const list = await personas(svc);
-    expect(list).toHaveLength(3);
+    // Issue #423 removes the Clarity built-in (issue #405 removed Teach):
+    // two seeds remain.
+    expect(list).toHaveLength(2);
     expect(list[0]).toMatchObject({
       id: "guide",
       name: "Guide",
@@ -95,14 +108,8 @@ test.describe("J349 personas settings", () => {
     });
     expect(list[1].lens).toContain("second reader");
     expect(list[1].cardInstruction).toContain("check its claims against the code");
-    // Issue #359: Clarity follows the Guide's model at run time.
-    expect(list[2]).toMatchObject({
-      id: "clarity",
-      name: "Clarity",
-      followMain: true,
-      enabled: true,
-    });
-    expect(list[2].lens).toContain("You are Clarity");
+    // Issue #405: no Teach seed remains; issue #423: no Clarity seed.
+    expect(list.map((p) => p.id)).toEqual(["guide", "second-opinion"]);
 
     await page.setViewportSize({ width: 1440, height: 900 });
     await gotoPersonas(page, svc);
@@ -111,40 +118,81 @@ test.describe("J349 personas settings", () => {
     await expect(row).toContainText("Second opinion");
     await expect(row).toContainText("codex/gpt-6.1-sol");
     await expect(row.getByTestId("persona-second-opinion-swatch")).toBeVisible();
-    const clarityRow = page.getByTestId("persona-clarity");
-    await expect(clarityRow).toBeVisible();
-    await expect(clarityRow).toContainText("Clarity");
-    await expect(clarityRow).toContainText("Guide's model (claude/claude-opus-5-5)");
+    await expect(page.getByTestId("persona-clarity")).toHaveCount(0);
+    await expect(page.getByTestId("persona-teach")).toHaveCount(0);
     await checkLayout(page, "personas-1440-light");
     await page.screenshot({ path: path.join(SHOTS, "personas-1440-light.png") });
   });
 
-  test("Clarity follows the main model until pinned", async ({ page }) => {
+  test("default guide picker frame", async ({ page }) => {
     if (!svc) throw new Error("service not running");
+    const active: RunningService = svc;
     test.setTimeout(120_000);
     await page.setViewportSize({ width: 1440, height: 900 });
+    // Issue #401: one Default guide picker above the list. Issue #405
+    // removes the Teach built-in, so the Tutor fixture fork (#393) is the
+    // non-Guide guide-capable choice: add its persona before the page
+    // loads, so the forks it fetches on mount include Tutor.
+    const seed = (await apiJson(svc, "GET", "/api/settings")).json as {
+      personas: Record<string, unknown>[];
+    };
+    const added = await apiJson(svc, "PUT", "/api/settings", {
+      personas: [
+        ...seed.personas,
+        {
+          id: "tutor",
+          name: "Tutor",
+          followMain: false,
+          provider: "codex",
+          model: "gpt-6.1-sol",
+          lens: TUTOR_LENS,
+          cardInstruction: "",
+          enabled: true,
+          color: "#BE123C",
+        },
+      ],
+    });
+    expect(added.status).toBe(200);
     await gotoPersonas(page, svc);
-    const row = page.getByTestId("persona-clarity");
-    await expect(row).toBeVisible();
-    await row.getByTestId("persona-clarity-edit").click();
-    await expect(page.getByTestId("persona-clarity-lens")).toBeVisible();
-    // Seeded following main: the box is checked, the pin fields hide.
-    await expect(page.getByTestId("persona-clarity-follow-main")).toBeChecked();
-    await expect(page.getByTestId("persona-clarity-provider")).toHaveCount(0);
-    await expect(page.getByTestId("persona-clarity-model")).toHaveCount(0);
-    // Uncheck: the provider/model pickers come back (no CLIs on PATH,
-    // so the model list shows the adapter error — the saved pick below
-    // still applies). Re-check and save: still following main.
-    await page.getByTestId("persona-clarity-follow-main").click();
-    await expect(page.getByTestId("persona-clarity-provider")).toBeVisible();
-    await page.getByTestId("persona-clarity-follow-main").click();
-    await expect(page.getByTestId("persona-clarity-provider")).toHaveCount(0);
-    await page.getByTestId("persona-clarity-save").click();
-    await expect(page.getByTestId("persona-clarity-lens")).toHaveCount(0);
-    const list = await personas(svc);
-    const clarity = list.find((p) => p.id === "clarity");
-    expect(clarity?.followMain).toBe(true);
-    await expect(row).toContainText("Guide's model (claude/claude-opus-5-5)");
+    const picker = page.getByTestId("default-guide");
+    await expect(picker).toBeVisible();
+    await expect(picker).toContainText("Guide");
+    await picker.click();
+    const tutorOption = openPopup(page).getByRole("option", { name: "Tutor" });
+    await expect(tutorOption).toBeVisible();
+    await tutorOption.scrollIntoViewIfNeeded();
+    await tutorOption.click();
+    await expect
+      .poll(
+        async () =>
+          ((await apiJson(active, "GET", "/api/settings")).json as { defaultGuidePersonaId?: string })
+            .defaultGuidePersonaId,
+        { timeout: 15_000 },
+      )
+      .toBe("tutor");
+    await expect(picker).toContainText("Tutor");
+    // Disable Tutor with the default still on it: the one-line fallback
+    // notice says the Guide stands in (read-time fallback; the stored
+    // value is left for the owner to change).
+    const full = (await apiJson(svc, "GET", "/api/settings")).json as { personas: Record<string, unknown>[] };
+    const disabled = await apiJson(svc, "PUT", "/api/settings", {
+      personas: full.personas.map((p) => (p["id"] === "tutor" ? { ...p, enabled: false } : p)),
+    });
+    expect(disabled.status).toBe(200);
+    await page.reload();
+    await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible({ timeout: 30_000 });
+    await page.getByRole("tab", { name: "Personas" }).click();
+    await expect(page.getByTestId("personas-section")).toBeVisible();
+    await expect(page.getByTestId("default-guide-fallback")).toContainText("stands in");
+    await page.mouse.move(720, 20);
+    await checkLayout(page, "personas-default-guide-1440-light");
+    await page.screenshot({ path: path.join(SHOTS, "personas-default-guide-1440-light.png") });
+    // Restore: Tutor removed, default back to Guide.
+    const restored = await apiJson(svc, "PUT", "/api/settings", {
+      personas: seed.personas,
+      defaultGuidePersonaId: "guide",
+    });
+    expect(restored.status).toBe(200);
   });
 
   test("edit form frame", async ({ page }) => {
@@ -219,7 +267,9 @@ test.describe("J349 personas settings", () => {
     const seed = await personas(svc);
     const added = await apiJson(svc, "PUT", "/api/settings", { personas: [...seed, custom] });
     expect(added.status).toBe(200);
-    expect((added.json as { personas: PersonaBody[] }).personas).toHaveLength(4);
+    // Issue #423 removes the Clarity built-in (issue #405 removed Teach):
+    // two seeds plus the custom one.
+    expect((added.json as { personas: PersonaBody[] }).personas).toHaveLength(3);
 
     await gotoPersonas(page, svc);
     const row = page.getByTestId("persona-perf-sceptic");
@@ -254,19 +304,17 @@ test.describe("J349 personas settings", () => {
     await page.keyboard.press("Escape");
     await expect(row.getByText("Confirm delete the “Perf sceptic” persona")).toHaveCount(0);
     await expect(row).toBeVisible();
-    // Confirm: the row goes and the API forgets it (both built-ins stay).
+    // Confirm: the row goes and the API forgets it (the built-ins stay).
     await row.getByRole("button", { name: "Delete Perf sceptic" }).click();
     await row.getByRole("button", { name: "Confirm delete the “Perf sceptic” persona" }).click();
     await expect(row).toHaveCount(0);
-    expect((await personas(svc)).map((p) => p.id)).toEqual(["guide", "second-opinion", "clarity"]);
+    expect((await personas(svc)).map((p) => p.id)).toEqual(["guide", "second-opinion"]);
   });
 });
 
 // ---- j349b-personas-variants.spec.ts (frames re-added) ----
 const PERSONA_ID = "second-opinion";
 const PERSONA_RGB = "14, 124, 134";
-const CLARITY_ID = "clarity";
-const CLARITY_RGB = "194, 65, 12";
 
 interface VariantBody {
   personaId: string;
@@ -297,6 +345,12 @@ test.describe("J349b persona versions", () => {
     dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-j349b-data-"));
     reviewId = createSeededDemoReview(dataDir, "j349b-seed");
     svc = await startService(dataDir, { agent: "replay" });
+    // Issue #422: the persona-run frame presses Simplify through the
+    // #418 menu, so the Explain-terms gate goes on.
+    const gate = await apiJson(svc, "PUT", "/api/settings", {
+      experimental: { explainTerms: true, markdownDocs: false },
+    });
+    expect(gate.status).toBe(200);
   });
 
   test.afterAll(async () => {
@@ -351,21 +405,23 @@ test.describe("J349b persona versions", () => {
     const ring = await card.evaluate((el) => getComputedStyle(el).boxShadow);
     expect(ring).toContain(PERSONA_RGB);
 
-    // The depth stepper's dots (not the icons) on the persona tab:
-    // deeper rewrites the variant, never the Guide version.
+    // Help me understand on the persona tab: a slower rewrite of the
+    // variant, never the Guide version. Issue #418: the button opens
+    // the menu; Simplify is today's press.
     const variantTextBefore = await card.locator(".prose, .lst").first().innerText();
-    await card.getByRole("button", { name: "Deeper" }).click();
+    await card.getByRole("button", { name: "Help me understand" }).click();
+    await page.locator('[data-understand-menu-list="central"]').getByRole("menuitem", { name: "Simplify" }).click();
     {
       const deadline = Date.now() + 90_000;
       for (;;) {
         const variants = await centralVariants(svc, reviewId);
-        if (variants[PERSONA_ID]?.level === "deep") break;
-        if (Date.now() > deadline) throw new Error("persona depth never landed");
+        if ((variants[PERSONA_ID]?.revision ?? 0) >= 2) break;
+        if (Date.now() > deadline) throw new Error("persona rewrite never landed");
         await new Promise((r) => setTimeout(r, 500));
       }
     }
-    const afterDepth = (await centralVariants(svc, reviewId))[PERSONA_ID];
-    expect(afterDepth.revision).toBeGreaterThanOrEqual(2);
+    const afterSlower = (await centralVariants(svc, reviewId))[PERSONA_ID];
+    expect(afterSlower.revision).toBeGreaterThanOrEqual(2);
     await expect(card.locator(".prose, .lst").first()).not.toHaveText(variantTextBefore, { timeout: 15_000 });
     // Back on Guide: the variant rewrite left it untouched.
     await tabs.locator('[data-version-tab="guide"]').click();
@@ -373,11 +429,11 @@ test.describe("J349b persona versions", () => {
       timeout: 15_000,
     });
     await tabs.locator(`[data-version-tab="${PERSONA_ID}"]`).click();
-    await expect(card).toContainText("CRLF is the framing delimiter", { timeout: 15_000 });
+    await expect(card).toContainText("agree with each other", { timeout: 15_000 });
 
     // Ask on the persona's text: the thread belongs to the persona and
     // the agent avatar wears its colour.
-    await selectText(page, "#C-central", "framing delimiter");
+    await selectText(page, "#C-central", "agree with each other");
     await page.locator('#selbar [data-act="ask"]').click();
     const composer = page.locator('#C-central .ithread[data-pending-thread]');
     await expect(composer).toBeVisible({ timeout: 10_000 });
@@ -418,51 +474,5 @@ test.describe("J349b persona versions", () => {
     await page.mouse.move(720, 20);
     await checkLayout(page, "persona-version-1440-light");
     await page.screenshot({ path: path.join(SHOTS, "persona-version-1440-light.png") });
-  });
-
-  test("Clarity run on a card: tab with citations intact", async ({ page }) => {
-    test.setTimeout(300_000);
-    if (!svc) throw new Error("no service");
-    await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
-    await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
-
-    // The persona menu lists Clarity beside Second opinion.
-    const menuButton = page.locator('#C-central [data-persona-menu="central"]');
-    await expect(menuButton).toBeVisible({ timeout: 15_000 });
-    await menuButton.click();
-    const menu = page.locator('[data-persona-menu-list="central"]');
-    await expect(menu).toBeVisible();
-    await expect(menu.locator(`[data-persona-option="${CLARITY_ID}"]`)).toContainText("Clarity");
-    await menu.locator(`[data-persona-option="${CLARITY_ID}"]`).click();
-
-    // Guide + Second opinion + Clarity tabs; Clarity stores revision 1
-    // with no error.
-    const tabs = page.locator('[data-testid="versions-central"]');
-    await expect(tabs).toBeVisible({ timeout: 60_000 });
-    {
-      const deadline = Date.now() + 90_000;
-      for (;;) {
-        const variants = await centralVariants(svc, reviewId);
-        if (variants[CLARITY_ID]?.blocks.length) break;
-        if (Date.now() > deadline) throw new Error("clarity variant never stored");
-        await new Promise((r) => setTimeout(r, 500));
-      }
-    }
-    const stored = (await centralVariants(svc, reviewId))[CLARITY_ID];
-    expect(stored.revision).toBe(1);
-    expect(stored.error ?? null).toBeNull();
-    expect(JSON.stringify(stored.blocks)).toContain("src-urllib3-connection");
-
-    // The Clarity tab shows the rewrite under its own colour border.
-    await tabs.locator(`[data-version-tab="${CLARITY_ID}"]`).click();
-    await expect(tabs.locator(`[data-version-tab="${CLARITY_ID}"]`)).toContainText("Clarity");
-    const card = page.locator("#C-central");
-    await expect(card).toContainText("reads more directly", { timeout: 15_000 });
-    const ring = await card.evaluate((el) => getComputedStyle(el).boxShadow);
-    expect(ring).toContain(CLARITY_RGB);
-    await page.mouse.move(720, 20);
-    await checkLayout(page, "persona-clarity-1440-light");
-    await page.screenshot({ path: path.join(SHOTS, "persona-clarity-1440-light.png") });
   });
 });

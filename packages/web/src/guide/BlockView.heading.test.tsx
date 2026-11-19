@@ -12,7 +12,7 @@ import { BlockView } from "./BlockView.js";
 function seed(): void {
   useReview.getState().clear();
   useReview.getState().setSnapshot({
-    review: { id: "r1", repoId: "r", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
+    review: { id: "r1", repoId: "r", branch: "b", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: 0 },
     version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
     files: [],
     pages: [],
@@ -36,7 +36,7 @@ describe("BlockView heading (#327)", () => {
     seed();
     const block: Block = { type: "heading", id: "b2", html: "Interfaces with <strong>reach</strong>", citations: [] };
     const { container } = render(
-      <BlockView block={block} level="standard" threads={[]} cardId="c1" onOpenPage={() => {}} onFollowUp={() => {}} />,
+      <BlockView block={block} threads={[]} cardId="c1" onOpenPage={() => {}} onFollowUp={() => {}} />,
     );
     const h = container.querySelector("h3.subhead");
     expect(h).not.toBeNull();

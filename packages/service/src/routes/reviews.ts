@@ -7,11 +7,10 @@
  * - `POST /api/reviews/:id/retry` — re-run a failed ingest (#92).
  * - `POST /api/reviews/:id/redo` — re-do the guide: delete + create in
  *   one call, answering with the new review's loading snapshot (#115).
- * - `GET /api/reviews/:id[?version=n]` — current snapshot (with live jobs
- *   merged in), or an older version's `version` + `files` swapped in.
+ * - `GET /api/reviews/:id` — current snapshot (with live jobs merged in).
  * - `POST /api/reviews/:id/refresh` — fetch and compare (no agent time).
- * - `POST /api/reviews/:id/update` — manual update pass (M5, via the
- *   pipeline's UpdateBaseRunner by default).
+ * - `POST /api/reviews/:id/explain` — explain changes since X (one agent
+ *   call, via the pipeline's ExplainBaseRunner by default).
  * - `POST /api/reviews/:id/resume` — re-enqueue interrupted pipeline stages
  *   (M3 resilience; idempotent).
  * - `POST …/actions` — M3 dispatcher (`generate` implemented, rest 501).
@@ -31,10 +30,14 @@ import type {
   ResumeReviewResponse,
   ReviewSnapshot,
   SetSinceBaselineResponse,
-  UpdateReviewResponse,
+  ExplainReviewResponse,
+  SinceBaseline,
+  SinceHunks,
   Version,
 } from "@unvibe/shared";
-import { DEFAULT_REVIEW_VIEW_PREFS, ingestStatusOf, isCommitSha, isDocumentReview, isReadySnapshot, parseDocumentMarkdown, summarizeComparison } from "@unvibe/shared";
+import { DEFAULT_REVIEW_VIEW_PREFS, GUIDE_PERSONA_ID, ingestStatusOf, isCommitSha, isDocumentReview, isReadySnapshot, parseDocumentMarkdown, summarizeComparison } from "@unvibe/shared";
+import { effectiveDefaultGuideId, guidePersonaForReview, isGuideCapable } from "../prompts/personas.js";
+import { resolvePromptsDir } from "../prompts/index.js";
 import { ingestRefusal } from "../reviews/index.js";
 import {
   EmptyDiffError,
@@ -50,13 +53,13 @@ import type { RouteDeps } from "./deps.js";
 import { listAllRepos } from "./repos.js";
 import { loadVersionFiles, saveVersionFiles } from "../versions/files.js";
 import { refreshReview } from "../versions/refresh.js";
-import { computeSinceHunks, diffFilesAtCommit, unfetchableCommitMessage } from "../versions/since.js";
+import { computeSinceHunks, diffFilesAtCommit, resolveSinceBaseline, unfetchableCommitMessage } from "../versions/since.js";
 import {
-  enqueueUpdatePass,
+  enqueueExplainPass,
   JsonBlockReplyParser,
-  type UpdateBaseRunner,
-  type UpdateReplyParser,
-} from "../versions/update.js";
+  type ExplainBaseRunner,
+  type ExplainReplyParser,
+} from "../versions/explain.js";
 import { demoFixtureName, fixturesDirDefault, ingestDemo, isDemoRequest } from "../pipeline/demo.js";
 import { refreshManagedCheckout, resolveContextRepo } from "../repos/index.js";
 import { dispatchAction } from "../pipeline/actions/dispatcher.js";
@@ -76,8 +79,8 @@ import { isNoneRunner } from "../agent/factory.js";
 import { hasGuideCards, reviewAttributes, traceRefresh, traceSpan, watchOpenToFirstCard } from "../traces/index.js";
 
 export interface ReviewsRouteDeps {
-  baseRunner?: UpdateBaseRunner;
-  parser?: UpdateReplyParser;
+  baseRunner?: ExplainBaseRunner;
+  parser?: ExplainReplyParser;
   promptsDir?: string;
   pipeline?: Pipeline;
   fixturesDir?: string;
@@ -261,6 +264,8 @@ async function runIngestBackground(
     const snapshot: ReviewSnapshot = {
       review: { ...ingested.review, repoId },
       version: ingested.version,
+      // Issue #421: no guide yet — v1 is what the reader will describe.
+      guideHead: { version: 1, sha: ingested.version.headSha },
       files: ingested.files,
       description: ingested.description,
       commits: ingested.commits,
@@ -299,9 +304,14 @@ async function runIngestBackground(
       saveVersionFiles(ctx.db, reviewId, snapshot.version!.n, snapshot.files!);
     });
     // One mutate so the UI gets one patch (ready through the usual events).
+    // Issue #393: the finished review keeps the Guide persona the
+    // loading placeholder recorded (redo-with included).
+    const prevGuide = ctx.reviews.getSnapshot(reviewId)?.review.guidePersonaId ?? GUIDE_PERSONA_ID;
     await ctx.reviews.mutate(reviewId, (draft) => {
-      draft.review = { ...snapshot.review };
+      draft.review = { ...snapshot.review, guidePersonaId: prevGuide };
       draft.version = { ...snapshot.version! };
+      // Issue #421: no guide yet — v1 is what the reader will describe.
+      draft.guideHead = { version: snapshot.review.currentVersion, sha: snapshot.version!.headSha };
       draft.files = snapshot.files as ReviewSnapshot["files"];
       draft.description = snapshot.description ? { ...snapshot.description } : undefined;
       draft.commits = snapshot.commits ? snapshot.commits.map((c) => ({ ...c })) : undefined;
@@ -375,6 +385,8 @@ interface BeginCreateArgs {
   branch?: string;
   title?: string;
   author?: string;
+  /** Issue #393: which Guide persona the new review records. */
+  guidePersonaId: string;
 }
 
 type BeginCreateResult =
@@ -510,6 +522,7 @@ async function beginReviewFromSourceInner(
       repoId: repo.id,
       branch: branchPlaceholder,
       ...(args.pr !== undefined ? { prNumber: args.pr } : {}),
+      guidePersonaId: args.guidePersonaId,
       versions: [],
       currentVersion: 0,
       createdAt: now,
@@ -526,6 +539,8 @@ async function beginReviewFromSourceInner(
     contributions: [],
     logTail: [],
     rev: 1,
+    // Issue #421: no guide yet (placeholder version 0).
+    guideHead: { version: 0, sha: "" },
     ingest: { status: "loading", step: "fetching" },
   };
   transaction(ctx.db, () => {
@@ -572,6 +587,28 @@ async function beginReviewFromSourceInner(
   }
 }
 
+/**
+ * Issue #401: which Guide persona a fresh review or a plain re-do
+ * records — the effective default (the stored id when it names an
+ * enabled guide-capable persona, else the built-in Guide). Never throws:
+ * a guide never fails to start because of the default.
+ */
+/** Issue #401: exported for unit tests (the create/redo call sites are one-liners). */
+export function defaultGuideForNewReview(deps: RegisterReviewsDeps): string {
+  try {
+    const settings = (deps as RouteDeps).settings?.get();
+    if (!settings) return GUIDE_PERSONA_ID;
+    const dir = (deps as RouteDeps).promptsDir ?? resolvePromptsDir();
+    return effectiveDefaultGuideId(
+      settings.personas ?? [],
+      dir,
+      settings.defaultGuidePersonaId ?? GUIDE_PERSONA_ID,
+    );
+  } catch {
+    return GUIDE_PERSONA_ID;
+  }
+}
+
 /** #115: the stored title hint for a review's loading page (best effort). */
 function storedTitle(db: ServiceContext["db"], reviewId: string): string | undefined {
   try {
@@ -613,7 +650,7 @@ export async function registerReviews(
         { ...(pipeline ? { pipeline } : {}), autoPipeline },
         pendingIngests,
         inFlightCreates,
-        { repoId, pr },
+        { repoId, pr, guidePersonaId: defaultGuideForNewReview(deps) },
       );
       return r.ok ? { ok: true, snapshot: r.snapshot } : { ok: false, status: r.status, error: r.error };
     },
@@ -719,6 +756,14 @@ export async function registerReviews(
     // Issue #222: document reviews are created synchronously from the
     // pasted Markdown (no ingest, no pipeline — nothing generated up front).
     if ((raw as { kind?: string }).kind === "document") {
+      // Issue #422: document creation is experimental — refuse while
+      // Markdown docs is off (existing doc reviews stay in storage).
+      if ((deps as RouteDeps).settings?.get().experimental.markdownDocs !== true) {
+        return reply.code(403).send({
+          error:
+            "Markdown docs is an experimental feature — turn it on in Settings → Experimental to create document reviews",
+        });
+      }
       const docBody = raw as CreateDocumentRequest;
       const markdown = typeof docBody.markdown === "string" ? docBody.markdown : "";
       if (markdown.trim() === "") return reply.code(400).send({ error: "paste the document's Markdown first" });
@@ -761,6 +806,8 @@ export async function registerReviews(
           id: reviewId,
           repoId: contextRepos[0].repoId,
           branch: "document",
+          // Issue #393: document reviews never re-do; the built-in Guide stands.
+          guidePersonaId: GUIDE_PERSONA_ID,
           versions: [version],
           currentVersion: 1,
           createdAt: now,
@@ -768,6 +815,8 @@ export async function registerReviews(
         document,
         contextRepos,
         version,
+        // Issue #421: the document guide describes this head.
+        guideHead: { version: 1, sha: docSha },
         files: [],
         pages: [],
         annotations: [],
@@ -813,6 +862,8 @@ export async function registerReviews(
       const snapshot: ReviewSnapshot = {
         review: ingested.review,
         version: ingested.version,
+        // Issue #421: no guide yet — v1 is what the reader will describe.
+        guideHead: { version: 1, sha: ingested.version.headSha },
         files: ingested.files,
         description: ingested.description,
         ingest: { status: "ready" },
@@ -865,6 +916,7 @@ export async function registerReviews(
         ...(body.pr !== undefined ? { pr: body.pr } : { branch: body.branch }),
         ...(body.title !== undefined ? { title: body.title } : {}),
         ...(body.author !== undefined ? { author: body.author } : {}),
+        guidePersonaId: defaultGuideForNewReview(deps),
       },
     );
     if (!created.ok) return reply.code(created.status).send({ error: created.error });
@@ -902,6 +954,10 @@ export async function registerReviews(
   // refresh/update/resume), while a submit is in flight for the review
   // (delete does not check — redo must never lose a submission), and when
   // the repo is gone (nothing is deleted then).
+  // Issue #393: `Re-do with <persona>` — same semantics, same refusals;
+  // the body names the guide-capable persona and the new review records
+  // it. Issue #401: an absent body re-does with the effective default
+  // guide persona; the built-in Guide id still re-does exactly as before.
   app.post("/api/reviews/:id/redo", async (req, reply) => {
     const { id } = req.params as { id: string };
     const snap = ctx.reviews.getSnapshot(id);
@@ -916,6 +972,21 @@ export async function registerReviews(
     if (refusedRedo) return reply.code(409).send({ error: refusedRedo });
     if (readSubmitLease(ctx.db, id)) {
       return reply.code(409).send({ error: "A review is being submitted. Try again when it has finished." });
+    }
+    const body = (req.body ?? {}) as { personaId?: unknown };
+    const requested =
+      typeof body.personaId === "string" && body.personaId.trim() !== ""
+        ? body.personaId
+        : defaultGuideForNewReview(deps);
+    if (requested !== GUIDE_PERSONA_ID) {
+      const settings = (deps as RouteDeps).settings?.get();
+      const persona = settings?.personas?.find((p) => p.id === requested);
+      if (!persona) return reply.code(404).send({ error: `unknown persona ${requested}` });
+      if (!persona.enabled) return reply.code(409).send({ error: `persona "${persona.name}" is disabled` });
+      const dir = deps.promptsDir ?? resolvePromptsDir();
+      if (!dir || !isGuideCapable(dir, requested)) {
+        return reply.code(409).send({ error: `persona "${persona.name}" can't write a guide (its prompt folder holds no reader.md)` });
+      }
     }
     const row = readReviewRow(ctx.db, id);
     if (!row) return reply.code(404).send({ error: "unknown review" });
@@ -940,6 +1011,7 @@ export async function registerReviews(
         repoId: row.repoId,
         ...(row.prNumber !== null ? { pr: row.prNumber } : { branch: row.branch }),
         ...(title !== undefined ? { title } : {}),
+        guidePersonaId: requested,
       },
     );
     if (!created.ok) return reply.code(created.status).send({ error: created.error });
@@ -948,16 +1020,15 @@ export async function registerReviews(
 
   app.get("/api/reviews/:id", async (req, reply) => {
     const { id } = req.params as { id: string };
-    const query = req.query as { version?: string };
     const snapshot = ctx.reviews.getSnapshot(id);
     if (!snapshot) return reply.code(404).send({ error: "unknown review" });
     // Opening a review marks it recently opened for the front-screen list
-    // (most recent first). Version views don't reorder the list.
-    if (query.version === undefined) touchReviewOpened(ctx.db, id);
+    // (most recent first).
+    touchReviewOpened(ctx.db, id);
     // Issue #356: review-open-to-first-card — watch for the first guide
-    // content when the opened review has no cards yet (version views and
-    // already-guided opens return below without watching).
-    if (query.version === undefined && !hasGuideCards(snapshot)) {
+    // content when the opened review has no cards yet (already-guided
+    // opens return below without watching).
+    if (!hasGuideCards(snapshot)) {
       try {
         watchOpenToFirstCard(ctx.bus, id);
       } catch {
@@ -968,35 +1039,7 @@ export async function registerReviews(
     // waiting for a patch event.
     const jobs = (deps as RouteDeps).jobs;
     const withJobs: ReviewSnapshot = jobs ? { ...snapshot, jobs: jobs.listByReview(id) } : snapshot;
-    if (query.version === undefined) return withJobs;
-
-    // #92: loading/failed reviews have no versions yet — serve the status.
-    if (!isReadySnapshot(snapshot)) return withJobs;
-
-    const n = Number(query.version);
-    if (!Number.isSafeInteger(n) || n < 1) {
-      return reply.code(400).send({ error: `bad ?version=${query.version}` });
-    }
-    if (n === snapshot.version.n) return withJobs;
-    const vrow = ctx.db
-      .prepare(
-        "SELECT n, head_sha AS headSha, merge_base_sha AS mergeBaseSha, base_ref AS baseRef, fetched_at AS fetchedAt, id_mapping AS idMapping FROM versions WHERE review_id = ? AND n = ?",
-      )
-      .get(id, n) as
-      | { n: number; headSha: string; mergeBaseSha: string; baseRef: string; fetchedAt: number; idMapping: string }
-      | undefined;
-    if (!vrow) return reply.code(404).send({ error: `unknown version ${n}` });
-    const files = loadVersionFiles(ctx.db, id, n);
-    if (!files) return reply.code(404).send({ error: `no files stored for version ${n}` });
-    const version: Version = {
-      n: vrow.n,
-      headSha: vrow.headSha,
-      mergeBaseSha: vrow.mergeBaseSha,
-      baseRef: vrow.baseRef,
-      fetchedAt: vrow.fetchedAt,
-      idMapping: JSON.parse(vrow.idMapping) as Record<string, string>,
-    };
-    return { ...withJobs, version, files };
+    return withJobs;
   });
 
   app.post("/api/reviews/:id/refresh", async (req, reply) => {
@@ -1092,38 +1135,109 @@ export async function registerReviews(
     return response;
   });
 
-  app.post("/api/reviews/:id/update", async (req, reply) => {
+  /**
+   * Issue #413: resolve the X an Explain run explains from. An explicit
+   * `{ version }` reads the stored version diff; `{ sha }` diffs through
+   * git (unfetchable → loud error, nothing persisted); absent means the
+   * stored/default baseline with its stored hunk set.
+   */
+  async function resolveExplainBaseline(
+    reviewId: string,
+    snapshot: ReviewSnapshot,
+    body: { version?: unknown; sha?: unknown },
+  ): Promise<{ baseline: SinceBaseline; since: SinceHunks }> {
+    const current = snapshot.review.currentVersion;
+    const headSha = snapshot.version.headSha.toLowerCase();
+    // Issue #413: X = the head is an empty range — refuse before any
+    // agent spend. Explicit picks get 400s for malformed values, but
+    // the head itself is a well-formed, meaningless X (409).
+    if (typeof body.sha === "string") {
+      if (!isCommitSha(body.sha)) throw new Error("sha must be a commit sha (4-64 hex chars)");
+      const sha = body.sha.toLowerCase();
+      if (sha === headSha || headSha.startsWith(sha) || sha.startsWith(headSha)) {
+        throw new Error("Nothing to explain: X is the current head");
+      }
+      const row = readReviewRow(ctx.db, reviewId);
+      if (!row) throw new Error("unknown review");
+      const repo = ctx.repos.get(row.repoId);
+      if (!repo) throw new Error("unknown repo");
+      const bFiles = await diffFilesAtCommit(ctx.runner, repo.localPath, snapshot.version.mergeBaseSha, sha);
+      const since = computeSinceHunks(bFiles, snapshot.files);
+      return { baseline: { kind: "commit", sha }, since };
+    }
+    if (typeof body.version === "number") {
+      if (!Number.isSafeInteger(body.version) || body.version < 1 || body.version > current) {
+        throw new Error(`version must be a version 1 to ${current}`);
+      }
+      if (body.version === current) {
+        throw new Error("Nothing to explain: X is the current head");
+      }
+      const bFiles = loadVersionFiles(ctx.db, reviewId, body.version);
+      if (!bFiles) throw new Error(`no files stored for version ${body.version}`);
+      const since = computeSinceHunks(bFiles, snapshot.files);
+      return { baseline: { kind: "version", version: body.version }, since };
+    }
+    return { baseline: resolveSinceBaseline(snapshot), since: snapshot.sinceHunks ?? { added: [], changed: [] } };
+  }
+
+  app.post("/api/reviews/:id/explain", async (req, reply) => {
+    // Issue #413: explain changes since X — one agent call, only on
+    // stored/default baseline). The end is always the head. The run
+    // replaces the Changes-since-X section whole and touches nothing
+    // else in the old guide.
     const { id } = req.params as { id: string };
     const snapshot = ctx.reviews.getSnapshot(id);
     if (!snapshot) return reply.code(404).send({ error: "unknown review" });
-    const refusedUpdate = ingestRefusal(snapshot);
-    if (refusedUpdate) return reply.code(409).send({ error: refusedUpdate });
+    const refusedExplain = ingestRefusal(snapshot);
+    if (refusedExplain) return reply.code(409).send({ error: refusedExplain });
     // #179: never spend agent time on an empty diff (e.g. after a refresh
     // emptied it).
     if ((snapshot.files ?? []).every((f) => f.hunks.length === 0 && !f.isBinary)) {
-      return reply.code(409).send({ error: "No changes to review: the diff is empty, so there is nothing to update." });
+      return reply.code(409).send({ error: "No changes to review: the diff is empty, so there is nothing to explain." });
     }
     if (!deps.jobs || !deps.baseRunner) {
       return reply.code(501).send({ error: "not available in this build" });
     }
+    const body = (req.body ?? {}) as { version?: unknown; sha?: unknown };
     const parser = deps.parser ?? new JsonBlockReplyParser();
     let provider = "main";
     let model = "main-model";
     let effort = "";
+    // Issue #393: the explain pass runs as the review's Guide persona.
+    let explainGuideId: string | undefined;
+    let explainLens = "";
     try {
       const s = (deps as RouteDeps).settings?.get();
       if (s) {
-        const guide = guidePick(s);
-        provider = guide.provider;
-        model = guide.model;
-        effort = guide.effort;
+        const guide = guidePersonaForReview(s.personas ?? [], snapshot.review.guidePersonaId);
+        explainGuideId = guide.id;
+        explainLens = guide.lens;
+        if (guide.id === GUIDE_PERSONA_ID) {
+          const pick = guidePick(s);
+          provider = pick.provider;
+          model = pick.model;
+          effort = pick.effort;
+        } else if (guide.followMain) {
+          const pick = guidePick(s);
+          provider = pick.provider;
+          model = pick.model;
+        } else {
+          provider = guide.provider;
+          model = guide.model;
+        }
       }
     } catch {
       // Keep defaults.
     }
     void req;
     try {
-      const job = enqueueUpdatePass(
+      const resolved = await resolveExplainBaseline(id, snapshot, body);
+      // The stored/default X can be the head (one-version review with
+      // nothing picked): refuse before any agent spend.
+      if (resolved.baseline.kind === "version" && resolved.baseline.version >= snapshot.review.currentVersion) {
+        return reply.code(409).send({ error: "Nothing to explain: X is the current head" });
+      }
+      const job = enqueueExplainPass(
         {
           jobs: deps.jobs,
           reviews: ctx.reviews,
@@ -1133,26 +1247,31 @@ export async function registerReviews(
           provider,
           model,
           effort,
+          ...(explainGuideId !== undefined ? { guidePersonaId: explainGuideId, lens: explainLens } : {}),
         },
-        { reviewId: id, toVersion: snapshot.review.currentVersion },
+        { reviewId: id, toVersion: snapshot.review.currentVersion, baseline: resolved.baseline, since: resolved.since },
       );
-      const response: UpdateReviewResponse = { jobId: job.id, toVersion: snapshot.review.currentVersion };
+      const response: ExplainReviewResponse = { jobId: job.id, toVersion: snapshot.review.currentVersion };
       return reply.code(202).send(response);
     } catch (err) {
       const msg = (err as Error).message;
-      if (/up to date/.test(msg)) return reply.code(409).send({ error: msg });
       if (/no prompts dir/.test(msg)) return reply.code(500).send({ error: msg });
+      if (/^Nothing to explain/.test(msg)) return reply.code(409).send({ error: msg });
+      if (/version must be|sha must be|no files stored|couldn't |Couldn't /.test(msg)) {
+        const code = /Couldn't find commit/.test(msg) ? 502 : 400;
+        return reply.code(code).send({ error: msg });
+      }
       return reply.code(500).send({ error: msg });
     }
   });
 
   app.post("/api/reviews/:id/since-baseline", async (req, reply) => {
-    // Issue #351: pick the baseline B the next update pass (or the
+    // Issue #351/#413: record the X the next Explain (or the
     // still-pending guide run) explains from — any earlier version, or
     // any commit sha. The since-hunk set is hunk-content comparison
     // against the head diff — never git ancestry, so a rebased or
-    // force-pushed B works the same. Setting a baseline never starts an
-    // agent run: the pending guide run picks it up, or the next update
+    // force-pushed X works the same. Recording X never starts an
+    // agent run: the pending guide run picks it up, or the next Explain
     // explains from it. An unfetchable commit sha fails loudly here.
     const { id } = req.params as { id: string };
     const body = (req.body ?? {}) as { version?: unknown; sha?: unknown };

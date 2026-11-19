@@ -1,36 +1,36 @@
 /**
- * Issue #367: the one shared update-availability predicate. The service
- * refuses an update when this is false, so the web UI must not offer one
- * either — card banners and the diff banner both read this.
+ * Issue #413: the shared new-commits signal. The banner and the
+ * start-page marks read hunk counts, never a flag: true exactly when
+ * the status names real hunk changes.
  */
 import { describe, expect, it } from "vitest";
-import { isUpdateAvailable, type VersionStatus } from "../src/versions.js";
+import { hasNewCommits, type VersionStatus } from "../src/versions.js";
 
-function status(stale: boolean): VersionStatus {
+function status(changedHunks: number, newHunks: number, removedHunks: number): VersionStatus {
   return {
-    stale,
     fromVersion: 1,
     toVersion: 2,
     unchangedHunks: 0,
-    changedHunks: 1,
-    newHunks: 0,
-    removedHunks: 0,
+    changedHunks,
+    newHunks,
+    removedHunks,
     renamedFiles: [],
     changedOldIds: [],
     changedNewIds: [],
-    rangeDiff: "",
     fetchedAt: 0,
   };
 }
 
-describe("isUpdateAvailable", () => {
-  it("is true only while the review is stale", () => {
-    expect(isUpdateAvailable(status(true))).toBe(true);
-    expect(isUpdateAvailable(status(false))).toBe(false);
+describe("hasNewCommits", () => {
+  it("is true when the status names hunk changes", () => {
+    expect(hasNewCommits(status(1, 0, 0))).toBe(true);
+    expect(hasNewCommits(status(0, 2, 0))).toBe(true);
+    expect(hasNewCommits(status(0, 0, 1))).toBe(true);
   });
 
-  it("is false without a version status", () => {
-    expect(isUpdateAvailable(undefined)).toBe(false);
-    expect(isUpdateAvailable(null)).toBe(false);
+  it("is false on a no-change refresh or without a status", () => {
+    expect(hasNewCommits(status(0, 0, 0))).toBe(false);
+    expect(hasNewCommits(undefined)).toBe(false);
+    expect(hasNewCommits(null)).toBe(false);
   });
 });

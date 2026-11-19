@@ -49,9 +49,9 @@ function renderMsgs(msgs: import("@unvibe/shared").Reply[]): string {
       const name = you ? "You" : "Agent";
       const inner = you ? PERSON_SVG_INNER : SPARK_SVG_INNER;
       const text = m.kind === "comment"
-        ? (m.blocks ?? []).map((b) => b.type === "paragraph" ? b.text.standard : "").join(" ")
+        ? (m.blocks ?? []).map((b) => b.type === "paragraph" ? b.text : "").join(" ")
         : (m.question ?? "");
-      return `<div class="msg"><span class="av ${av}" role="img" aria-label="${name}" data-tip="${name}"><svg class="ic" viewBox="0 0 16 16" aria-hidden="true">${inner}</svg></span><div><p>${tick(text ?? "")}</p></div></div>`;
+      return `<div class="msg"><span class="av ${av}" role="img" aria-label="${name}" data-tip="${name}"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${inner}</svg></span><div><p>${tick(text ?? "")}</p></div></div>`;
     })
     .join("");
 }
@@ -111,16 +111,13 @@ function previewExpansion(expansion: Thread | undefined): string {
   if (!expansion) return "";
   const firstTurn = (expansion.replies ?? [])[0];
   const blocks = firstTurn?.blocks ?? [];
-  const level = firstTurn?.level ?? "standard";
   const kind = firstTurn?.kind ?? "explain";
   const count = (expansion.replies ?? []).length;
   let first = "";
   for (const b of blocks) {
     if (b.type === "paragraph") {
-      const html =
-        level === "simple" ? (b.text.simple ?? b.text.standard) : level === "deep" ? (b.text.deep ?? b.text.standard) : b.text.standard;
-      if (html.trim()) {
-        first = html;
+      if (b.text.trim()) {
+        first = b.text;
         break;
       }
     }
@@ -133,7 +130,7 @@ function previewExpansion(expansion: Thread | undefined): string {
       : `<span class="hint">Writing explanation</span>`;
   return (
     `<span class="pv-thr">` +
-    `<span class="av ai" role="img" aria-label="Agent"><svg class="ic" viewBox="0 0 16 16" aria-hidden="true">${SPARK_SVG_INNER}</svg></span>` +
+    `<span class="av ai" role="img" aria-label="Agent"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${SPARK_SVG_INNER}</svg></span>` +
     `<span class="kind kind-${kind}">${esc(kind)}</span>` +
     `<span class="hint">${count} ${count === 1 ? "reply" : "replies"}</span></span>` +
     `<b>“${esc(expansion.anchor.quotedText)}”</b>${body}`

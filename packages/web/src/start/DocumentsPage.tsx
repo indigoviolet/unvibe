@@ -5,7 +5,7 @@
  * page; the top bar's home link returns there.
  */
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import type { Repo, ReviewSummary } from "@unvibe/shared";
 import { api } from "../api/client.js";
 import { Button } from "../ui/index.js";
@@ -21,6 +21,25 @@ export function DocumentsPage(): React.JSX.Element {
   const [docOpen, setDocOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  // Issue #422: Markdown docs is experimental. While off, the document
+  // form and the Documents list show the notice instead; the Web pages
+  // group (#322 panel threads) stays. Read on mount — a remount (any
+  // navigation) picks up a flipped toggle without a reload.
+  const [docsOn, setDocsOn] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .settings()
+      .then((s) => {
+        if (!cancelled) setDocsOn(s.experimental?.markdownDocs === true);
+      })
+      .catch(() => {
+        if (!cancelled) setDocsOn(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -75,46 +94,55 @@ export function DocumentsPage(): React.JSX.Element {
       <ScreenTopBar crumbs={[{ label: "Documents" }]} showBadge />
       <main className="col" style={{ padding: 24 }}>
         <div className="doc" style={{ maxWidth: 760 }}>
-          <h1 className="divider">Document</h1>
-          {docOpen ? (
-            <DocumentForm repos={repos} onCreated={(id) => navigate(`/review/${id}`)} />
-          ) : (
-            <p className="hint">
-              Review a pasted Markdown document with repos as context.{" "}
-              <Button variant="quiet" size="sm" type="button" onClick={() => setDocOpen(true)}>
-                New document review
-              </Button>
-            </p>
-          )}
-
-          <h1 className="divider">Documents</h1>
-          {sessions === null && !sessionsError ? (
-            <p className="hint">Loading documents…</p>
-          ) : sessionsError ? (
-            <p className="hint" role="alert">
-              {sessionsError}
-            </p>
-          ) : (
-            <div aria-label="Documents" style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              {docs.map((s) => (
-                <SessionRow
-                  key={s.id}
-                  s={s}
-                  opening={null}
-                  deleting={deleting}
-                  confirmDelete={confirmDelete}
-                  setConfirmDelete={setConfirmDelete}
-                  removeSession={removeSession}
-                  sessionRemoved={sessionRemoved}
-                  onOpen={() => navigate(`/review/${s.id}`)}
-                />
-              ))}
-              {docs.length === 0 ? (
-                <p className="hint" data-testid="documents-empty">
-                  No documents yet. Paste one above to start a review.
+          {docsOn ? (
+            <>
+              <h1 className="divider">Document</h1>
+              {docOpen ? (
+                <DocumentForm repos={repos} onCreated={(id) => navigate(`/review/${id}`)} />
+              ) : (
+                <p className="hint">
+                  Review a pasted Markdown document with repos as context.{" "}
+                  <Button variant="quiet" size="sm" type="button" onClick={() => setDocOpen(true)}>
+                    New document review
+                  </Button>
                 </p>
-              ) : null}
-            </div>
+              )}
+
+              <h1 className="divider">Documents</h1>
+              {sessions === null && !sessionsError ? (
+                <p className="hint">Loading documents…</p>
+              ) : sessionsError ? (
+                <p className="hint" role="alert">
+                  {sessionsError}
+                </p>
+              ) : (
+                <div aria-label="Documents" style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  {docs.map((s) => (
+                    <SessionRow
+                      key={s.id}
+                      s={s}
+                      opening={null}
+                      deleting={deleting}
+                      confirmDelete={confirmDelete}
+                      setConfirmDelete={setConfirmDelete}
+                      removeSession={removeSession}
+                      sessionRemoved={sessionRemoved}
+                      onOpen={() => navigate(`/review/${s.id}`)}
+                    />
+                  ))}
+                  {docs.length === 0 ? (
+                    <p className="hint" data-testid="documents-empty">
+                      No documents yet. Paste one above to start a review.
+                    </p>
+                  ) : null}
+                </div>
+              )}
+            </>
+          ) : (
+            <p className="hint" role="note" data-testid="documents-experimental-notice">
+              Markdown docs is an experimental feature; turn it on in{" "}
+              <Link to="/settings?tab=experimental">Settings → Experimental</Link>.
+            </p>
           )}
 
           <h1 className="divider">Web pages</h1>

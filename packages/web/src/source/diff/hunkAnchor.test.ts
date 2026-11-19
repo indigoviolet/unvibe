@@ -35,7 +35,7 @@ function hunk(over: Partial<Hunk> = {}): Hunk {
 
 function snapshot(hunks: Hunk[]): ReviewSnapshot {
   return {
-    review: { id: "r", repoId: "r", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
+    review: { id: "r", repoId: "r", branch: "b", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: 0 },
     version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
     files: [{ fileKey: "conn", path: "src/conn.py", category: "source", hunks }],
     pages: [],

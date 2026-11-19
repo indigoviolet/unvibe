@@ -48,6 +48,11 @@ const ENV = {
   UNVIBE_PORT: String(PORT),
   UNVIBE_IDLE_MS: "3000",
   UNVIBE_AGENT: "none",
+  // `setup` probes the interactive login shell for PATH (`$SHELL -l -i`).
+  // An inherited zsh runs its global compinit under the fake HOME and
+  // writes `.zcompdump` there, which is the shell's file, not setup's: pin
+  // a plain sh so the HOME walk below sees only what setup writes.
+  SHELL: "/bin/sh",
 };
 // Interruption net: stop only our own daemon (via its lock file under our
 // DATA), then remove only our own root. Never kills by pattern or port.

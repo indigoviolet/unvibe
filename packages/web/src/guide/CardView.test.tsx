@@ -7,7 +7,7 @@
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import type { Thread, Card, Job, ReviewSnapshot } from "@unvibe/shared";
 import { api } from "../api/client.js";
@@ -24,7 +24,6 @@ function card(over: Partial<Card> = {}): Card {
     id: "c1",
     pageId: "root",
     title: "Card",
-    level: "standard",
     collapsed: false,
     revision: 1,
     blocks: [],
@@ -36,7 +35,7 @@ function card(over: Partial<Card> = {}): Card {
 function seedSnapshot(cards: Card[], jobs: Job[] = [], annotations: Thread[] = []): void {
   useReview.getState().clear();
   useReview.getState().setSnapshot({
-    review: { id: REVIEW_ID, repoId: "r", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
+    review: { id: REVIEW_ID, repoId: "r", branch: "b", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: 0 },
     version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
     files: [],
     pages: [{ id: "root", kind: "root", title: "Root", cards }],
@@ -70,6 +69,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   useReview.getState().clear();
+  vi.restoreAllMocks();
 });
 
 describe("CardView immediate feedback", () => {
@@ -232,7 +232,7 @@ describe("CardView immediate feedback", () => {
   test("a follow-up chip goes disabled/busy on click with an answer placeholder", () => {
     const withFollow = card({
       blocks: [
-        { type: "paragraph", id: "b-p", text: { standard: "Some text." }, citations: [] },
+        { type: "paragraph", id: "b-p", text: "Some text.", citations: [] },
         { type: "follow-up", id: "b-f", items: [{ label: "Why?" }], citations: [] },
       ],
     });
@@ -263,8 +263,8 @@ describe("CardView immediate feedback", () => {
 
   test("a live card job with no in-flight entry still shows busy (reload mid-rewrite)", () => {
     const live = {
-      id: "job-depth-1",
-      kind: "depth",
+      id: "job-slower-1",
+      kind: "slower",
       provider: "claude",
       model: "m",
       reviewId: REVIEW_ID,
@@ -293,7 +293,7 @@ describe("CardView immediate feedback", () => {
   test("once the answer thread arrives, the chip placeholder is gone", () => {
     const withFollow = card({
       blocks: [
-        { type: "paragraph", id: "b-p", text: { standard: "Some text." }, citations: [] },
+        { type: "paragraph", id: "b-p", text: "Some text.", citations: [] },
         { type: "follow-up", id: "b-f", items: [{ label: "Why?" }], citations: [] },
       ],
     });
@@ -337,7 +337,11 @@ describe("CardView immediate feedback", () => {
     expect(document.querySelector(".ui-card.child.placeholder")).toBeNull();
   });
 
-  test("depth marks the card as rewriting on click", () => {
+  test("Help me understand marks the card as rewriting on click", async () => {
+    // Issue #422: the #418 menu needs the Explain-terms gate on.
+    vi.spyOn(api, "settings").mockResolvedValue({
+      experimental: { explainTerms: true, markdownDocs: false },
+    } as unknown as Awaited<ReturnType<typeof api.settings>>);
     seedSnapshot([card()]);
     const held = holdAction();
     try {
@@ -352,7 +356,11 @@ describe("CardView immediate feedback", () => {
         />,
         </MemoryRouter>
       );
-      fireEvent.click(screen.getByRole("button", { name: "Deeper" }));
+      // Issue #418: the button opens the menu; Simplify is today's press.
+      const button = screen.getByRole("button", { name: "Help me understand" });
+      await waitFor(() => expect(button).toHaveAttribute("aria-haspopup", "menu"));
+      fireEvent.click(button);
+      fireEvent.click(screen.getByRole("menuitem", { name: "Simplify" }));
       const section = document.getElementById("C-c1");
       expect(section?.className).toMatch(/rewriting/);
       expect(section?.getAttribute("aria-busy")).toBe("true");
@@ -360,6 +368,36 @@ describe("CardView immediate feedback", () => {
       // Conflicting controls go disabled; the local collapse toggle stays on.
       expect(screen.getByRole("button", { name: "Use examples" })).toBeDisabled();
       expect(screen.getByRole("button", { name: "Collapse" })).toBeEnabled();
+    } finally {
+      held.restore();
+    }
+  });
+
+  test("Help me understand is a plain Simplify press while the gate is off (issue #422)", async () => {
+    vi.spyOn(api, "settings").mockResolvedValue({
+      experimental: { explainTerms: false, markdownDocs: false },
+    } as unknown as Awaited<ReturnType<typeof api.settings>>);
+    seedSnapshot([card()]);
+    const held = holdAction();
+    try {
+      render(
+        <MemoryRouter>
+        <CardView
+          reviewId={REVIEW_ID}
+          card={card()}
+          lookupPage={() => undefined}
+          onOpenPage={() => {}}
+          onFollowUp={() => {}}
+        />,
+        </MemoryRouter>
+      );
+      // One click runs Simplify at once: never a menu.
+      const button = screen.getByRole("button", { name: "Help me understand" });
+      await waitFor(() => expect(api.settings).toHaveBeenCalled());
+      expect(button).not.toHaveAttribute("aria-haspopup", "menu");
+      fireEvent.click(button);
+      expect(screen.queryByRole("menuitem", { name: "Simplify" })).toBeNull();
+      expect(document.getElementById("C-c1")?.className).toMatch(/rewriting/);
     } finally {
       held.restore();
     }
@@ -373,10 +411,7 @@ describe("CardView titles (issue #49)", () => {
         {
           type: "paragraph",
           id: "b1",
-          text: {
-            standard:
-              "A single microphone cannot tell who is speaking because the childrens voices all sound the same in this recording",
-          },
+          text: "A single microphone cannot tell who is speaking because the childrens voices all sound the same in this recording",
           citations: [],
         },
       ],
@@ -445,7 +480,7 @@ describe("CardView titles (issue #49)", () => {
         {
           type: "paragraph",
           id: "b-p",
-          text: { standard: "The USB stream stays at 48 kHz." },
+          text: "The USB stream stays at 48 kHz.",
           citations: [{ target: "diff:conn:82" }],
         },
       ],
@@ -506,7 +541,7 @@ describe("CardView persona versions", () => {
         {
           type: "paragraph",
           id: "b1",
-          text: { standard: "Guide version text." },
+          text: "Guide version text.",
           citations: [],
         },
       ],
@@ -517,11 +552,10 @@ describe("CardView persona versions", () => {
             {
               type: "paragraph",
               id: "b1",
-              text: { standard: "Persona version text." },
+              text: "Persona version text.",
               citations: [],
             },
           ],
-          level: "standard",
           revision: 1,
           undoStack: [],
           working: null,

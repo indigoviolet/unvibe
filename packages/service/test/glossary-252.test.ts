@@ -40,8 +40,10 @@ function hunk(start: number, hash: string): Hunk {
 
 function seedSnapshot(id: string): ReviewSnapshot {
   return {
-    review: { id, repoId: "demo", branch: "main", versions: [], currentVersion: 1, createdAt: Date.now() },
+    review: { id, repoId: "demo", branch: "main", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: Date.now() },
     version: { n: 1, headSha: "abc1234def5678abc1234def5678abc1234def5", mergeBaseSha: "0000000", baseRef: "main", fetchedAt: Date.now(), idMapping: {} },
+    // Issue #421: the fixture guide describes this head.
+    guideHead: { version: 1, sha: "abc1234def5678abc1234def5678abc1234def5" },
     files: [{ fileKey: "a-py", path: "a.py", category: "source", hunks: [hunk(1, "h1"), hunk(10, "h2")] }],
     pages: [{ id: "root", kind: "root", title: "Guide", cards: [] }],
     annotations: [],
@@ -160,17 +162,15 @@ describe("glossary #252", () => {
               id: "problem",
               pageId: "root",
               title: "The problem",
-              level: "standard",
               collapsed: false,
               revision: 1,
-              blocks: [{ type: "paragraph", id: "b1", text: { standard: "Uses AlphaThing here." }, citations: [] }],
+              blocks: [{ type: "paragraph", id: "b1", text: "Uses AlphaThing here.", citations: [] }],
               undoStack: [],
             },
             {
               id: "g-flow",
               pageId: "root",
               title: "Flow",
-              level: "standard",
               collapsed: false,
               revision: 1,
               blocks: [],

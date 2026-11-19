@@ -213,7 +213,7 @@ test.describe("L6 diff mock shell", () => {
     await test.step("the toolbar stays on one row at a narrow pane width", async () => {
       await page.setViewportSize({ width: 900, height: 800 });
       // #241: Refresh lives in the review top bar now, not the diff toolbar.
-      await expect.soft(page.locator(".dtool").getByRole("button", { name: "Refresh" })).toHaveCount(0);
+      await expect.soft(page.locator(".dtool").getByRole("button", { name: "Pull new commits from GitHub" })).toHaveCount(0);
       const rows = await page.locator(".dtool").evaluate((el) => {
         const tops = new Set(
           [...el.children]
@@ -1104,10 +1104,7 @@ test.describe("L6 demo diff work", () => {
             .prepare("SELECT rev, snapshot FROM review_snapshots WHERE review_id = ?")
             .get(namesReview) as { rev: number; snapshot: string };
           const snap = JSON.parse(row.snapshot) as {
-            files: { fileKey: string; hunks: { contentHash: string }[] }[];
             plotlines: { id: string; name: string; description: string; buildsOn?: string }[];
-            sinceBaseline?: unknown;
-            sinceHunks?: unknown;
           };
           const first = snap.plotlines.find((p) => p.id === "obs-fold-unfolding") ?? snap.plotlines[0];
           if (!first) throw new Error("replay snapshot has no plotlines to rename");
@@ -1119,12 +1116,6 @@ test.describe("L6 demo diff work", () => {
             description: "Proves the retry path backs off.",
             buildsOn: first.id,
           });
-          const hunkIds: string[] = [];
-          for (const f of snap.files ?? []) {
-            for (const h of f.hunks ?? []) hunkIds.push(`h:${f.fileKey}:${h.contentHash}`);
-          }
-          snap.sinceBaseline = { kind: "version", version: 1 };
-          snap.sinceHunks = { added: [], changed: hunkIds.slice(0, 2) };
           db.prepare("UPDATE review_snapshots SET rev = ?, snapshot = ? WHERE review_id = ?").run(
             row.rev + 1,
             JSON.stringify(snap),
@@ -1490,7 +1481,7 @@ test.describe("L6 demo diff work", () => {
     }
   });
 
-  test("plotlines read as chips, filter, review and disable on old versions (#242, #324, #343)", async ({ page }) => {
+  test("plotlines read as chips, filter and review (#242, #324, #343)", async ({ page }) => {
     test.setTimeout(240_000);
     const s = service();
     if (!s) throw new Error("no service");
@@ -1619,18 +1610,6 @@ test.describe("L6 demo diff work", () => {
 
       await checkLayout(page, "j242-plotlines-reviewed");
     });
-
-    await test.step("plotline reviewed checkboxes disable on older versions (#343)", async () => {
-      await page.goto(`${s.origin}/review/${plotReview}?token=${s.token}&version=1`);
-      await expect.soft(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
-      const box = page.locator(".plotlines");
-      await expect.soft(box).toBeVisible({ timeout: 15_000 });
-      for (const id of ["obs-fold-unfolding"]) {
-        const control = box.locator(`[data-plotreviewed="${id}"]`);
-        await expect.soft(control).toBeDisabled();
-        await expect.soft(control).toHaveAttribute("aria-label", "Viewing an older version · read-only");
-      }
-    });
   });
 
   test("long plotline names store whole and clamp on screen; hunk chips carry scores (#353, #184)", async ({ page }) => {
@@ -1650,7 +1629,18 @@ test.describe("L6 demo diff work", () => {
       // Backticks render as code; tooltips and chips read plain text.
       const nameEl = box.locator(".plname").first();
       await expect.soft(nameEl).toHaveText(J353_STRIPPED_NAME);
-      await expect.soft(nameEl).toHaveAttribute("data-tip", J353_STRIPPED_NAME);
+      // #406: the full-name tooltip shows only when the clamp actually
+      // cuts the name. A short name that fits has none (its row keeps
+      // the "Show only …" hint); the long name gains one once a narrower
+      // window clamps it (re-checked on resize).
+      const secondName = box.locator(".plname", { hasText: J353_SECOND_NAME.replace(/`/g, "") });
+      expect.soft(await secondName.evaluate((el) => el.scrollHeight > el.clientHeight + 1)).toBe(false);
+      await expect.soft(secondName).not.toHaveAttribute("data-tip");
+      await page.setViewportSize({ width: 900, height: 900 });
+      await expect
+        .poll(() => nameEl.evaluate((el) => el.scrollHeight > el.clientHeight + 1), { timeout: 10_000 })
+        .toBe(true);
+      await expect.soft(nameEl).toHaveAttribute("data-tip", J353_STRIPPED_NAME, { timeout: 10_000 });
       await expect.soft(nameEl.locator("code")).toHaveText("some_very_long_table_identifier_xyz");
       await expect.soft(box.locator("[data-plotpick]").first()).toHaveAttribute(
         "data-tip",
@@ -1662,17 +1652,24 @@ test.describe("L6 demo diff work", () => {
       expect.soft(await nameEl.evaluate((el) => getComputedStyle(el).webkitLineClamp)).toBe("2");
       const descEl = box.locator(".pldesc").first();
       await expect.soft(descEl).toHaveText(J353_STRIPPED_DESC);
-      await expect.soft(descEl).toHaveAttribute("data-tip", J353_STRIPPED_DESC);
+      // #406: the summary carries no tooltip — it would repeat the
+      // row's own text verbatim.
+      await expect.soft(descEl).not.toHaveAttribute("data-tip");
       await expect.soft(descEl.locator("code").first()).toHaveText("some_very_long_table_identifier_xyz");
       expect.soft(await descEl.evaluate((el) => getComputedStyle(el).webkitLineClamp)).toBe("2");
 
-      // The tooltips show the full plain text.
+      // The name tooltip shows the full plain text; hovering the
+      // summary shows the row's action hint instead (#406), never the
+      // summary itself.
       const tip = page.locator("#tip");
       await nameEl.hover();
       await expect.soft(tip).toBeVisible({ timeout: 5_000 });
       await expect.soft(tip).toHaveText(J353_STRIPPED_NAME);
       await descEl.hover();
-      await expect.soft(tip).toHaveText(J353_STRIPPED_DESC);
+      await expect.soft(tip).toHaveText(`Show only ${J353_STRIPPED_NAME}`);
+      expect.soft((await tip.textContent()) ?? "").not.toContain(J353_STRIPPED_DESC);
+      await page.mouse.move(5, 5);
+      await page.setViewportSize({ width: 1440, height: 900 });
 
       // The second row builds on the first: its chip names the long
       // name in plain text via its tooltip.
@@ -1680,10 +1677,7 @@ test.describe("L6 demo diff work", () => {
       await expect.soft(buildsOn).toHaveAttribute("data-tip", `Show only ${J353_STRIPPED_NAME}`);
       await expect.soft(buildsOn.locator(".ui-badge")).toHaveText(J353_STRIPPED_NAME);
 
-      // The Since marker counts the two fabricated changed hunks. (Badge
-      // drops extra props, so there is no data hook — assert the text in
-      // the first row instead.)
-      await expect.soft(box.locator("li").first().getByText("+2 since v1")).toBeVisible();
+      // No since markers: plotline rows show counts only (#413).
 
       // Hunk header chips carry the full plain name in text and tooltip,
       // and ellipsize on one line instead of wrapping the header.

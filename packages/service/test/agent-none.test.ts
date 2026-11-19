@@ -11,8 +11,10 @@ import { createApp } from "../src/server.js";
 
 function makeSnapshot(): ReviewSnapshot {
   return {
-    review: { id: "rv_none", repoId: "r", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
+    review: { id: "rv_none", repoId: "r", branch: "b", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: 0 },
     version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
+    // Issue #421: the fixture guide describes this head.
+    guideHead: { version: 1, sha: "abc" },
     files: [],
     pages: [],
     annotations: [],

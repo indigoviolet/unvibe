@@ -3,7 +3,7 @@
  * extension status/folder. Real Fastify app, fake runner, no agents
  * (panelAnswer falls back to retriever evidence), scratch dirs only.
  */
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -36,6 +36,19 @@ describe("panel retriever lockdown", () => {
       for (const c of r.citations) expect(parseRepoCodeCitation(c)).not.toBeNull();
       expect(() => assertInsideRepo(a.localPath, "/etc/passwd")).toThrow(/outside/);
     } finally { rmSync(a.localPath, { recursive: true, force: true }); rmSync(b.localPath, { recursive: true, force: true }); }
+  });
+  it("cites repo-relative paths when the repo is reached through a symlink", () => {
+    // macOS temp dirs sit under /var → /private/var; the retriever reads
+    // realpaths, so the citation must be relative to the real root.
+    const a = repo("svc", "acme", "service", { "src/auth.ts": "export function validateToken(t: string) { return true; }\n" });
+    const linkDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-panel-link-"));
+    const link = path.join(linkDir, "service");
+    symlinkSync(a.localPath, link);
+    try {
+      const r = retrieveAcrossRepos([{ ...a, localPath: link }], "Where is validateToken?");
+      expect(r.hits.map((h) => h.path)).toEqual([path.join("src", "auth.ts")]);
+      expect(r.citations).toEqual(["code:acme/service:src/auth.ts:1-1"]);
+    } finally { rmSync(a.localPath, { recursive: true, force: true }); rmSync(linkDir, { recursive: true, force: true }); }
   });
   it("open folder command per platform", () => {
     expect(openFolderCommand("darwin", "/x/extension")).toEqual({ cmd: "open", args: ["/x/extension"] });

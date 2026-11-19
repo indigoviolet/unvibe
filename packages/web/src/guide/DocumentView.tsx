@@ -11,7 +11,6 @@ import type { DocumentBlock } from "@unvibe/shared";
 import { DOCUMENT_CARD_ID } from "@unvibe/shared";
 import { GuideBlockThreads } from "../comments/GuideThreads.js";
 import { ThreadMarginOverlay } from "../comments/ThreadMarginOverlay.js";
-import { useIsReadOnlyVersion } from "../comments/readOnly.js";
 import { useReview } from "../state/store.js";
 import { blockThreads } from "./annotations.js";
 import { BlockView } from "./BlockView.js";
@@ -27,7 +26,7 @@ interface Props {
 
 function HeadingBlock({ block }: { block: DocumentBlock }) {
   const level = Math.min(6, (block.level ?? 2) + 1);
-  const html = block.block.type === "paragraph" ? block.block.text.standard : "";
+  const html = block.block.type === "paragraph" ? block.block.text : "";
   const Tag = `h${level}` as "h2" | "h3" | "h4" | "h5" | "h6";
   return (
     <div className="blk" id={`B-${block.id}`}>
@@ -43,7 +42,6 @@ export function DocumentView({ reviewId, onOpenPage }: Props) {
   const doc = snapshot?.document;
   const annotations = snapshot?.annotations ?? [];
   const contextRepos = snapshot?.contextRepos ?? [];
-  const readOnlyDoc = useIsReadOnlyVersion();
   if (!doc) {
     return (
       <div className="doc">
@@ -58,7 +56,7 @@ export function DocumentView({ reviewId, onOpenPage }: Props) {
   // in the card below).
   const titleBlock =
     doc.blocks[0]?.kind === "heading" && doc.blocks[0].level === 1 ? doc.blocks[0] : undefined;
-  const titleHtml = titleBlock?.block.type === "paragraph" ? titleBlock.block.text.standard : "";
+  const titleHtml = titleBlock?.block.type === "paragraph" ? titleBlock.block.text : "";
   // Issue #380: the margin pills sit in a gutter the doc always reserves
   // (`.gutter`) — the first thread must never move the text.
   const docThreads = [
@@ -69,7 +67,6 @@ export function DocumentView({ reviewId, onOpenPage }: Props) {
     <div className="doc gutter" data-testid="document-view">
       <ThreadMarginOverlay
         threads={docThreads}
-        readOnly={readOnlyDoc}
       />
       {titleBlock ? (
         <h1 className="title sel" id={`B-${titleBlock.id}`} data-top={titleBlock.id}>
@@ -97,7 +94,7 @@ export function DocumentView({ reviewId, onOpenPage }: Props) {
               ) : (
                 <BlockView
                   block={db.block}
-                  level="standard"
+                 
                   threads={blockThreads(annotations, DOCUMENT_CARD_ID, db.id)}
                   footnotes={footnotes}
                   lookupPage={lookupPage}

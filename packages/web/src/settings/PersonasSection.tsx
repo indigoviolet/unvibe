@@ -6,16 +6,16 @@
  *
  * The built-in Second opinion arrives seeded in fresh settings and is an
  * ordinary entry afterwards — editable and deletable like any other.
- * The built-in Clarity (issue #359) follows the Guide's model
- * (`followMain`); the form shows that with the option to pin a
- * specific one. The built-in Guide (issue #379) is the main
+ * Any persona may follow the Guide's model (`followMain`); the form
+ * shows that with the option to pin a specific one. The built-in
+ * Guide (issue #379) is the main
  * agent itself — fixed (no delete, no disable), owning the main provider
  * + model and a writing-style lens (empty by default).
  * Every change PUTs the whole list through `saveSettings`, like every
  * other settings section.
  */
 import { useEffect, useState } from "react";
-import type { ModelInfo, Persona, Settings, ThinkingResponse } from "@unvibe/shared";
+import type { ModelInfo, Persona, PromptForkStatus, Settings, ThinkingResponse } from "@unvibe/shared";
 import { getGuidePersona, nextPersonaColor, slugifyPersonaName, GUIDE_PERSONA_ID } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { Button, Card, Checkbox, Field, InlineConfirm, Input, Select } from "../ui/index.js";
@@ -47,6 +47,7 @@ export function PersonasSection({
     ? { provider: guide.provider, model: guide.model }
     : { provider: "", model: "" };
   const [providers, setProviders] = useState<string[]>(FALLBACK_PROVIDERS);
+  const [forks, setForks] = useState<PromptForkStatus[] | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
@@ -66,6 +67,26 @@ export function PersonasSection({
       cancelled = true;
     };
   }, []);
+
+  // Issue #393: prompt-fork drift per persona (a base template changed
+  // since the fork manifest recorded it). Failure hides the warnings,
+  // never the list.
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .promptForks()
+      .then((r) => {
+        if (!cancelled) setForks(r.forks);
+      })
+      .catch(() => {
+        if (!cancelled) setForks([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const driftById = new Map((forks ?? []).map((f) => [f.personaId, f.drifted] as const));
 
   const saveList = async (next: Persona[]): Promise<Settings> => {
     const saved = await api.saveSettings({ personas: next });
@@ -94,14 +115,17 @@ export function PersonasSection({
         The Guide is the main agent: it writes the guide, explanations and answers on its model,
         in its writing style (empty means no extra style). Reviewer voices can take on a card.
         Each runs on its model — or on the Guide&apos;s model — with its lens; the colour is
-        assigned automatically. Second opinion and Clarity are built in — edit or delete them
-        like any other persona.
+        assigned automatically. Second opinion is built in — edit or delete
+        it like any other persona. A persona whose fork holds reader instructions can also
+        write a whole guide: use Re-do with that persona.
+        New reviews and plain Re-do guide runs use the default guide below.
       </p>
       {error ? (
         <p className="err" role="alert">
           {error}
         </p>
       ) : null}
+      <DefaultGuidePicker settings={settings} forks={forks} onSaved={onSaved} onError={setError} />
       {personas.length === 0 ? <p className="hint">No personas yet. Add one below.</p> : null}
       <div className="ui-list" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {personas.map((p) => (
@@ -186,6 +210,17 @@ export function PersonasSection({
                 )}
               </div>
             </div>
+            {(driftById.get(p.id) ?? []).length > 0 ? (
+              <div
+                className="hint"
+                data-testid={`persona-${p.id}-drift`}
+                style={{ marginTop: 4, paddingLeft: 22 }}
+              >
+                <span className="warnline" role="status">
+                  {`Prompt fork behind base: ${(driftById.get(p.id) ?? []).join(", ")}. Re-run: mise run persona:fork -- ${p.id} ${(driftById.get(p.id) ?? []).join(" ")}`}
+                </span>
+              </div>
+            ) : null}
             {editingId === p.id ? (
               <PersonaForm
                 key={p.id}
@@ -249,6 +284,80 @@ export function PersonasSection({
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * Default guide picker (issue #401): which guide-capable persona writes
+ * new reviews and plain Re-do guide runs. The built-in Guide is always
+ * offered; every other choice is an enabled guide-capable persona (its
+ * fork holds `reader.md`) from `GET /api/prompt-forks`. When the stored
+ * default no longer qualifies (deleted, disabled, or de-forked) a
+ * one-line notice says the Guide stands in — resolution is read-time,
+ * so the stored value is left for the owner to change.
+ */
+function DefaultGuidePicker({
+  settings,
+  forks,
+  onSaved,
+  onError,
+}: {
+  settings: Settings;
+  forks: PromptForkStatus[] | null;
+  onSaved: (next: Settings) => void;
+  onError: (message: string) => void;
+}): React.JSX.Element {
+  const [saving, setSaving] = useState(false);
+  const guide = getGuidePersona(settings.personas);
+  const forkChoices = (forks ?? []).filter((f) => f.enabled && f.guideCapable);
+  const stored = settings.defaultGuidePersonaId ?? GUIDE_PERSONA_ID;
+  const effective =
+    stored === GUIDE_PERSONA_ID || forkChoices.some((c) => c.personaId === stored)
+      ? stored
+      : GUIDE_PERSONA_ID;
+  const storedName =
+    settings.personas.find((p) => p.id === stored)?.name ??
+    (forks ?? []).find((f) => f.personaId === stored)?.name ??
+    stored;
+
+  const save = async (next: string): Promise<void> => {
+    setSaving(true);
+    try {
+      onSaved(await api.saveSettings({ defaultGuidePersonaId: next }));
+    } catch (err) {
+      onError(friendlyError(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <Field label="Default guide" htmlFor="default-guide">
+        {forks === null ? (
+          <span className="hint">Loading guide choices…</span>
+        ) : (
+          <Select
+            id="default-guide"
+            data-testid="default-guide"
+            value={effective}
+            disabled={saving}
+            onValueChange={(v) => void save(v)}
+            options={[
+              { value: GUIDE_PERSONA_ID, label: guide?.name ?? "Guide" },
+              ...forkChoices.map((f) => ({ value: f.personaId, label: f.name })),
+            ]}
+          />
+        )}
+      </Field>
+      {forks !== null && stored !== effective ? (
+        <p className="hint" data-testid="default-guide-fallback" style={{ margin: "4px 0 0" }}>
+          <span className="warnline" role="status">
+            {`“${storedName}” is gone or can’t write a guide — the Guide stands in until you pick another.`}
+          </span>
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -497,7 +606,7 @@ function PersonaForm({
         htmlFor={`${testIdPrefix}-lens`}
         help={
           fixed
-            ? "Tone and wording for everything the Guide writes (guide, cards, depth, Explain, Ask). Empty means no extra style. The task's own rules stay authoritative."
+            ? "Tone and wording for everything the Guide writes (guide, cards, slower rewrites, Explain, Ask). Empty means no extra style. The task's own rules stay authoritative."
             : "Who the persona is and what it looks for — applied to every task it performs."
         }
         layout="stacked"

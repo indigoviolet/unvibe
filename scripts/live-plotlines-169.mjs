@@ -390,8 +390,9 @@ const main = async () => {
     const r = await api("PUT", "/api/settings", patch, token);
     return { ok: r.code === 200, status: r.code, detail: ((r.json?.errors ?? [r.raw.slice(0, 200)])).join("; "), body: r.json };
   };
+  const get = async () => (await api("GET", "/api/settings", undefined, token)).json;
   try {
-    await selectLiveModel(put, { provider: live.provider, model: live.model }, ["main", "small"]);
+    await selectLiveModel(put, { provider: live.provider, model: live.model }, ["main", "small"], get);
   } catch (e) {
     console.error(e instanceof Error ? e.message : String(e));
     child.kill("SIGTERM");
@@ -404,7 +405,7 @@ const main = async () => {
     process.exit(1);
   }
   const settings = await api("GET", "/api/settings", undefined, token);
-  console.log(`settings: ${JSON.stringify(settings.json?.main ?? settings.json)}`);
+  console.log(`settings: guide=${JSON.stringify((settings.json?.personas ?? []).find((p) => p.id === "guide") ?? null)} small=${JSON.stringify(settings.json?.small ?? null)}`);
   const repoCache = {};
   const results = [];
   try {

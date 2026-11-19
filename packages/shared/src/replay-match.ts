@@ -34,16 +34,16 @@ const KIND_HINTS: { re: RegExp; kind: string }[] = [
   // Base pack (SessionManager.getBase): the pipeline prefixes it with an
   // explicit "reply with exactly `ready`" instruction; answer "ready" (M3).
   { re: /reply with exactly\s+`?ready`?/i, kind: "base" },
-  // Issue #351: the update pass is titled `# Update pass`. First, because
-  // the prompt also names the critic and hunks below, which would match
-  // their own hints before the update-pass recording existed.
-  { re: /^# update pass/im, kind: "update-pass" },
+  // Issue #413: the explain pass is titled `# Explain pass`. First,
+  // because the prompt also names hunks below, which would match their
+  // own hint before the explain-pass recording existed.
+  { re: /^# explain pass/im, kind: "explain-pass" },
   { re: /\breader\b|guided review|central change/i, kind: "reader" },
   { re: /\bcritic\b|agent finding/i, kind: "critic" },
   { re: /concept[-_ ]page|concept:\s*[\w-]+/i, kind: "concept-page" },
   { re: /\bhunk\b|summariz/i, kind: "hunk" },
   { re: /go[-_ ]deeper|placeholder card|\bgenerate\b/i, kind: "go-deeper" },
-  { re: /\bdepth\b|simpler|\bdeeper\b/i, kind: "depth" },
+  { re: /\bslower\b|more slowly|help me understand/i, kind: "slower" },
   { re: /examples?/i, kind: "examples" },
   { re: /\bdiagram\b|\bd2\b/i, kind: "diagram" },
   // `ask` first: the merged first-turn prompt carries both words (#136).
@@ -87,8 +87,13 @@ function preferThreadEntry<T extends { key?: string }>(hits: T[], prompt: string
   return hits[0] as T;
 }
 
-/** Pattern-matched ask/explain entries, in manifest order. */
-function matchAskExplain(
+/**
+ * Pattern-matched entries of one kind, in manifest order (issue #417):
+ * any kind may carry `pattern` entries (reader recordings for scratch
+ * repos do), not just ask/explain. The thread-scoped preference stays
+ * ask/explain-only.
+ */
+function matchPatternedEntry(
   entries: ReplayManifestEntry[],
   hasText: (file: string) => boolean,
   kind: string,
@@ -98,7 +103,7 @@ function matchAskExplain(
     (e) => e.kind === kind && e.pattern && new RegExp(e.pattern, "i").test(prompt) && hasText(e.file),
   );
   if (hits.length === 0) return null;
-  const hit = preferThreadEntry(hits, prompt);
+  const hit = kind === "ask" || kind === "explain" ? preferThreadEntry(hits, prompt) : hits[0];
   return { kind, key: hit.key ?? null, file: hit.file, placeholder: false };
 }
 
@@ -117,8 +122,11 @@ export function resolveRecording(
     // pattern matching below in play: the quoted selection decides
     // which recording answers, and only an unmatched prompt falls
     // back to the kind's first entry. A keyed marker is exact.
-    if (explicit.key === null && (explicit.kind === "explain" || explicit.kind === "ask")) {
-      const hit = matchAskExplain(entries, hasText, explicit.kind, prompt);
+    if (explicit.key === null) {
+      // A kind-only marker keeps pattern matching in play: the quoted
+      // selection (or repo content, for reader recordings) decides
+      // which recording answers.
+      const hit = matchPatternedEntry(entries, hasText, explicit.kind, prompt);
       if (hit) return hit;
     }
     const hit = entries.find(
@@ -134,7 +142,7 @@ export function resolveRecording(
     // A follow-up carries its message but no quote; a first turn carries
     // quote and question. Either way the message (or quote) decides —
     // with thread-scoped recordings preferred in thread context.
-    const hit = matchAskExplain(entries, hasText, kind, prompt);
+    const hit = matchPatternedEntry(entries, hasText, kind, prompt);
     if (hit) return hit;
     return { kind, key: null, file: null, placeholder: true };
   }
@@ -202,10 +210,9 @@ export function extractReplayKey(kind: string, prompt: string): string | null {
       }
       return null;
     }
-    case "depth": {
+    case "slower": {
       const card = /central/.test(lower) ? "central" : /problem/.test(lower) ? "problem" : null;
-      const level = /deep/.test(lower) ? "deep" : /simpl/.test(lower) ? "simple" : null;
-      return card && level ? `${card}:${level}` : (card ?? level);
+      return card;
     }
     case "examples":
       return /central/.test(lower) ? "central" : /problem/.test(lower) ? "problem" : null;

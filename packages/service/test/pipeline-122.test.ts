@@ -41,7 +41,7 @@ async function makeDemoReview(ctx: Awaited<ReturnType<typeof createApp>>["ctx"])
     )
     .run(id, 1, "abc1234def5678abc1234def5678abc1234def5", "0000000", "main", Date.now(), JSON.stringify({}));
   const snap: ReviewSnapshot = {
-    review: { id, repoId: "demo", branch: "main", versions: [], currentVersion: 1, createdAt: Date.now() },
+    review: { id, repoId: "demo", branch: "main", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: Date.now() },
     version: {
       n: 1,
       headSha: "abc1234def5678abc1234def5678abc1234def5",
@@ -50,6 +50,8 @@ async function makeDemoReview(ctx: Awaited<ReturnType<typeof createApp>>["ctx"])
       fetchedAt: Date.now(),
       idMapping: {},
     },
+    // Issue #421: the fixture guide describes this head.
+    guideHead: { version: 1, sha: "abc1234def5678abc1234def5678abc1234def5" },
     files: [
       {
         fileKey: "a-py",
@@ -393,7 +395,6 @@ describe("#122.1 enqueue before the base", () => {
           id: "g-1",
           pageId: "root",
           title: null,
-          level: "standard",
           collapsed: false,
           revision: 1,
           blocks: [],
@@ -492,7 +493,6 @@ describe("go-deeper inline diagrams (#130)", () => {
             id: "g-1",
             pageId: "root",
             title: null,
-            level: "standard",
             collapsed: false,
             revision: 1,
             blocks: [],
@@ -543,7 +543,6 @@ describe("go-deeper inline diagrams (#130)", () => {
             id: "g-1",
             pageId: "root",
             title: null,
-            level: "standard",
             collapsed: false,
             revision: 1,
             blocks: [],

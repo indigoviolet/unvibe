@@ -4,7 +4,7 @@
  * - `Pipeline` — reader → base → critic/concepts → hunk pass, plus
  *   `runInFork` / `runSmall` (generic fork jobs), `ensureConceptPage`,
  *   `summarizeHunk`, `fillGoDeeper`, `startReview` / `resumeReview`, and
- *   `updateRunner` (UpdateBaseRunner for the versions module).
+ *   `explainRunner` (ExplainBaseRunner for the versions module).
  * - Demo ingest — repo-less fixture review running the same code path.
  * - Actions dispatcher — all interaction kinds.
  */
@@ -15,7 +15,7 @@ export { dispatchAction, type ActionDeps } from "./actions/dispatcher.js";
 export { generateAction } from "./actions/generate.js";
 export { askAction, explainAction, replyAction, retryAction } from "./actions/conversation.js";
 export { noteAction } from "./actions/note.js";
-export { depthAction } from "./actions/depth.js";
+export { slowerAction } from "./actions/slower.js";
 export { examplesAction } from "./actions/examples.js";
 export { diagramAction } from "./actions/diagram.js";
 export { undoAction } from "./actions/undo.js";

@@ -41,12 +41,12 @@ The service never writes into your checkout; agents read the code in a worktree 
    service, so two tabs share one). The pipeline starts only after the
    ingest; the demo fixture stays synchronous. No agent involved in ingest itself.
 2. **Reader** (`src/pipeline/`): the main model explores the worktree and streams the guide cards (problem, central change, go-deeper directions), hidden concept candidates, and pinned code excerpts. Its prompt is the L1 ladder's pick for the review size (full diff on small reviews; degraded tiers on huge ones — see below).
-3. **Base session** (`src/sessions/`): the shared context (source, pinned code, guide) is built once per model and kept warm, so later conversations start mostly from cache. Fork jobs enqueue before the base build and the base rebuilds in the background when the guide settles (#122); a finished answer applies before post-turn bookkeeping, which still settles with its job. L1 (source + diff + hidden hunks) renders as a ladder — full, budget-limited, no-uninteresting-hunks, files-only, counts-only — taking the first rung under a hard 80k-token cap; guide-cited/pinned hunks stay inlined wherever they fit. Every other prompt (critic/concepts forks, update pass, prompt preview, debug page) builds from the same ladder, so none bypasses the cap.
+3. **Base session** (`src/sessions/`): the shared context (source, pinned code, guide) is built once per model and kept warm, so later conversations start mostly from cache. Fork jobs enqueue before the base build and the base rebuilds in the background when the guide settles (#122); a finished answer applies before post-turn bookkeeping, which still settles with its job. L1 (source + diff + hidden hunks) renders as a ladder — full, budget-limited, no-uninteresting-hunks, files-only, counts-only — taking the first rung under a hard 80k-token cap; guide-cited/pinned hunks stay inlined wherever they fit. Every other prompt (critic/concepts forks, explain pass, prompt preview, debug page) builds from the same ladder, so none bypasses the cap.
 4. **Parallel forks**: a critic writes findings as separate pages with drafted suggested comments on diff lines; concept stubs become full pages; the small model summarizes each hunk and marks uninteresting ones (never a cited or one-line hunk). The hunk pass starts at ingest in its own queue bucket, not after the reader (#123); hunks hidden before the guide exists reappear once cited. Past 500 hunks there is no per-hunk fan-out at ingest (no guide exists yet to cite); only guide-cited hunks fan out once the reader lands, and the rest summarise on demand (diff view, Fold-all), while Hide-uninteresting folding keeps working on the deterministic ingest reasons.
 5. **Conversations** (`src/pipeline/actions/`): explain, ask, depth, examples and go-deeper generation each run in a fork of the base and apply their result to the card or answer. Explain and Ask are one conversation card with turns; depth, examples, diagram and undo act per answer. (Issue #349 step 2 adds persona card runs here.)
 6. **Comments** (`src/comments/`): comment threads on guide text, description paragraphs, and diff lines, with editable For-PR drafts. The comments menu lists comments only and never posts. Ask opens a conversation card, never a thread.
 7. **Submit** (`src/submit/`): one GitHub review with every marked comment, plus the description edit when there is one. An in-flight lease reconciled against GitHub means a crash and retry can never double-post.
-8. **New commits** (`src/versions/`): opening or refreshing compares the new head for free and marks what moved or changed; Update runs the agent pass that revises stale cards, rechecks findings, and covers new code. Hunk state keyed by content hash survives rebases.
+8. **New commits** (`src/versions/`): opening or refreshing compares the new head for free; Explain runs the one-shot agent pass that writes the Changes-since-X section and leaves the old guide untouched. Hunk state keyed by content hash survives rebases.
 9. **Switch builds** (`src/update/`, issue #36 step 2): the version picker lists installable channels and restarts the service onto another build — see "Life of a switch" below.
 
 ## Life of a switch
@@ -110,7 +110,7 @@ without touching GitHub (see DEVELOPMENT.md).
 | `packages/service/src/sessions/` | Base + conversation session lifecycle (fork, idle close, reopen) |
 | `packages/service/src/context/` + `src/sharedctx/` | Layered context packs, append-only log, contributions |
 | `packages/service/src/validate/` | Link-token checking and repair |
-| `packages/service/src/versions/` | Refresh compare, ID mapping, update pass |
+| `packages/service/src/versions/` | Refresh compare, ID mapping, explain-since-X pass |
 | `packages/service/src/comments/` | Comment threads, For-PR drafts, suggested comments |
 | `packages/service/src/submit/` | One-review submit + description update, crash-safe lease |
 | `packages/service/src/prompts/personas.ts` | Persona prompt composition, L0 + lens + task (issue #349) |
@@ -142,7 +142,7 @@ without touching GitHub (see DEVELOPMENT.md).
 | `packages/web/src/comments/` | Comment threads, selection toolbar, comments menu |
 | `packages/web/src/settings/` | Models, prompt templates, limits, environment |
 | `packages/web/src/debug/` | Per-review debug page (jobs, expanded prompts, then base, log, contributions as rendered Markdown + delete) |
-| `packages/web/src/versions/` | Refresh banner, stale/outdated markers, Update |
+| `packages/web/src/versions/` | New-commits banner with Explain, version utils |
 | `packages/web/src/api/` + `src/state/` | Typed API/WS clients, snapshot store |
 | `packages/web/src/shell/` + `src/components/` + `src/floating/` | App shell, shared controls, tooltips/popovers |
 | `packages/web/src/mock/` | In-memory API for UI development without a service |

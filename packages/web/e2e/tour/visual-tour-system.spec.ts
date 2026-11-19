@@ -2,14 +2,13 @@
  * Tour: system (package D frames for the on-demand visual tour).
  *
  * On-demand only (`mise run visual-tour`): the system states the owner
- * reviews as frames — the stale/updated update banners with the #368
- * header chip, the document review bar across themes, the extension
- * button + confirm + conversation header + side panel, and the static
- * demo guide/explain/install/outbox/settings states. Behaviour for all
- * of these lives in `e2e/journeys/l7-since.spec.ts` (update banners),
- * `l11-documents.spec.ts` (document bar, side panel), `l12-extension`
- * (button flows) and `l13-static-demo.spec.ts`; this file keeps just
- * enough asserts to prove each framed state.
+ * reviews as frames — the timeline menu (dot + open menu with hints)
+ * with the #368 header chip, the document review bar across themes,
+ * the extension button + confirm + conversation header + side panel,
+ * and the static demo guide/explain/install/outbox/settings states.
+ * Behaviour for the timeline menu lives in
+ * `e2e/journeys/l7-since.spec.ts`; this file keeps just enough asserts
+ * to prove each framed state.
  *
  * Slim set: 1440px light Default plus the `tour-matrix.ts` named keeps;
  * the full matrix runs with `UNVIBE_TOUR_MATRIX=full`.
@@ -20,12 +19,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium, expect, test, type BrowserContext } from "@playwright/test";
 import { cpuThrottleFromEnv } from "../cpu-throttle.js";
+import { pageHeaderFixtureHtml } from "../extension-pageheader-fixture.js";
 import { checkLayout } from "../layout-check.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import { tourCombos } from "../tour-matrix.js";
 import { selectText } from "../select-text.js";
 import { fileKeyForPath } from "@unvibe/shared";
-import {apiJson, createScratchReview, git, makeScratchRepo, realGitPath, writeFakeGitOffline, writeFakeShell, fakeServicePath} from "../journeys/journey-helpers.js";
+import {apiJson, createScratchReview, expectRealHunkSummaries, expectRecordedGuide, git, makeScratchRepo, realGitPath, writeFakeGitOffline, writeFakeShell, fakeServicePath} from "../journeys/journey-helpers.js";
 import { startStaticServer, type StaticServer } from "../static-server.js";
 
 const SHOTS = fileURLToPath(new URL("../../visual-tour", import.meta.url));
@@ -43,7 +43,7 @@ const V1 = [
 ].join("\n");
 
 // ---------------------------------------------------------------------------
-// Update banners (j367 states reframed for the owner).
+// Timeline menu (j367 states reframed for the owner).
 // ---------------------------------------------------------------------------
 
 test.describe("tour update banners", () => {
@@ -84,12 +84,18 @@ test.describe("tour update banners", () => {
     rmSync(dataDir, { recursive: true, force: true });
   });
 
-  test("stale and updated banners with the header chip", async ({ page }) => {
+  test("new-commits dot with the header chip; Explain writes the panel; the menu", async ({ page }) => {
     test.setTimeout(240_000);
     if (!svc) throw new Error("no service");
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator(appFile)).toBeVisible({ timeout: 60_000 });
+    // Issue #417: the guide renders its scratch recording, never the
+    // replay placeholder (the scene used to pass with a broken guide).
+    await expectRecordedGuide(page, { problem: /returns 11/ });
+    // Follow-up: the hunk summaries are one-line summaries, never reader
+    // card headings served as summaries.
+    await expectRealHunkSummaries(page, appKey, 2);
 
     const snap = await apiJson(svc, "GET", `/api/reviews/${reviewId}`);
     const files = (snap.json as { files: { path: string; hunks: { contentHash: string }[] }[] }).files;
@@ -100,25 +106,43 @@ test.describe("tour update banners", () => {
     writeFileSync(path.join(repoDir, "src-app.py"), V1.replace("    return 1", "    return 111").replace("    return 2", "    return 22"));
     await git(repoDir, "add", "src-app.py");
     await git(repoDir, "commit", "-m", "rework alpha");
-    await page.locator("#reviewbar").getByRole("button", { name: "Refresh", exact: true }).click();
+    await page.locator("#reviewbar").getByRole("button", { name: "Pull new commits from GitHub", exact: true }).click();
 
-    const banner = page.locator('[data-testid="stale-banner"]');
-    await expect(banner).toHaveAttribute("data-update-state", "stale", { timeout: 60_000 });
-    await page.screenshot({ path: path.join(SHOTS, "367", "stale-banner-1440-light.png") });
+    // #427: the history icon dots with a counting tooltip — no banner.
+    const menuBtn = page.locator('#reviewbar [data-testid="explain-menu-button"]');
+    await expect(menuBtn).toHaveAttribute("aria-label", "1 new commit since the guide was written", { timeout: 60_000 });
+    await page.screenshot({ path: path.join(SHOTS, "367", "timeline-dot-1440-light.png") });
     await page.locator(appFile).locator(".dhunk").first().screenshot({ path: path.join(SHOTS, "367", "hunk-header-chip-1440-light.png") });
 
-    await banner.getByRole("button", { name: "Update", exact: true }).click();
+    // The menu opens with the guide entry and hints; the frame shows it.
+    await menuBtn.click();
+    const menu = page.getByTestId("explain-menu");
+    await expect(menu.getByRole("menuitem", { name: "Explain changes since the guide" })).toBeVisible({ timeout: 15_000 });
+    await expect(menu).toContainText("Commits", { timeout: 15_000 });
+    await page.screenshot({ path: path.join(SHOTS, "367", "timeline-menu-1440-light.png") });
+    await page.keyboard.press("Escape");
+
+    // Explaining from the guide writes the panel.
+    await menuBtn.click();
+    await page.getByTestId("explain-menu").getByRole("menuitem", { name: "Explain changes since the guide" }).click();
     const jobDeadline = Date.now() + 90_000;
     for (;;) {
       const res = await apiJson(svc, "GET", `/api/jobs?review=${reviewId}`);
       const jobs = (res.json as { jobs: { kind: string; state: string }[] }).jobs ?? [];
-      const updateJob = jobs.find((j) => j.kind === "update-pass");
-      if (updateJob && updateJob.state !== "running" && updateJob.state !== "queued") break;
-      if (Date.now() > jobDeadline) throw new Error("update-pass job never finished");
+      const explainJob = jobs.find((j) => j.kind === "explain-pass");
+      if (explainJob && explainJob.state !== "running" && explainJob.state !== "queued") break;
+      if (Date.now() > jobDeadline) throw new Error("explain-pass job never finished");
       await new Promise((r) => setTimeout(r, 500));
     }
-    await expect(banner).toHaveAttribute("data-update-state", "current", { timeout: 60_000 });
-    await page.screenshot({ path: path.join(SHOTS, "367", "updated-banner-1440-light.png") });
+    const headNow = ((await apiJson(svc, "GET", `/api/reviews/${reviewId}`)).json as {
+      version: { headSha: string };
+      review: { versions: { n: number; headSha: string }[] };
+    });
+    const from8 = (headNow.review.versions.find((v) => v.n === 1)?.headSha ?? "").slice(0, 8);
+    const to8 = headNow.version.headSha.slice(0, 8);
+    const since = page.locator('[data-testid="since-section"]');
+    await expect(since).toContainText(new RegExp(`Changes ${from8} → ${to8}`), { timeout: 60_000 });
+    await page.screenshot({ path: path.join(SHOTS, "367", "explained-section-1440-light.png") });
   });
 });
 
@@ -136,6 +160,11 @@ test.describe("tour document review bar", () => {
     repoDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tourdoc-repo-"));
     await makeScratchRepo(repoDir);
     svc = await startService(dataDir, { agent: "replay", label: "tourdoc" });
+    // Issue #422: creating the document review needs the Markdown-docs gate on.
+    const gate = await apiJson(svc, "PUT", "/api/settings", {
+      experimental: { explainTerms: false, markdownDocs: true },
+    });
+    expect(gate.status).toBe(200);
     const added = await apiJson(svc, "POST", "/api/repos", { path: repoDir });
     expect(added.status).toBe(200);
     repoId = (added.json as { repos: { id: string; localPath: string }[] }).repos.find(
@@ -402,6 +431,33 @@ test.describe("tour extension frames", () => {
       rmSync(profileDir, { recursive: true, force: true });
     }
   });
+
+  // #410: the button in the new PR Overview PageHeader, light and dark.
+  for (const scheme of ["light", "dark"] as const) {
+    test(`overview page header frame (${scheme})`, async () => {
+      test.setTimeout(240_000);
+      const profileDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tourext410-profile-"));
+      const ctx = await launchWithExtension(profileDir);
+      try {
+        await ctx.route("https://github.com/**", async (route) => {
+          await route.fulfill({ status: 200, contentType: "text/html", body: pageHeaderFixtureHtml(OWNER, NAME, PR_NUMBER) });
+        });
+        const page = await ctx.newPage();
+        await cpuThrottleFromEnv(page);
+        if (scheme === "dark") await page.emulateMedia({ colorScheme: "dark" });
+        await page.goto(`${PR_URL}?overview=true`);
+        await expect(
+          page.locator('[data-component="PH_Actions"] #unvibe-review-button'),
+        ).toBeVisible({ timeout: 30_000 });
+        await page.locator('[data-component="PageHeader"]').screenshot({
+          path: path.join(SHOTS, `extension-410-pageheader-${scheme}.png`),
+        });
+      } finally {
+        await ctx.close().catch(() => {});
+        rmSync(profileDir, { recursive: true, force: true });
+      }
+    });
+  }
 
   test("side panel frame", async () => {
     test.setTimeout(240_000);

@@ -72,7 +72,7 @@ function seedSnapshot(ctx: App["ctx"], id: string): void {
     )
     .run(id, 1, "abc1234def5678abc1234def5678abc1234def5", "0000000", "main", Date.now(), JSON.stringify({}));
   ctx.reviews.putSnapshot(id, {
-    review: { id, repoId: "demo", branch: "main", versions: [], currentVersion: 1, createdAt: Date.now() },
+    review: { id, repoId: "demo", branch: "main", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: Date.now() },
     version: {
       n: 1,
       headSha: "abc1234def5678abc1234def5678abc1234def5",

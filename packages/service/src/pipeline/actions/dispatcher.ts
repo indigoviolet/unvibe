@@ -3,7 +3,7 @@
  *
  * `generate` (Go deeper) and every interaction kind route here. Each
  * action goes through `ReviewStore.mutate` so the UI gets patches; each
- * agent call runs at user-requested priority with (anchor, kind, depth,
+ * agent call runs at user-requested priority with (anchor, kind, revision,
  * base version) dedupe and citation validation via the `runInFork` seam.
  * (Issue #349 step 2 adds persona card runs here.)
  */
@@ -22,7 +22,7 @@ import { personaAction } from "./persona.js";
 import { collapseAction } from "./read.js";
 import { closeAction, deleteAction } from "./close.js";
 import { conceptAction } from "./concept.js";
-import { depthAction } from "./depth.js";
+import { slowerAction } from "./slower.js";
 import { diagramAction } from "./diagram.js";
 import { examplesAction } from "./examples.js";
 import { followupAction } from "./followup.js";
@@ -101,7 +101,7 @@ export async function dispatchAction(
     const snap = deps.reviews?.getSnapshot(deps.reviewId);
     if (
       !!snap && isDocumentReview(snap) &&
-      (action.kind === "depth" ||
+      (action.kind === "slower" ||
         action.kind === "examples" ||
         action.kind === "diagram" ||
         action.kind === "generate" ||
@@ -203,26 +203,25 @@ export async function dispatchAction(
         if (res.jobId) out.jobId = res.jobId;
         return out;
       }
-      case "depth": {
+      case "slower": {
         need(ctx);
         if (typeof action.cardId !== "string") return bad(reply, "cardId is required");
-        if (action.direction !== "simpler" && action.direction !== "deeper") {
-          return bad(reply, "direction must be simpler or deeper");
-        }
         if (action.personaId !== undefined && typeof action.personaId !== "string") {
           return bad(reply, "personaId must be a string");
         }
-        const res = await depthAction(ctx, action.cardId, action.direction, {
+        // Issue #418 (Explain terms): optional picked terms ride the
+        // existing terms prompt path (empty terms are an ordinary press).
+        if (action.terms !== undefined && !Array.isArray(action.terms)) {
+          return bad(reply, "terms must be an array of strings");
+        }
+        const terms = action.terms?.filter((t) => typeof t === "string" && t.trim().length > 0);
+        const res = await slowerAction(ctx, action.cardId, {
           ...(action.personaId ? { personaId: action.personaId } : {}),
+          ...(terms && terms.length > 0 ? { terms } : {}),
         });
         const out: ActionResponse = { accepted: true, cardId: res.cardId };
         if (res.jobId) out.jobId = res.jobId;
         if (res.deduplicated) out.deduplicated = true;
-        if (res.reused) out.reused = true;
-        // Issue #65: the client tells a stored-level switch (silent) from
-        // already-at-the-limit (toast) by comparing this to the level it
-        // saw at click time.
-        if (res.level) out.level = res.level;
         return out;
       }
       case "examples": {

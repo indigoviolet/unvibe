@@ -25,7 +25,7 @@ const auth = { authorization: "Bearer tok" };
 const LOG: LogEntry[] = [
   { seq: 1, kind: "new-card", payload: { summary: "central card written" }, scope: { scope: "global" } },
   { seq: 2, kind: "thread-summary", payload: { summary: "ask about retry settled" }, scope: { scope: "global" } },
-  { seq: 3, kind: "depth-rewrite", payload: { summary: "central made simpler" }, scope: { scope: "card", cardId: "c-central" } },
+  { seq: 3, kind: "slower-rewrite", payload: { summary: "central rewritten more slowly" }, scope: { scope: "card", cardId: "c-central" } },
 ];
 
 const CONTRIBUTIONS: Contribution[] = [
@@ -107,7 +107,7 @@ describe("GET /api/reviews/:id/shared-context", () => {
       // Log: every entry in order with seq/kind/scope, still waiting (no live base).
       expect(body.log).toContain("[1 new-card global]");
       expect(body.log).toContain("[2 thread-summary global]");
-      expect(body.log).toContain("[3 depth-rewrite card:c-central]");
+      expect(body.log).toContain("[3 slower-rewrite card:c-central]");
       expect(body.log).toContain("### Waiting for batch (3)");
 
       // Contributions: thread fallback vs sourceThread, replaces, status rule.

@@ -11,7 +11,6 @@ import type {
   ContextRepoRef,
   ContextRepoSource,
   Contribution,
-  DepthLevel,
   DocumentContent,
   ExistingReviewComment,
   FileState,
@@ -183,6 +182,10 @@ export interface ChangesCursor {
   authoring?: string | null;
   direct?: string | null;
   team?: string | null;
+  /** #385: next-page cursor for the `reviewed-by:@me` search. */
+  reviewed?: string | null;
+  /** #385: next-page cursor for the typed-author `author:<login>` search. */
+  authorOther?: string | null;
 }
 
 const B64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
@@ -283,7 +286,7 @@ function fromB64Url(s: string): string | null {
 /** Encode a paging token (opaque, URL-safe, no padding). Pure. */
 export function encodeChangesCursor(c: ChangesCursor): string {
   const slim: Record<string, string | null> = {};
-  for (const k of ["authoring", "direct", "team"] as const) {
+  for (const k of ["authoring", "direct", "team", "reviewed", "authorOther"] as const) {
     // Only present keys round-trip: an absent key means "never fetched",
     // while an explicit null means "exhausted".
     if (k in c) slim[k] = typeof c[k] === "string" ? c[k] : null;
@@ -304,7 +307,7 @@ export function decodeChangesCursor(v: unknown): ChangesCursor {
   }
   if (typeof doc !== "object" || doc === null || Array.isArray(doc)) return {};
   const out: ChangesCursor = {};
-  for (const k of ["authoring", "direct", "team"] as const) {
+  for (const k of ["authoring", "direct", "team", "reviewed", "authorOther"] as const) {
     const val = (doc as Record<string, unknown>)[k];
     if (val === undefined) continue;
     out[k] = typeof val === "string" ? val : null;
@@ -337,13 +340,15 @@ export interface RepoChange {
    * #95: which review request a "review-requested" row answers — a request
    * made of you by name ("direct") or only of a team you belong to
    * ("team"). Absent on other rows and on rows stored before this change
-   * (the start page shows those under "Requested of you").
+   * (the start page shows those under "Requested of you"). #385 adds
+   * "other": an author's open PR that requests no review from you —
+   * shown under "Not requested of you" during an author search only.
    */
   /** #224: normalised PR state from gh (`state` + `isDraft`). Absent on branch rows. */
   prState?: PrState;
   /** #224: normalised review decision from gh. Absent when none/unknown. */
   reviewDecision?: PrReviewDecision;
-  reviewScope?: "direct" | "team";
+  reviewScope?: "direct" | "team" | "other";
   /**
    * #95: team slugs (or names) from `gh`'s `reviewRequests` that asked for
    * the review. Shown on team-requested rows when cheap; absent when there
@@ -589,9 +594,9 @@ interface ReviewSnapshotBase {
     errors?: Partial<Record<PipelineStage, string>>;
   };
   /**
-   * M5 (PRD §8): review-level staleness for the "New commits · Update"
-   * banner. Present once a refresh has created version n+1; cleared by a
-   * successful update pass. Absent on fresh reviews.
+   * M5 (PRD §8): review-level version info for the "New commits ·
+   * vN → vM" banner. Present once a refresh has created version n+1.
+   * Absent on fresh reviews.
    */
   versionStatus?: import("./versions.js").VersionStatus;
   /**
@@ -616,30 +621,38 @@ interface ReviewSnapshotBase {
   /**
    * Issue #351: read-only cache of PR conversation (issue-comment)
    * remarks, refreshed with the existing-comments ingest on PR reviews
-   * (best effort). The update pass matches them to the delta by time.
+   * (best effort). The explain pass matches them to the delta by time.
    */
   prConversation?: PrConversationRemark[];
   /**
-   * Issue #351: baseline B of "focus since B" — an earlier version (the
-   * version last opened by default; the picker may set any earlier one)
-   * or any commit sha (a PR commit, or the `commit_id` of the reviewer's
-   * own latest GitHub review — the no-review-yet path, step 2). The next
-   * update pass explains from it; a fresh guide run does too when it is
-   * set before the reader runs.
+   * Issue #351: baseline X of "explain changes since X" — an earlier
+   * version (the version last opened by default) or any commit sha (a
+   * PR commit, or the `commit_id` of the reviewer's own latest GitHub
+   * review — the no-review-yet path, kept in #413). The stored baseline
+   * drives the Since diff filter and plotline markers (on hold in #413)
+   * and defaults the X an Explain run explains from.
    */
   sinceBaseline?: import("./versions.js").SinceBaseline;
   /**
-   * Issue #351: new-side `h:` IDs changed or added since B, by
-   * hunk-content comparison (rebase-proof). Drives the Since-B diff
-   * filter and the plotline `+N since B` markers.
+   * Issue #351: new-side `h:` IDs changed or added since X, by
+   * hunk-content comparison (rebase-proof). Drives the Since diff
+   * filter, the plotline `+N since X` markers, and the citation reveal.
    */
   sinceHunks?: import("./versions.js").SinceHunks;
   /**
-   * Issue #351: the dated Since-B section at the top of the guide,
-   * written by the last update pass — or by the guide run itself on the
-   * no-review-yet path (replaced, never revised in place).
+   * Issue #351: the Changes-since-X section at the top of the guide,
+   * written by the last Explain run — or by the guide run itself on the
+   * no-review-yet path (replaced whole on re-run, never revised in
+   * place).
    */
   sinceSection?: import("./versions.js").SinceSection;
+  /**
+   * Issue #421: the head the current guide was written at (stamped
+   * when the reader lands). The new-commits banner counts and
+   * explains from this commit. Required: no fallback (a review
+   * without one needs a data reset).
+   */
+  guideHead: import("./versions.js").GuideHead;
   /**
    * Issue #351 step 2: the last commit-baseline recompute that failed
    * (refresh with an unfetchable B keeps the previous `sinceHunks` and
@@ -713,6 +726,39 @@ export type ReviewResponse = ReviewSnapshot;
  * "created" toast.
  */
 export type CreateReviewResponse = ReviewSnapshot & { reused?: boolean };
+
+/**
+ * Issue #393: `POST /api/reviews/:id/redo` body. Absent (or the built-in
+ * Guide id) re-does the guide exactly as before; a guide-capable
+ * persona id re-does it with that persona (same confirm/delete/create
+ * semantics, same refusals), and the new review records it.
+ */
+export interface RedoReviewRequest {
+  personaId?: string;
+}
+
+/**
+ * Issue #393: one persona's prompt-fork status. `guideCapable` is true
+ * when `prompts/personas/<id>/` holds `reader.md` (the persona can write
+ * a whole guide); `drifted` names forked files (`reader.md`) whose base
+ * template changed since the fork manifest recorded it (empty = in sync
+ * or no manifest).
+ * `name`/`enabled` come from settings (a fork folder with no settings
+ * entry reports its id, disabled) so the Re-do menu and the Settings
+ * drift warning share one call.
+ */
+export interface PromptForkStatus {
+  personaId: string;
+  name: string;
+  enabled: boolean;
+  guideCapable: boolean;
+  drifted: string[];
+}
+
+/** Issue #393: `GET /api/prompt-forks` response. */
+export interface PromptForksResponse {
+  forks: PromptForkStatus[];
+}
 
 /**
  * Front screen (PRD §4.2): every review opened before, across ALL repos,
@@ -836,7 +882,7 @@ export interface RefreshResponse {
   /**
    * M5: hunk-level summary of what the fetch found (present when
    * `newVersion` is true). `versionStatus` on the snapshot carries the
-   * same counts for the banner; `rangeDiff` is display-only.
+   * same counts.
    */
   comparison?: import("./versions.js").VersionComparisonSummary;
   /** M5: new version number (equals `review.currentVersion` when created). */
@@ -844,23 +890,25 @@ export interface RefreshResponse {
 }
 
 /**
- * M5: `POST /api/reviews/:id/update` response — the enqueued update-pass
- * job. The pass runs only when the user clicks Update; it sees only the
- * changed and new hunks (PRD §8).
+ * M5: `POST /api/reviews/:id/explain` response — the enqueued
+ * explain-since-X job. Explain runs only when the user clicks it, with
+ * an X they chose (earlier version, commit, or last GitHub review);
+ * the end is always the head. It writes the Changes-since-X section
+ * and leaves the old guide untouched (PRD §8).
  */
-export interface UpdateReviewResponse {
+export interface ExplainReviewResponse {
   jobId: string;
   /** New version the pass updates to (current version at enqueue time). */
   toVersion: number;
 }
 
 /**
- * Issue #351: `POST /api/reviews/:id/since-baseline` — pick the baseline
- * B the next update pass (or the still-pending guide run) explains from:
- * any earlier version, or any commit sha (a PR commit, or the
- * `commit_id` of the reviewer's own latest GitHub review). "Since" is
- * hunk-content comparison against the head diff, never git ancestry, so
- * a rebased or force-pushed B works the same.
+ * Issue #351: `POST /api/reviews/:id/since-baseline` — record the X the
+ * next Explain (or the still-pending guide run) explains from: any
+ * earlier version, or any commit sha (a PR commit, or the `commit_id`
+ * of the reviewer's own latest GitHub review). "Since" is hunk-content
+ * comparison against the head diff, never git ancestry, so a rebased or
+ * force-pushed X works the same. Setting it never starts an agent run.
  */
 export type SetSinceBaselineRequest =
   | {
@@ -926,14 +974,18 @@ export type ReviewAction =
   | { kind: "note"; quote: string; anchor: ActionAnchor; text?: string; offsets?: SelectionOffsets }
   /**
    * Issue #273: `cardId` is a page-card id or one thread reply's
-   * `ans_…` id. Depth, examples, diagram and undo act on that unit's
-   * own blocks/level/undo stack, so a reply rewrites alone.
+   * `ans_…` id. Slower rewrites, examples, diagram and undo act on that
+   * unit's own blocks/undo stack, so a reply rewrites alone.
    *
    * Issue #349 step 2: `personaId` selects a persona's version of a
-   * page card (its own blocks/level/undo stack and its own session).
+   * page card (its own blocks/undo stack and its own session).
    * Absent means the Guide version.
+   *
+   * Issue #418 (Explain terms): `terms` carries the picked terms as
+   * reader context (one #387 press with the terms block attached).
+   * Absent means an ordinary press; the prompt renders byte-identical.
    */
-  | { kind: "depth"; cardId: string; direction: "simpler" | "deeper"; personaId?: string }
+  | { kind: "slower"; cardId: string; personaId?: string; terms?: string[] }
   | { kind: "examples"; cardId: string; personaId?: string }
   | { kind: "diagram"; cardId: string; personaId?: string }
   | { kind: "undo"; cardId: string; personaId?: string }
@@ -1028,22 +1080,16 @@ export interface ActionResponse {
   turnId?: string;
   /** M4: page created or targeted (promote/concept). */
   pageId?: string;
-  /** M4: card created or targeted (depth/examples/diagram/undo/collapse/followup). */
+  /** M4: card created or targeted (slower/examples/diagram/undo/collapse/followup). */
   cardId?: string;
   /** M4: true when an identical active request was reused (dedupe, PRD §12). */
   deduplicated?: boolean;
   /**
    * Audit-10 (#10): true when a stored result for the identical request
-   * (anchor, kind, depth, base version, PRD §12) was returned without an
+   * (anchor, kind, revision, base version, PRD §12) was returned without an
    * agent call. No job is created and no tokens are spent.
    */
   reused?: boolean;
-  /**
-   * Depth stepper result (issue #65): the card/answer level after the
-   * action. Lets the client tell a stored-level switch (level changed:
-   * silent) from already-at-the-limit (level unchanged: toast).
-   */
-  level?: DepthLevel;
 }
 
 // --- diagrams (D2 decision addendum) ---------------------------------------
@@ -1214,11 +1260,6 @@ export interface SummarizeMoreResponse {
  */
 export interface UpdateDiffFilterRequest {
   plotline?: string | null;
-  /**
-   * Issue #351: true shows only hunks changed or added since the
-   * baseline; false and null both clear it back to all hunks.
-   */
-  sinceBaseline?: boolean | null;
 }
 
 /**
@@ -1480,8 +1521,8 @@ export interface Settings {
   uiTheme: UiThemeId;
   small: ModelPick;
   /**
-   * Persona definitions (issue #349): the built-in Guide, Second
-   * opinion and Clarity personas plus any custom personas. The Guide
+   * Persona definitions (issue #349): the built-in Guide and Second
+   * opinion personas plus any custom personas. The Guide
    * (issue #379) is fixed — exactly one, not deletable or
    * disableable — and owns the main provider + model (replacing
    * `settings.main`). A persona with `followMain` runs on the Guide
@@ -1490,6 +1531,15 @@ export interface Settings {
    * auto-assigned at creation.
    */
   personas: Persona[];
+  /**
+   * Default Guide persona (issue #401): which guide-capable persona
+   * writes new reviews and plain Re-do guide runs. A persona id;
+   * `"guide"` (the built-in Guide) when unset. Managed through
+   * Settings → Personas; must name an enabled guide-capable persona
+   * (its fork holds `reader.md`) at save time, and resolves back to
+   * `"guide"` at read time when it no longer does.
+   */
+  defaultGuidePersonaId: string;
   /** Max concurrent sessions per provider (default 16, PRD §12). */
   sessionsPerProvider: number;
   /** Inline size budget in tokens (L1 budget guess ~40k, PRD §9.1). */
@@ -1536,7 +1586,7 @@ export interface Settings {
   fullAccessAcknowledgedAt: number | null;
   /**
    * Issue #217: write go-deeper placeholder cards automatically in the
-   * background once the guide lands. On by default; off means a card is
+   * background once the guide lands. Off by default (#389): a card is
    * written only when its Generate button is clicked.
    */
   autoGoDeeper: boolean;
@@ -1551,6 +1601,27 @@ export interface Settings {
   extensionActiveRepoIds: string[] | null;
   /** Issue #322: model for panel turns. Default muse-spark. */
   extensionModel: ModelPick;
+  /**
+   * Issue #422: experimental feature gates. Both off by default; the
+   * Settings → Experimental section flips them without a restart.
+   */
+  experimental: ExperimentalSettings;
+}
+
+/** Issue #422: gates for unfinished features. */
+export interface ExperimentalSettings {
+  /**
+   * The card's Help-me-understand menu (#418: Simplify / Explain
+   * terms…). Off: the button is a plain Simplify press and term picking
+   * is unreachable. On: the menu with both items.
+   */
+  explainTerms: boolean;
+  /**
+   * Markdown document reviews. Off: every document entry point hides
+   * (the top-bar link, the document form and list, doc creation) while
+   * existing doc reviews stay in storage. On: document reviews work.
+   */
+  markdownDocs: boolean;
 }
 
 /** PUT /api/settings accepts a partial update; GET returns full Settings. */
@@ -1580,6 +1651,15 @@ export interface ThinkingOption {
   name?: string;
   /** Secondary text. */
   description?: string;
+}
+
+/**
+ * GET /api/settings/saved-keys — keys the user explicitly saved (issue
+ * #404). Roles absent here take live defaults; the Models section shows
+ * the "no longer offered" error only for a saved pick.
+ */
+export interface SavedKeysResponse {
+  savedKeys: string[];
 }
 
 /** GET /api/thinking?provider=:id — thinking levels the adapter offers. */

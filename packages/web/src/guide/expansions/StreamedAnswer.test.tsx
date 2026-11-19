@@ -22,7 +22,6 @@ function turn(id: string, over: Record<string, unknown> = {}): Record<string, un
     who: "agent",
     question: null,
     blocks: [],
-    level: "standard",
     revision: 1,
     undoStack: [],
     working: "Writing explanation…",
@@ -52,7 +51,7 @@ function card(over: Record<string, unknown> = {}): Thread {
 function seedSnapshot(annotations: Thread[]): void {
   useReview.getState().clear();
   useReview.getState().setSnapshot({
-    review: { id: REVIEW_ID, repoId: "r", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
+    review: { id: REVIEW_ID, repoId: "r", branch: "b", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: 0 },
     version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
     files: [],
     pages: [],
@@ -156,7 +155,7 @@ describe("provisional streamed paragraphs", () => {
       replies: [
         turn("ans_1", {
           blocks: [
-            { type: "paragraph", id: "b1", text: { standard: "Final validated answer." }, citations: [] },
+            { type: "paragraph", id: "b1", text: "Final validated answer.", citations: [] },
           ],
           working: null,
         }),

@@ -21,7 +21,7 @@ const FILE = {
 function seed(): void {
   useReview.getState().clear();
   useReview.getState().setSnapshot({
-    review: { id: "r1", repoId: "r", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
+    review: { id: "r1", repoId: "r", branch: "b", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: 0 },
     version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
     files: [FILE],
     pages: [],
@@ -77,7 +77,6 @@ describe("BlockView list citations (#165)", () => {
     const { container } = render(
       <BlockView
         block={listBlock()}
-        level="standard"
         threads={[]}
         cardId="c1"
         onOpenPage={() => {}}
@@ -99,7 +98,6 @@ describe("BlockView list citations (#165)", () => {
     const { container } = render(
       <BlockView
         block={listBlock()}
-        level="standard"
         threads={[]}
         footnotes={[footnote()]}
         cardId="c1"
@@ -131,7 +129,6 @@ describe("BlockView ordered start (issue #314)", () => {
     const { container } = render(
       <BlockView
         block={started}
-        level="standard"
         threads={[]}
         cardId="c1"
         onOpenPage={() => {}}
@@ -144,7 +141,6 @@ describe("BlockView ordered start (issue #314)", () => {
     const second = render(
       <BlockView
         block={plain}
-        level="standard"
         threads={[]}
         cardId="c1"
         onOpenPage={() => {}}
@@ -208,7 +204,6 @@ describe("BlockView whole-list citations (issue #305)", () => {
     const { container } = render(
       <BlockView
         block={citedList()}
-        level="standard"
         threads={[]}
         cardId="c1"
         onOpenPage={() => {}}

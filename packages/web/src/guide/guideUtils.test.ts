@@ -1,7 +1,7 @@
 /**
- * Unit tests for the pure guide logic: contents model, depth text
- * selection, link discovery (both `data-node` and `data-link` spellings),
- * concept resolution, anchor matching.
+ * Unit tests for the pure guide logic: contents model, link discovery
+ * (both `data-node` and `data-link` spellings), concept resolution,
+ * anchor matching.
  */
 import { describe, expect, it } from "vitest";
 import type { Card, Job, Page } from "@unvibe/shared";
@@ -10,7 +10,6 @@ import {
   blockCitations,
   cardPreview,
   contentsModel,
-  depthText,
   emptyGuideState,
   jobForCard,
   linkedPages,
@@ -25,7 +24,7 @@ function para(id: string, standard: string, citations: string[] = []): Card["blo
   return {
     type: "paragraph",
     id,
-    text: { standard },
+    text: standard,
     citations: citations.map((target) => ({ target })),
   };
 }
@@ -35,7 +34,6 @@ function mkCard(id: string, pageId: string, opts?: Partial<Card>): Card {
     id,
     pageId,
     title: id,
-    level: "standard",
     collapsed: false,
     revision: 1,
     blocks: [para(`${id}-1`, `Body of ${id}.`)],
@@ -47,16 +45,6 @@ function mkCard(id: string, pageId: string, opts?: Partial<Card>): Card {
 function mkPage(id: string, cards: Card[], kind: Page["kind"] = "concept"): Page {
   return { id, kind, title: `Title ${id}`, parent: "root", cards };
 }
-
-describe("depth text selection (PRD §4.4)", () => {
-  const text = { simple: "simple", standard: "standard", deep: "deep" };
-  it("picks the level text, falling back to standard", () => {
-    expect(depthText(text, "simple")).toBe("simple");
-    expect(depthText(text, "standard")).toBe("standard");
-    expect(depthText(text, "deep")).toBe("deep");
-    expect(depthText({ standard: "only" }, "deep")).toBe("only");
-  });
-});
 
 describe("contents model (PRD §4.3)", () => {
   it("lists this page's cards and linked pages", () => {
@@ -82,7 +70,6 @@ describe("contents model (PRD §4.3)", () => {
     const root = mkPage("root", [
       mkCard("problem", "root", { title: "The problem" }),
       mkCard("central", "root", { title: "The central change" }),
-      mkCard("buildup", "root", { title: "How it's built up" }),
       mkCard("decisions", "root", { title: "Decisions and questions" }),
       mkCard("names", "root", { title: "Names" }),
     ], "root");
@@ -90,7 +77,6 @@ describe("contents model (PRD §4.3)", () => {
     expect(cards.map((c) => [c.id, c.title])).toEqual([
       ["problem", "The problem"],
       ["central", "The central change"],
-      ["buildup", "How it's built up"],
       ["decisions", "Decisions and questions"],
       ["names", "Names"],
     ]);
@@ -179,7 +165,7 @@ describe("anchor block ids", () => {
 describe("jobForCard", () => {
   it("finds running or queued jobs for the card", () => {
     const jobs = [
-      { id: "a", kind: "depth", model: "m", effort: "", priority: 1, state: "done", cardId: "c1" },
+      { id: "a", kind: "slower", model: "m", effort: "", priority: 1, state: "done", cardId: "c1" },
       { id: "b", kind: "go-deeper", model: "m", effort: "", priority: 1, state: "running", cardId: "c2" },
     ] as const;
     expect(jobForCard([...jobs], "c1")).toBeUndefined();

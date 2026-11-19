@@ -30,7 +30,7 @@ function seedOldDir(dir: string, withDraft: boolean): void {
       "rv_1",
       1,
       JSON.stringify({
-        review: { id: "rv_1", repoId: "repo", branch: "feature", versions: [], currentVersion: 1, createdAt: 0 },
+        review: { id: "rv_1", repoId: "repo", branch: "feature", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: 0 },
         version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
         files: [{ fileKey: "fk1", path: "src/app.py", category: "source", hunks: [] }],
         ingest: { status: "ready" },
@@ -49,8 +49,7 @@ function seedOldDir(dir: string, withDraft: boolean): void {
                 kind: "comment",
                 who: "you",
                 question: null,
-                blocks: [{ type: "paragraph", id: "b1", text: { standard: "Unposted draft text" }, citations: [] }],
-                level: "standard",
+                blocks: [{ type: "paragraph", id: "b1", text: "Unposted draft text", citations: [] }],
                 revision: 1,
                 undoStack: [],
               },

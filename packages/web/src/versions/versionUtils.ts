@@ -3,7 +3,7 @@
  * list reduction from WS events, expanded-prompt layer splitting, and
  * version-status copy. No DOM, no React — covered by vitest.
  */
-import type { Job, ReviewEvent, VersionStatus } from "@unvibe/shared";
+import type { Job, ReviewEvent } from "@unvibe/shared";
 
 /** Compact token counts: 412 → "412", 42500 → "42.5k", 1_200_000 → "1.2M". */
 export function formatTokens(n: number): string {
@@ -123,8 +123,8 @@ export function formatRetryIn(nextRetryAt: number | undefined, now = Date.now())
 
 /**
  * Job list reduction from WS events (PRD §4.14 "live through the WebSocket
- * `job` events"): `job` events upsert by id (new jobs appended, so an
- * update-pass job enqueued after the snapshot loaded still appears);
+ * `job` events"): `job` events upsert by id (new jobs appended, so an explain-pass job
+ * enqueued after the snapshot loaded still appears);
  * every other event leaves the list alone. Pure so settings tests can
  * drive it without a socket.
  */
@@ -190,21 +190,6 @@ export function splitLayers(expanded: string): LayerSection[] {
   }
   if (lead !== "") sections.unshift({ layer: "", label: "text", tokens: 0, cached: false, text: lead.trim() });
   return sections;
-}
-
-/** "1 changed · 2 new · 0 removed" for the update banner + start page. */
-export function versionCountsText(s: {
-  changedHunks: number;
-  newHunks: number;
-  removedHunks: number;
-}): string {
-  const part = (n: number, what: string): string => `${n} ${what}`;
-  return `${part(s.changedHunks, "changed")} · ${part(s.newHunks, "new")} · ${part(s.removedHunks, "removed")}`;
-}
-
-/** Banner headline for a stale review (PRD §8 "New commits on this branch"). */
-export function staleHeadline(status: VersionStatus): string {
-  return `New commits on this branch: v${status.fromVersion} → v${status.toVersion} (${versionCountsText(status)} hunks)`;
 }
 
 /**

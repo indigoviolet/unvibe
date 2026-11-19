@@ -18,17 +18,24 @@ const fixturesDir = path.resolve(
 describe("snapshot build", () => {
   it("builds urllib3#5020 with zero unverified citations", () => {
     const { snapshot, counts } = buildSnapshot(fixturesDir);
-    // 69 recordings, all captured live on Claude Sonnet (#341):
-    // reader 1 + critic 1 + hunk 8 + go-deeper 4 + concept-page 4
-    // + depth 25 (12 simple + 12 deep-principle + 1 shared expansion)
-    // + examples 4 + diagram 2 + explain 8 + ask 12 (incl. 2 thread).
-    // No second-opinion recordings (#349); the cost ask was dropped —
-    // Sonnet cited stdlib files outside the review.
-    // + 2 persona recordings (#349 step 2: central second-opinion;
-    // #359: central Clarity).
-    // Journey-only manifest entries (the #351 update-pass reply) are not
+    // reader 1 + critic 1 + hunk 10 (8 demo + 2 scratch-app, #417)
+    // + go-deeper 4 + concept-page 4
+    // + examples 4 + diagram 1 (central) + explain 8 + ask 12
+    // (incl. 2 thread) + persona 1 (#349 step 2: central
+    // second-opinion; #423 removes the central Clarity recording) + slower 18 (3 central
+    // presses, 2 expansion, 1 g-regex, 1 persona-central, 11
+    // hand-authored terms rewrites keyed `<card>:terms:1` per guide
+    // card (#388), 1 hand-authored press-3 on central with a list and
+    // an example (#398)). The depth recordings are gone (issue #387:
+    // slower rewrites run on demand, which the builder does not
+    // consume); the cost ask was dropped (#341: Sonnet cited stdlib
+    // files outside the review). Issue #405 drops the buildup card and
+    // the Teach persona: the buildup reader card, its diagram and
+    // terms rewrite, and the Teach persona recording are gone.
+    // Journey-only manifest entries (the #351 update-pass reply, the
+    // #417 scratch-app reader reply) are not
     // demo content and are skipped by the builder.
-    expect(counts).toHaveLength(71);
+    expect(counts).toHaveLength(64);
     expect(snapshot.files.map((f) => [f.fileKey, f.hunks.length])).toEqual([
       ["src-urllib3-connection.py", 2],
       ["test-test_connection.py", 3],
@@ -43,7 +50,6 @@ describe("snapshot build", () => {
     expect(root.cards.map((c) => c.id)).toEqual([
       "problem",
       "central",
-      "buildup",
       "decisions",
       "g-alt",
       "g-regex",

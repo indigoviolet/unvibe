@@ -315,7 +315,7 @@ export function ensureThreadGlyphs(root: ParentNode): void {
     if (marks.some((m) => m.querySelector(":scope > svg.thg"))) continue;
     const last = marks[marks.length - 1];
     const tpl = document.createElement("template");
-    tpl.innerHTML = `<svg class="ic thg" viewBox="0 0 16 16" aria-hidden="true">${COMMENT_SVG_INNER}</svg>`;
+    tpl.innerHTML = `<svg class="ic thg" viewBox="0 0 24 24" aria-hidden="true">${COMMENT_SVG_INNER}</svg>`;
     const svg = tpl.content.firstChild;
     if (svg) last.appendChild(svg);
   }

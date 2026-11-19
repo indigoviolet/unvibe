@@ -408,12 +408,12 @@ export class SharedContextService {
       if (!card) throw codedError("unknown-card", `unknown card ${target.cardId}`);
       // JSON round-trip (not structuredClone: drafts are Immer proxies,
       // which structuredClone refuses to clone).
-      card.undoStack.push({ blocks: JSON.parse(JSON.stringify(card.blocks)), level: card.level });
+      card.undoStack.push({ blocks: JSON.parse(JSON.stringify(card.blocks)) });
       const n = card.blocks.length + 1;
       card.blocks.push({
         type: "paragraph",
         id: `b-corr-${contributionId}`,
-        text: { standard: `Accepted suggestion (from ${contributionId}): ${corr.text}` },
+        text: `Accepted suggestion (from ${contributionId}): ${corr.text}`,
         citations: corr.citations.map((cit) => ({ target: cit.target })),
       });
       void n;

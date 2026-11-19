@@ -55,6 +55,11 @@ export function retrieveAcrossRepos(repos: readonly ActiveRepoRef[], question: s
     const slug = repoSlug(repo);
     const files: string[] = [];
     walk(repo.localPath, files);
+    // `assertInsideRepo` hands back realpaths, so paths are made relative to
+    // the real root too: a repo reached through a symlink (macOS temp dirs
+    // live under /var → /private/var) would otherwise cite "../../private/…".
+    let realRoot: string;
+    try { realRoot = realpathSync(repo.localPath); } catch { continue; }
     let repoHits = 0;
     for (const file of files) {
       if (repoHits >= MAX_HITS_PER_REPO) break;
@@ -65,11 +70,11 @@ export function retrieveAcrossRepos(repos: readonly ActiveRepoRef[], question: s
       let text: string;
       try { text = readFileSync(safe, "utf8"); } catch { continue; }
       if (text.includes("\0")) continue;
-      reads.push({ slug, path: path.relative(repo.localPath, safe) });
+      reads.push({ slug, path: path.relative(realRoot, safe) });
       const lines = text.split("\n");
       for (let i = 0; i < lines.length && repoHits < MAX_HITS_PER_REPO; i++) {
         if (terms.some((t) => lines[i].includes(t))) {
-          hits.push({ repoId: repo.id, slug, path: path.relative(repo.localPath, safe), line: i + 1, text: lines[i].trim().slice(0, 200) });
+          hits.push({ repoId: repo.id, slug, path: path.relative(realRoot, safe), line: i + 1, text: lines[i].trim().slice(0, 200) });
           repoHits++;
         }
       }

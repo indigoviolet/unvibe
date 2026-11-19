@@ -10,10 +10,6 @@ add one the card already has.
 Legacy servers folded long headers across lines. [[desc:d-intro]] Python kept the raw line break. [[diff:conn:650-651]]
 
 
-## Level to match
-
-standard
-
 ## Rules
 
 <!-- D2 convention source: prompts/includes/d2-convention.md — edit there, copy here. -->
@@ -41,6 +37,6 @@ standard
 - After the block, two to four lines of prose explaining the diagram
   in order, with citations. Do not start that paragraph with `Caption:` — that
   prefix would make it the diagram's caption instead of a walkthrough.
-- Match the card's level: name the parts at `simple`, use the code's own
-  names at `standard`, show the invariant at `deep`.
+- Match the card's current wording: use the same names and level of
+  detail as the surrounding text.
 - Output the diagram block, the walkthrough, and the trailing JSON block.

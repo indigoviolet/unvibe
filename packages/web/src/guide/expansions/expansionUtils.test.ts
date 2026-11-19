@@ -18,7 +18,6 @@ function turn(over: Record<string, unknown> = {}): import("@unvibe/shared").Repl
     who: "agent",
     question: null,
     blocks: [],
-    level: "standard",
     revision: 1,
     undoStack: [],
     ...over,
@@ -62,7 +61,7 @@ describe("conversation card utils", () => {
     const a = ann({
       replies: [
         turn({
-          blocks: [{ type: "paragraph", id: "b1", text: { standard: "<code>x</code> hello world" }, citations: [] }],
+          blocks: [{ type: "paragraph", id: "b1", text: "<code>x</code> hello world", citations: [] }],
         }),
       ],
     });

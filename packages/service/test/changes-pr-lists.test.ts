@@ -6,7 +6,9 @@
  * - authoring: full fields, newest first, one `gh` call;
  * - review-requested: direct (`user-review-requested:@me`) and team
  *   (`review-requested:@me` minus direct) requests distinguishable; a PR
- *   asking both shows once, as direct; team names carried;
+ *   asking both shows once, as direct; team names carried; plus
+ *   already-reviewed PRs (`reviewed-by:@me`, #385) as direct and, with
+ *   a typed author, that author's other PRs as "other";
  * - rows degrade when `gh` omits fields (the row simply omits that part).
  *
  * `gh` is stubbed through the injectable command runner (never real
@@ -41,7 +43,9 @@ type GhBodies = {
   author?: unknown;
   direct?: unknown;
   all?: unknown;
-  fail?: Array<"author" | "direct" | "all">;
+  reviewed?: unknown;
+  authorOther?: unknown;
+  fail?: Array<"author" | "direct" | "all" | "reviewed" | "authorOther">;
 };
 
 /** One flat fixture row as a GraphQL search node. */
@@ -65,11 +69,15 @@ function stubGh(bodies: GhBodies): { runner: CommandRunner; ghCalls: string[][] 
       if (cmd !== "gh") return real.run(cmd, opts);
       ghCalls.push(opts.args);
       const q = queryOf(opts.args);
-      const key = q.includes("user-review-requested:@me")
-        ? "direct"
-        : q.includes("review-requested:@me")
-          ? "all"
-          : "author";
+      const key = q.includes("reviewed-by:@me")
+        ? "reviewed"
+        : q.includes("user-review-requested:@me")
+          ? "direct"
+          : q.includes("review-requested:@me")
+            ? "all"
+            : q.includes("is:pr")
+              ? "author"
+              : "authorOther";
       if (bodies.fail?.includes(key)) return { stdout: "", stderr: "mock gh is down", code: 1 };
       const rows = (bodies[key] ?? []) as unknown[];
       return {
@@ -240,11 +248,13 @@ describe("start-page PR lists (one GraphQL search per list)", () => {
       expect(byNumber.get(13)?.requestedTeams).toEqual(["core"]);
       // Team names ride the rows that have them.
       expect(byNumber.get(12)?.requestedTeams).toEqual(["core"]);
-      // Two gh calls for the requested lists (direct + team-inclusive).
-      expect(ghCalls).toHaveLength(2);
+      // Three gh calls for the requested lists (direct + team-inclusive
+      // + already-reviewed, #385).
+      expect(ghCalls).toHaveLength(3);
       const queries = ghCalls.map((a) => a.find((x) => x.startsWith("q=")) ?? "");
       expect(queries.some((q) => q.includes("user-review-requested:@me"))).toBe(true);
       expect(queries.some((q) => q.includes("review-requested:@me"))).toBe(true);
+      expect(queries.some((q) => q.includes("reviewed-by:@me"))).toBe(true);
     } finally {
       await app.close();
     }
@@ -293,13 +303,13 @@ describe("start-page PR lists (one GraphQL search per list)", () => {
     }
   });
 
-  it("the all filter uses three gh calls (authoring + direct + team-inclusive)", async () => {
+  it("the all filter uses four gh calls (authoring + direct + team-inclusive + reviewed)", async () => {
     const { runner, ghCalls } = stubGh({ author: [FULL_NEW], direct: [], all: [] });
     const { app, repoId } = await setupRepo(runner);
     try {
       const changes = await getChanges(app, repoId, "all");
       expect(changes.some((c) => c.prNumber === 5020)).toBe(true);
-      expect(ghCalls).toHaveLength(3);
+      expect(ghCalls).toHaveLength(4);
     } finally {
       await app.close();
     }

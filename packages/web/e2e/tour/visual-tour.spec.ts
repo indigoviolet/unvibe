@@ -112,6 +112,10 @@ test.beforeAll(async () => {
       UNVIBE_UPDATER_BACKEND: "fake",
     },
   });
+  // Issue #422: the documents tour scenes need the Markdown-docs gate on.
+  await apiJson(svc.origin, svc.token, "PUT", "/api/settings", {
+    experimental: { explainTerms: false, markdownDocs: true },
+  });
   reviewId = await createTourReview();
 });
 
@@ -259,7 +263,9 @@ async function checkCards(page: Page, step: string): Promise<void> {
           if (hit.closest(".dband")) continue;
           // Pinned headers/bars (and the app top bar, over a header
           // scrolled out of its pane) slide over inline cards by design.
-          if (hit.closest(".dfile-h, .dhunk-h, .dtool, .rstick, .rbar")) continue;
+          // Issue #395: the #376 summary header pins with the stack,
+          // so it covers scrolled-under cards like the bar above it.
+          if (hit.closest(".dfile-h, .dhunk-h, .dtool, .rstick, .dsumbar, .rbar")) continue;
           return `not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} card=${cardEl.id} rect=${Math.round(r.left)},${Math.round(r.top)}-${Math.round(r.right)},${Math.round(r.bottom)}`;
         }
       }
@@ -397,7 +403,9 @@ async function checkCardHeaders(page: Page, step: string): Promise<void> {
         }
         // The pinned top stack (and the app top bar) slides over
         // inline cards by design.
-        if (hit.closest(".rstick, .dtool, .dband, .dfile-h.stuck, .dhunk-h.stuck, .rbar")) continue;
+        // Issue #395: the #376 summary header pins with the stack and
+        // covers scrolled-under card headers like the bar above it.
+        if (hit.closest(".rstick, .dtool, .dsumbar, .dband, .dfile-h.stuck, .dhunk-h.stuck, .rbar")) continue;
         return `header not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} card=${cardEl.id} hitCard=${hit.closest("section.ithread[data-thread]")?.id ?? "none"} html=${hit.outerHTML.slice(0, 120)} headerRect=${Math.round(h.left)},${Math.round(h.top)}-${Math.round(h.right)},${Math.round(h.bottom)}`;
       }
       return null;
@@ -412,6 +420,9 @@ async function checkCardHeaders(page: Page, step: string): Promise<void> {
  * the file owning the first visible row, and that row's hunk header,
  * stuck at their sticky offsets and topmost there (a floating card
  * covering the stuck slot fails; pinned headers slide over cards).
+ * Issue #395: the #376 summary header pins with the stack (below the
+ * actions bar, above the file headers), so both slots move down by
+ * its height — 0 once every hunk has a summary.
  */
 async function checkPinnedSlots(page: Page, step: string): Promise<void> {
   const bad = await page.evaluate(() => {
@@ -421,7 +432,10 @@ async function checkPinnedSlots(page: Page, step: string): Promise<void> {
     const hh = (sel: string): number => pane.querySelector(sel)?.getBoundingClientRect().height ?? 0;
     const strip = hh(".rstick");
     const bar = hh(".dtool");
-    const fileSlot = pv.top + strip + bar;
+    // Issue #395: the #376 summary header pins with the stack (0 when
+    // absent), so the file slot sits below it — the product's
+    // `refreshDiffPinned` moves the slots the same way.
+    const fileSlot = pv.top + strip + bar + hh(".dsumbar");
     const hunkSlot = fileSlot + hh(".dfile-h");
     // First visible diff row below the actions bar: painted, not
     // merely laid out — a row hidden under a floating card does not
@@ -474,7 +488,9 @@ async function checkPinnedSlots(page: Page, step: string): Promise<void> {
  * must never show a floating card. During a file hand-off the
  * outgoing and incoming headers together cover the band; card text
  * flickering through the strips around them fails. Sampled on a
- * horizontal line every 4px.
+ * horizontal line every 4px. Issue #395: the band runs through the
+ * #376 summary header, which pins with the stack like the bar above
+ * it — the opaque cover and the seam sweep include it.
  */
 async function checkPinnedBand(page: Page, step: string): Promise<void> {
   const bad = await page.evaluate(() => {
@@ -484,10 +500,11 @@ async function checkPinnedBand(page: Page, step: string): Promise<void> {
     const hh = (sel: string): number => pane.querySelector(sel)?.getBoundingClientRect().height ?? 0;
     // The whole top stack, from the pane's top edge (just below the
     // app's top bar) to the band's bottom: the tab strip, the actions
-    // bar and the band must be one opaque, gapless stack — a sliver
+    // bar, the #395 summary header and the band must be one opaque,
+    // gapless stack — a sliver
     // of card text in a seam between sticky layers fails.
     const bandTop = pv.top;
-    const bandBottom = pv.top + hh(".rstick") + hh(".dtool") + hh(".dfile-h") + hh(".dhunk-h");
+    const bandBottom = pv.top + hh(".rstick") + hh(".dtool") + hh(".dsumbar") + hh(".dfile-h") + hh(".dhunk-h");
     for (let y = bandTop + 1; y < bandBottom - 1; y += 2) {
       for (let x = pv.left + 8; x < pv.right - 4; x += 40) {
         const hit = document.elementFromPoint(x, y);
@@ -497,11 +514,12 @@ async function checkPinnedBand(page: Page, step: string): Promise<void> {
       }
     }
     // Coverage test: the union of the opaque top-stack layers (tab
-    // strip, actions bar, band backing) must cover the whole stack
+    // strip, actions bar, the #395 summary header, band backing) must
+    // cover the whole stack
     // interval with no sub-interval left open. A card behind an open
     // sub-interval shows through it as a sliver of text, even when
     // the gap is sub-pixel and hit sampling lands on a layer edge.
-    const cover = [pane.querySelector(".rstick"), pane.querySelector(".dtool"), pane.querySelector(".dband")]
+    const cover = [pane.querySelector(".rstick"), pane.querySelector(".dtool"), pane.querySelector(".dsumbar"), pane.querySelector(".dband")]
       .filter((el): el is Element => !!el)
       .map((el) => el.getBoundingClientRect())
       .sort((a, b) => a.top - b.top);
@@ -520,10 +538,11 @@ async function checkPinnedBand(page: Page, step: string): Promise<void> {
       if (hit) return `uncovered top-stack bottom at y=${Math.round(coveredTo)}-${Math.round(bandBottom)} with a card behind it`;
     }
     // Seam test: any positive gap between consecutive top-stack
-    // layers (tab strip, actions bar, band backing) whose midpoint
+    // layers (tab strip, actions bar, the #395 summary header, band
+    // backing) whose midpoint
     // lands in a card fails — a text line aligned with a sub-pixel
     // seam shows exactly that sliver, and 2px sampling can miss it.
-    const layers = [pane.querySelector(".rstick"), pane.querySelector(".dtool"), pane.querySelector(".dband")]
+    const layers = [pane.querySelector(".rstick"), pane.querySelector(".dtool"), pane.querySelector(".dsumbar"), pane.querySelector(".dband")]
       .filter((el): el is Element => !!el)
       .map((el) => el.getBoundingClientRect())
       .sort((a, b) => a.top - b.top);
@@ -589,7 +608,9 @@ async function checkGutters(page: Page, step: string): Promise<void> {
       const hit = document.elementFromPoint(x, y);
       if (!hit || cell.contains(hit)) continue;
       if (hit.closest("section.ithread[data-thread]")) continue;
-      if (hit.closest(".dfile-h, .dhunk-h, .dtool, .rstick, .dband, .fmenu, .cmenu, #pop")) continue;
+      // Issue #395: the #376 summary header pins with the stack and
+      // legitimately covers gutter cells scrolling under it.
+      if (hit.closest(".dfile-h, .dhunk-h, .dtool, .rstick, .dsumbar, .dband, .fmenu, .cmenu, #pop")) continue;
       return `line-number cell not topmost at ${Math.round(x)},${Math.round(y)}: ${hit.tagName}.${(hit as HTMLElement).className.toString().slice(0, 40)} row=${row}`;
     }
     return null;
@@ -879,15 +900,36 @@ test.describe("visual tour passes", () => {
     await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
     await expect(page.locator("#page .doc h1.title")).toContainText("Unfold obsolete folded response headers", { timeout: 30_000 });
     await page.evaluate(() => document.fonts.ready).catch(() => {});
+    // #407: the review bar shown plainly — borderless Tabler icon
+    // buttons, the quiet pressed Guide segment, solid Submit. Element
+    // shot (the full-page frames shrink the bar). Runs in 1440-light
+    // and 1440-dark via this loop's slim combos.
+    await stepChecks(page, "reviewbar-main");
+    await page.locator("#reviewbar").screenshot({ path: path.join(SHOTS, `reviewbar-main-${suffix}.png`) });
     // #242: the Plotlines card tops the guide root (two plotlines,
     // one building on the other) — capture it before scrolling on.
     await expect(page.locator(".plotlines")).toBeVisible({ timeout: 15_000 });
     await page.locator(".plotlines").scrollIntoViewIfNeeded();
     await stepChecks(page, "guide-plotlines");
     await shot(page, "guide-plotlines", suffix, "Plotlines");
-    // Explain-first guide (#198): the build-up and decisions cards sit
-    // after the central change in the settled reader order.
-    await expect(page.locator("#C-buildup")).toBeVisible({ timeout: 15_000 });
+    // #406: the plotlines card with one plotline selected — the picked
+    // row reads selected (existing sunk-row tint plus aria-current).
+    // Default frame set (#362): 1440px light Default theme only.
+    if (combo.name === "1440-light") {
+      const pick = page.locator(".plotlines [data-plotpick]").first();
+      await pick.click();
+      await expect(page.locator('[data-filterchip="plotline"]')).toContainText("Plotline:", { timeout: 15_000 });
+      await expect(pick).toHaveAttribute("aria-current", "true");
+      await page.locator(".plotlines").scrollIntoViewIfNeeded();
+      await stepChecks(page, "guide-plotlines-selected");
+      await shot(page, "guide-plotlines-selected", suffix, "Plotlines");
+      // Clear the filter so the diff shots below stay unfiltered.
+      await pick.click();
+      await expect(page.locator('[data-filterchip="plotline"]')).toHaveCount(0, { timeout: 15_000 });
+    }
+    // Guide order (#198, #405: no build-up card): the decisions card
+    // sits after the central change in the settled reader order.
+    await expect(page.locator("#C-buildup")).toHaveCount(0);
     await expect(page.locator("#C-decisions")).toBeVisible({ timeout: 15_000 });
     await page.locator("#C-decisions").scrollIntoViewIfNeeded();
     // Issue #341: the re-recorded Decisions card uses **Bold** section
@@ -928,7 +970,9 @@ test.describe("visual tour passes", () => {
     await expect(seedCard.locator(".ctl").first()).toBeVisible({ timeout: 15_000 });
     await waitForJobsIdle(svc.origin, svc.token, reviewId);
     await stepChecks(page, "guide-pinned");
-    await shot(page, "guide-pinned", suffix, "three pieces");
+    // Issue #405 drops the build-up card that carried "three pieces";
+    // the pinned reply names the raw stored value instead.
+    await shot(page, "guide-pinned", suffix, "The problem");
 
     // A reply inside the pinned thread (guide): Explain on selected text
     // inside the reply appends to the same thread (flat, #273).
@@ -1341,6 +1385,9 @@ test.describe("visual tour passes", () => {
       { id: "version", name: "Version", marker: "Channels" },
       { id: "appearance", name: "Appearance", marker: "Theme" },
       { id: "extension", name: "Extension", marker: "Show extension folder" },
+      // Issue #422: the Experimental gates frame at 1440 light like the
+      // other Settings tabs.
+      { id: "experimental", name: "Experimental", marker: "Explain terms" },
     ] as const) {
       if (tab.id === "extension") {
         // #322: seed 4 repos so the frame shows Active-repo checkboxes
@@ -1429,7 +1476,10 @@ test.describe("visual tour passes", () => {
             };
           }),
         );
-        expect(rows.length, "limits: one checkbox row + six number rows").toBe(7);
+        // Issue #376 added the hunk-summary-limit row (now one checkbox
+        // row + seven number rows); the per-row layout asserts below
+        // cover the new row unchanged.
+        expect(rows.length, "limits: one checkbox row + seven number rows").toBe(8);
         for (const [i, row] of rows.entries()) {
           expect(row.label, `limits row ${i}: label`).not.toBeNull();
           expect(row.help, `limits row ${i}: help`).not.toBeNull();
@@ -1443,7 +1493,7 @@ test.describe("visual tour passes", () => {
           if (i > 0) expect(row.borderTop, `limits row ${i}: hairline separator`).toBe("1px");
         }
         const widths = rows.flatMap((r) => (r.input ? [r.input.w] : []));
-        expect(widths.length, "limits: six number inputs").toBe(6);
+        expect(widths.length, "limits: seven number inputs").toBe(7);
         expect(Math.max(...widths) - Math.min(...widths), "limits: consistent number-input widths").toBeLessThanOrEqual(1);
         const inputXs = rows.flatMap((r) => (r.input ? [r.input.x] : []));
         expect(Math.max(...inputXs) - Math.min(...inputXs), "limits: number inputs share the same left edge").toBeLessThanOrEqual(1);
@@ -1974,6 +2024,20 @@ for (const combo of tourCombos("theme", [
     // Variable is bundled for every theme (main.tsx), so it is the stable
     // reference now (true Nunito/Inter ~0.94, Fira/Inter ~0.91; the tPerEm
     // check above stays the primary mis-shaping guard).
+    // Issue #425: the reference must really be Inter, not the browser's
+    // fallback for an unloaded family. Under studio/console nothing on the
+    // page uses Inter, so the browser never downloads it (before #416 a
+    // default-theme flash, from the 401'd theme-init.js, downloaded it by
+    // accident); load it explicitly so the ratio compares against true
+    // Inter metrics. The assert below keeps the reference from silently
+    // falling back again.
+    const refLoaded = await page.evaluate(async () => {
+      try {
+        await document.fonts.load('13px "Inter Variable"');
+      } catch { /* check below reports it */ }
+      return document.fonts.check('13px "Inter Variable"');
+    });
+    expect(refLoaded, `${combo.name}: reference font Inter Variable loaded`).toBe(true);
     const shaped = await page.evaluate((fam) => {
       const ctx = document.createElement("canvas").getContext("2d");
       if (!ctx) return { tPerEm: 99, theRatio: 99 };
@@ -2629,11 +2693,10 @@ test("visual tour document review (#222)", async ({ page }) => {
               {
                 type: "paragraph",
                 id: "b-cite",
-                text: { standard: "The widget constant lives in the second repo." },
+                text: "The widget constant lives in the second repo.",
                 citations: [{ target: `code:src/widget.ts:1@${sha2}` }],
               },
             ],
-            level: "standard",
             revision: 1,
             undoStack: [],
           },
@@ -2707,14 +2770,15 @@ test("visual tour writing state (slow replay)", async ({ page }) => {
       .toBe(true);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${slow.origin}/review/${rid}?token=${slow.token}`);
-    // Issue #341: explain "three pieces" on the build-up card. No explain
-    // pattern matches a build-up-anchored prompt, so replay answers with
-    // the first explain entry (the recorded obs-fold explain) — still a
-    // real recording while the writing state is captured.
-    await expect(page.locator("#C-buildup")).toBeVisible({ timeout: 60_000 });
-    await selectText(page, "#C-buildup", "three pieces");
+    // Issue #341: explain "before anything reads the headers" on the
+    // central card (#405: the build-up card is gone). No explain pattern
+    // matches it, so replay answers with the first explain entry (the
+    // recorded obs-fold explain) — still a real recording while the
+    // writing state is captured.
+    await expect(page.locator("#C-central")).toBeVisible({ timeout: 60_000 });
+    await selectText(page, "#C-central", "before anything reads the headers");
     await page.locator('#selbar [data-act="explain"]').click();
-    const card = page.locator("#C-buildup [data-thread]").first();
+    const card = page.locator("#C-central [data-thread]").first();
     await expect(card).toBeVisible({ timeout: 15_000 });
     await expect(card.locator(".working")).toBeVisible({ timeout: 15_000 });
     // While writing: no answer toolbar, no reply box (#203), pinned (#204).
@@ -3104,10 +3168,9 @@ test.describe("visual tour file tab (#81)", () => {
         id,
         pageId: "root",
         title: id,
-        level: "standard",
         collapsed: false,
         revision: 1,
-        blocks: [{ type: "paragraph", id: `b-${id}`, text: { standard: text }, citations: [{ target }] }],
+        blocks: [{ type: "paragraph", id: `b-${id}`, text, citations: [{ target }] }],
         undoStack: [],
       });
       root.cards.push(
@@ -3140,11 +3203,10 @@ test.describe("visual tour file tab (#81)", () => {
                 {
                   type: "paragraph",
                   id: "b1",
-                  text: { standard: "Is beta still the right default?" },
+                  text: "Is beta still the right default?",
                   citations: [],
                 },
               ],
-              level: "standard",
               revision: 1,
               undoStack: [],
             },
@@ -3613,8 +3675,7 @@ test.describe("data reset notice tour (#311)", () => {
               kind: "comment",
               who: "you",
               question: null,
-              blocks: [{ type: "paragraph", id: "b1", text: { standard: "Unposted draft text" }, citations: [] }],
-              level: "standard",
+              blocks: [{ type: "paragraph", id: "b1", text: "Unposted draft text", citations: [] }],
               revision: 1,
               undoStack: [],
             },
@@ -3889,10 +3950,10 @@ test.describe("since-B tour (#351)", () => {
       const para = (id: string, text: string, citations: string[]): unknown => ({
         type: "paragraph",
         id,
-        text: { standard: text },
+        text,
         citations: citations.map((target) => ({ target })),
       });
-      // Tour-local resolved feedback links (what `applyUpdateResult`
+      // Tour-local resolved feedback links (what `applyExplainResult`
       // stores after resolving the agent's pointers): remark excerpts
       // from the PR under review, linking back to it.
       const prUrl = "https://github.com/urllib3/urllib3/pull/5020";
@@ -3911,13 +3972,14 @@ test.describe("since-B tour (#351)", () => {
       snap.sinceSection = {
         baseline: { kind: "version", version: 1 },
         headVersion: 2,
+        // Issue #421: the section was written at the v2 head.
+        headSha: snap.version.headSha,
         at: now,
         cards: [
           {
             id: "since-obs-fold",
             pageId: "since",
             title: "Obs-fold unfolded",
-            level: "standard",
             collapsed: false,
             revision: 1,
             undoStack: [],
@@ -3934,7 +3996,6 @@ test.describe("since-B tour (#351)", () => {
             id: "since-socket-tests",
             pageId: "since",
             title: "Socket-level tests",
-            level: "standard",
             collapsed: false,
             revision: 1,
             undoStack: [],
@@ -3946,21 +4007,9 @@ test.describe("since-B tour (#351)", () => {
       const root = snap.pages.find((p) => p.id === "root");
       const central = root?.cards.find((c) => c.id === "central");
       if (!central) throw new Error("seeded demo snapshot has no central card");
-      central.addenda = [
-        {
-          id: "add-v2-1",
-          version: 2,
-          baseline: { kind: "version", version: 1 },
-          at: now,
-          blocks: [
-            para("b-add-351-1", "The headers are unfolded right after parsing now, not left raw.", [changedId]),
-          ],
-          answers: [bareLfAnswer],
-        },
-      ];
       snap.plotlines = [
         { id: "unfold", name: "Unfold obs-fold", description: "The header unfolding work." },
-        { id: "socket-followups", name: "Socket follow-ups", description: "Checks around the new value.", newSinceBaseline: true },
+        { id: "socket-followups", name: "Socket follow-ups", description: "Checks around the new value." },
       ];
       const hashOf = (id: string): string => id.split(":").slice(2).join(":");
       for (const s of snap.hunkStates) {
@@ -3985,7 +4034,7 @@ test.describe("since-B tour (#351)", () => {
     { name: "960-light", width: 960, dark: false },
   ] as const)) {
     const suffix = combo.name;
-    test(`since-B section, addendum, plotlines and filter (${suffix})`, async ({ page }) => {
+    test(`since section, feedback and filter (${suffix})`, async ({ page }) => {
       test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
       if (!svc351) throw new Error("tour-351 service did not start");
       await page.setViewportSize({ width: combo.width, height: 900 });
@@ -3993,18 +4042,6 @@ test.describe("since-B tour (#351)", () => {
       await page.goto(`${svc351.origin}/review/${review351}?token=${svc351.token}`);
       await expect(page.locator("#page .doc")).toBeVisible({ timeout: 60_000 });
 
-      // The Since-B filter is stored with the review, so an earlier combo
-      // may have left it on: reset it first to keep every combo's opening
-      // scenes deterministic (the filter scene re-enables it below).
-      await page.locator('#right [role="tab"]').getByText("Diff").click();
-      await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
-      {
-        const chip = page.locator('[data-filterchip="since"]');
-        if ((await chip.getAttribute("aria-pressed")) === "true") {
-          await chip.click();
-          await expect(chip).toHaveAttribute("aria-pressed", "false");
-        }
-      }
 
       // 1. The dated Since-B section, expanded.
       const since = page.locator('[data-testid="since-section"]');
@@ -4044,64 +4081,39 @@ test.describe("since-B tour (#351)", () => {
         expect(Math.abs((gaps.sinceGap as number) - (gaps.normalGap as number))).toBeLessThanOrEqual(2);
       }
 
-      // 2. Collapsed: the cards fold away.
-      await since.getByRole("button", { name: /Collapse changes since v1/ }).click();
+      // 2. Collapsed: the whole panel folds to its range header.
+      const snap351 = (await apiJson(svc351.origin, svc351.token, "GET", `/api/reviews/${review351}`)) as {
+        review: { versions: { n: number; headSha: string }[] };
+        version: { headSha: string };
+      };
+      const r1 = (snap351.review.versions.find((v) => v.n === 1)?.headSha ?? "").slice(0, 8);
+      const r2 = snap351.version.headSha.slice(0, 8);
+      const range351 = `${r1} → ${r2}`;
+      await since.getByRole("button", { name: /Collapse changes/ }).click();
       await expect(since.locator('[id^="C-since-"]')).toHaveCount(0);
       await stepChecks(page, "since-collapsed");
       await page.mouse.move(20, 20);
-      await shot(page, "since-collapsed", suffix, "Since v1 → v2");
-      await since.getByRole("button", { name: /Expand changes since v1/ }).click();
+      await shot(page, "since-collapsed", suffix, range351);
+      await since.getByRole("button", { name: /Expand changes/ }).click();
       await expect(since.locator('[id^="C-since-"]')).toHaveCount(2);
 
-      // 3. The card addendum on the central card.
-      const central = page.locator("#page #C-central");
-      await central.scrollIntoViewIfNeeded();
-      await expect(central.locator("[data-addendum]")).toBeVisible({ timeout: 30_000 });
-      await stepChecks(page, "since-addendum");
-      await page.mouse.move(20, 20);
-      await shot(page, "since-addendum", suffix, "Updated since v1");
-
-      // 4. The visible feedback link: the remark the delta answers.
-      const firstSince = page.locator("#page #C-since-obs-fold");
-      await firstSince.scrollIntoViewIfNeeded();
+      // 3. The visible feedback link: the remark the delta answers.
+      const firstSince = page.locator("#page #C-since-obs-fold");      await firstSince.scrollIntoViewIfNeeded();
       await expect(firstSince.locator('[data-testid="since-answers"]')).toBeVisible({ timeout: 30_000 });
       await stepChecks(page, "since-feedback");
       await page.mouse.move(20, 20);
       await shot(page, "since-feedback", suffix, "Answers:");
 
-      // 5. The plotlines card with the new-since marker.
-      const plotlines = page.locator('.plotlines[aria-label="Plotlines"]');
-      await plotlines.scrollIntoViewIfNeeded();
-      await expect(plotlines.getByText("new since v1")).toBeVisible({ timeout: 30_000 });
-      await stepChecks(page, "since-plotlines");
-      await page.mouse.move(20, 20);
-      await shot(page, "since-plotlines", suffix, "new since v1");
-
-      // 5. The diff with the Since-B filter on. The filter is stored
-      // with the review, so an earlier combo may have left it on: reset
-      // it first to keep every combo deterministic.
-      await page.locator('#right [role="tab"]').getByText("Diff").click();
-      await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
-      const sinceChip = page.locator('[data-filterchip="since"]');
-      if ((await sinceChip.getAttribute("aria-pressed")) === "true") {
-        await sinceChip.click();
-        await expect(sinceChip).toHaveAttribute("aria-pressed", "false");
-      }
-      await page.locator("#right").getByRole("button", { name: "Show only hunks changed since v1" }).click();
-      await expect(sinceChip).toContainText("Since v1 ·", { timeout: 30_000 });
-      await stepChecks(page, "since-filter");
-      await page.mouse.move(20, 20);
-      await shot(page, "since-filter", suffix, "Since v1");
     });
   }
 });
 
 /**
- * Since-commit tour (#351 step 2): the baseline is a commit, not a
- * version. Same seeded-demo technique as the step-1 scene (tour-only
- * synthetic state with real demo hunk ids, so every combo renders
- * deterministically): the header, addendum, markers and filter chip all
- * name the real short sha, and the picker lists versions and commits.
+ * Since-commit tour (#351 step 2, menu #421): the baseline is a commit,
+ * not a version. Same seeded-demo technique as the step-1 scene
+ * (tour-only synthetic state with real demo hunk ids, so every combo
+ * renders deterministically): the panel header names the real commit
+ * range, and the toolbar menu lists the commit.
  */
 test.describe("since-commit tour (#351 step 2)", () => {
   test.describe.configure({ mode: "serial" });
@@ -4159,20 +4171,21 @@ test.describe("since-commit tour (#351 step 2)", () => {
       const para = (id: string, text: string, citations: string[]): unknown => ({
         type: "paragraph",
         id,
-        text: { standard: text },
+        text,
         citations: citations.map((target) => ({ target })),
       });
       const prUrl = "https://github.com/urllib3/urllib3/pull/5020";
       snap.sinceSection = {
         baseline: { kind: "commit", sha: commit352 },
         headVersion: 2,
+        // Issue #421: the section was written at the v2 head.
+        headSha: snap.version.headSha,
         at: now,
         cards: [
           {
             id: "since-beta-gamma",
             pageId: "since",
             title: "Beta reworked, gamma added",
-            level: "standard",
             collapsed: false,
             revision: 1,
             undoStack: [],
@@ -4197,19 +4210,9 @@ test.describe("since-commit tour (#351 step 2)", () => {
       const root = snap.pages.find((p) => p.id === "root");
       const central = root?.cards.find((c) => c.id === "central");
       if (!central) throw new Error("seeded demo snapshot has no central card");
-      central.addenda = [
-        {
-          id: "add-v2-1",
-          version: 2,
-          baseline: { kind: "commit", sha: commit352 },
-          at: now,
-          blocks: [para("b-add-352-1", "Beta reads the new value now.", [changedId])],
-          answers: [],
-        },
-      ];
       snap.plotlines = [
         { id: "unfold", name: "Unfold obs-fold", description: "The header unfolding work." },
-        { id: "beta-gamma", name: "Beta and gamma", description: "The follow-up rework.", newSinceBaseline: true },
+        { id: "beta-gamma", name: "Beta and gamma", description: "The follow-up rework." },
       ];
       const hashOf = (id: string): string => id.split(":").slice(2).join(":");
       for (const st of snap.hunkStates) {
@@ -4230,7 +4233,7 @@ test.describe("since-commit tour (#351 step 2)", () => {
 
   for (const combo of tourCombos("sinceCommit", [{ name: "1440-light", width: 1440, dark: false }])) {
     const suffix = combo.name;
-    test(`since-commit section, markers, filter and picker (${suffix})`, async ({ page }) => {
+    test(`since-commit section, filter and picker (${suffix})`, async ({ page }) => {
       test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
       if (!svc352) throw new Error("tour-352 service did not start");
       await page.setViewportSize({ width: combo.width, height: 900 });
@@ -4238,57 +4241,33 @@ test.describe("since-commit tour (#351 step 2)", () => {
       await page.goto(`${svc352.origin}/review/${review352}?token=${svc352.token}`);
       await expect(page.locator("#page .doc")).toBeVisible({ timeout: 60_000 });
 
-      // 1. The Since section names the short sha, not a version.
+      // 1. The panel header names the commit range, never a version.
+      const snap352 = (await apiJson(svc352.origin, svc352.token, "GET", `/api/reviews/${review352}`)) as {
+        version: { headSha: string };
+      };
+      const range352 = `${short352} → ${snap352.version.headSha.slice(0, 8)}`;
       const since = page.locator('[data-testid="since-section"]');
       await expect(since).toBeVisible({ timeout: 30_000 });
-      await expect(since).toContainText(new RegExp(`Since ${short352} → v2`));
+      await expect(since).toContainText(new RegExp(`Changes ${range352}`));
       await stepChecks(page, "since-commit-section");
       await page.mouse.move(20, 20);
-      await shot(page, "since-commit-section", suffix, `Since ${short352}`);
+      await shot(page, "since-commit-section", suffix, `Changes ${short352}`);
 
-      // 2. The addendum on the central card.
-      const central = page.locator("#page #C-central");
-      await central.scrollIntoViewIfNeeded();
-      await expect(central.locator("[data-addendum]")).toBeVisible({ timeout: 30_000 });
-      await stepChecks(page, "since-commit-addendum");
-      await page.mouse.move(20, 20);
-      await shot(page, "since-commit-addendum", suffix, `Updated since ${short352}`);
 
-      // 3. The plotline marker names the short sha too.
-      const plotlines = page.locator('.plotlines[aria-label="Plotlines"]');
-      await plotlines.scrollIntoViewIfNeeded();
-      await expect(plotlines.getByText(`new since ${short352}`)).toBeVisible({ timeout: 30_000 });
-      await stepChecks(page, "since-commit-plotlines");
-      await page.mouse.move(20, 20);
-      await shot(page, "since-commit-plotlines", suffix, `new since ${short352}`);
-
-      // 4. The diff filter chip.
-      await page.locator('#right [role="tab"]').getByText("Diff").click();
-      await expect(page.locator("#right table.diff").first()).toBeVisible({ timeout: 30_000 });
-      const chip = page.locator('[data-filterchip="since"]');
-      if ((await chip.getAttribute("aria-pressed")) === "true") {
-        await chip.click();
-        await expect(chip).toHaveAttribute("aria-pressed", "false");
-      }
-      await expect(chip).toContainText(`Since ${short352}`, { timeout: 30_000 });
-      await stepChecks(page, "since-commit-filter");
-      await page.mouse.move(20, 20);
-      await shot(page, "since-commit-filter", suffix, `Since ${short352}`);
-
-      // 5. The picker lists versions and the commit (guide is the
-      // left pane, always present — just scroll back to the section).
-      // Layout checks run before the popup opens: the open popup
-      // overlays the diff gutter by design, which the gutter check
-      // would flag.
+      // 2. The toolbar menu lists the commit (guide is the left pane,
+      // always present — just scroll back to the review bar). Layout
+      // checks run before the popup opens: the open popup overlays
+      // the diff gutter by design, which the gutter check would flag.
       await expect(since).toBeVisible({ timeout: 30_000 });
-      const pick = since.locator('[data-testid="since-pick"]');
-      await pick.scrollIntoViewIfNeeded();
-      await stepChecks(page, "since-commit-picker");
-      await pick.getByRole("combobox").click();
-      await expect(page.getByRole("group", { name: "Versions" })).toBeVisible({ timeout: 15_000 });
-      await expect(page.getByRole("group", { name: "Commits" })).toBeVisible();
+      const menuBtn = page.locator('#reviewbar [data-testid="explain-menu-button"]');
+      await expect(menuBtn).toBeVisible();
+      await stepChecks(page, "since-commit-menu");
+      await menuBtn.click();
+      const menu = page.getByTestId("explain-menu");
+      await expect(menu).toContainText("Commits", { timeout: 15_000 });
+      await expect(menu.locator(`[data-explain-commit="${commit352}"]`)).toBeVisible();
       await page.mouse.move(20, 20);
-      await shot(page, "since-commit-picker", suffix, "Commits");
+      await shot(page, "since-commit-menu", suffix, "Commits");
       await page.keyboard.press("Escape");
     });
   }
@@ -4477,7 +4456,6 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
                 id: "problem",
                 pageId: "root",
                 title: "The problem",
-                level: "standard",
                 collapsed: false,
                 revision: 1,
                 undoStack: [],
@@ -4485,7 +4463,7 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
                   {
                     type: "paragraph",
                     id: "b-problem-1",
-                    text: { standard: "Alpha was reworked." },
+                    text: "Alpha was reworked.",
                     citations: [{ target: hid }],
                   },
                 ],
@@ -4498,13 +4476,14 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
         snap.sinceSection = {
           baseline: { kind: "commit", sha: c1 },
           headVersion: 2,
+          // Issue #421: the section was written at the refreshed head.
+          headSha: c3,
           at: Date.now(),
           cards: [
             {
               id: "since-tour-1",
               pageId: "since",
               title: "Alpha reworked again",
-              level: "standard",
               collapsed: false,
               revision: 1,
               undoStack: [],
@@ -4512,7 +4491,7 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
                 {
                   type: "paragraph",
                   id: "b-since-tour-1",
-                  text: { standard: "Alpha returns 111 now." },
+                  text: "Alpha returns 111 now.",
                   citations: [{ target: hid }],
                 },
               ],
@@ -4572,14 +4551,21 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       // The label text toggles the box too (native `label` behaviour).
       await offer.getByText(`You reviewed this at ${c1short}`).click();
       await expect(box).toHaveAttribute("aria-checked", "true", { timeout: 15_000 });
-      // The range-diff toggle never breaks over lines: one line high
-      // and fully visible (no clipped overflow).
-      const rangeDiff = page.locator('[data-testid="stale-banner"] summary');
-      await expect(rangeDiff).toBeVisible({ timeout: 15_000 });
-      const rdBox = await rangeDiff.boundingBox();
-      expect(rdBox?.height ?? 999).toBeLessThanOrEqual(20);
-      const rdScroll = await rangeDiff.evaluate((el) => el.scrollWidth);
-      expect((rdBox?.width ?? 0) + 1).toBeGreaterThanOrEqual(rdScroll);
+      // No banner anywhere: the history menu is the Explain entry on
+      // this page — one new commit past the ingest head the (unwritten)
+      // guide was stamped at, so the dot counts it and the listed
+      // commit carries both the guide and the last-review hints.
+      await expect(page.getByTestId("stale-banner")).toHaveCount(0);
+      const offerMenuBtn = page.locator('#reviewbar [data-testid="explain-menu-button"]');
+      await expect(offerMenuBtn).toBeVisible({ timeout: 15_000 });
+      await expect(offerMenuBtn).toHaveAttribute("aria-label", "1 new commit since the guide was written");
+      await expect(offerMenuBtn.locator("[data-new-commits]")).toBeVisible();
+      await offerMenuBtn.click();
+      const offerMenu = page.getByTestId("explain-menu");
+      await expect(offerMenu.locator(`[data-explain-commit="${c1}"]`)).toContainText("your last review", { timeout: 15_000 });
+      await expect(offerMenu.locator(`[data-explain-commit="${c1}"]`)).toContainText("guide", { timeout: 15_000 });
+      await expect(offerMenu.locator("[data-explain-guide]")).toHaveCount(1);
+      await page.keyboard.press("Escape");
       await stepChecks(page, "since-offer-checked");
       await page.mouse.move(20, 20);
       await shot(page, "since-offer-checked", suffix, `You reviewed this at ${c1short}`);
@@ -4594,12 +4580,11 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       const offer = page.getByTestId("prior-review-offer");
       await expect(offer).toBeVisible({ timeout: 60_000 });
       await expect(offer).toContainText(`You reviewed this at ${goneShort}`);
-      // The banner picker is untouched by the error below it: same
-      // trigger width with and without the message (±2px).
-      const bannerTrigger = page.getByTestId("since-pick").getByRole("combobox");
-      await expect(bannerTrigger).toBeVisible({ timeout: 60_000 });
-      const wBefore = (await bannerTrigger.boundingBox())?.width ?? -1;
-      expect(wBefore).toBeGreaterThan(0);
+      // No banner, no in-guide picker: the history menu is the only
+      // Explain entry on this page.
+      await expect(page.getByTestId("explain-pick")).toHaveCount(0);
+      await expect(page.getByTestId("stale-banner")).toHaveCount(0);
+      await expect(page.locator('#reviewbar [data-testid="explain-menu-button"]')).toBeVisible();
       await page.getByTestId("prior-review-checkbox").click();
       // The failure leaves a persistent inline message under the
       // offer until the baseline changes — and no toast for this case.
@@ -4614,13 +4599,11 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       expect(errBox?.y ?? -1).toBeGreaterThanOrEqual(
         (labelBox?.y ?? 999) + (labelBox?.height ?? 0) - 1,
       );
-      const wAfter = (await bannerTrigger.boundingBox())?.width ?? -1;
-      expect(Math.abs(wAfter - wBefore)).toBeLessThanOrEqual(2);
       await page.mouse.move(20, 20);
       await shot(page, "since-unfetchable", suffix, `Couldn't find commit ${goneShort}`);
     });
 
-    test(`picker with versions, commits and the last GitHub review (${suffix})`, async ({ page }) => {
+    test(`menu with commits and the last GitHub review (${suffix})`, async ({ page }) => {
       test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
       if (!svcO) throw new Error("tour-offer service did not start");
       await page.setViewportSize({ width: combo.width, height: 900 });
@@ -4628,24 +4611,37 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       await page.goto(`${svcO.origin}/review/${revGone}?token=${svcO.token}`);
       const since = page.locator('[data-testid="since-section"]');
       await expect(since).toBeVisible({ timeout: 60_000 });
-      await expect(since).toContainText(new RegExp(`Since ${c1short} → v2`));
-      const pick = since.locator('[data-testid="since-pick"]');
-      await pick.scrollIntoViewIfNeeded();
+      const goneSnap = (await apiJson(svcO.origin, svcO.token, "GET", `/api/reviews/${revGone}`)) as {
+        version: { headSha: string };
+      };
+      await expect(since).toContainText(
+        new RegExp(`Changes ${c1short} → ${goneSnap.version.headSha.slice(0, 8)}`),
+      );
       // Layout checks run before the popup opens: the open popup
       // overlays the diff gutter by design, which the gutter check
       // would flag.
-      await stepChecks(page, "since-picker-groups");
-      await pick.getByRole("combobox").click();
-      await expect(page.getByRole("group", { name: "Versions" })).toBeVisible({ timeout: 15_000 });
-      await expect(page.getByRole("group", { name: "Commits" })).toBeVisible();
-      await expect(page.getByRole("group", { name: "GitHub reviews" })).toBeVisible();
-      await expect(page.getByRole("option", { name: new RegExp(`Your last GitHub review \\(${goneShort}`) })).toBeVisible();
+      const menuBtn = page.locator('#reviewbar [data-testid="explain-menu-button"]');
+      await expect(menuBtn).toBeVisible();
+      // The guide was stamped at the ingest head: one newer commit, so
+      // the dot counts it and the guide entry leads — plus the
+      // separate last-review row (that commit was rebased away).
+      await expect(menuBtn).toHaveAttribute("aria-label", "1 new commit since the guide was written");
+      await expect(menuBtn.locator("[data-new-commits]")).toBeVisible();
+      await stepChecks(page, "since-menu-groups");
+      await menuBtn.click();
+      const menu = page.getByTestId("explain-menu");
+      await expect(menu).toContainText("Commits", { timeout: 15_000 });
+      await expect(menu.locator("[data-explain-guide]")).toHaveCount(1);
+      await expect(menu.locator(`[data-explain-commit="${c1}"]`)).toContainText("guide");
+      const priorRow = menu.locator("[data-explain-prior]");
+      await expect(priorRow).toContainText("Your last GitHub review");
+      await expect(priorRow).toContainText(goneShort);
       await page.mouse.move(20, 20);
-      await shot(page, "since-picker-groups", suffix, "GitHub reviews");
+      await shot(page, "since-menu-groups", suffix, "Your last GitHub review");
       await page.keyboard.press("Escape");
     });
 
-    test(`unfetchable baseline picked in the picker (${suffix})`, async ({ page }) => {
+    test(`unfetchable X fails loudly from the menu (${suffix})`, async ({ page }) => {
       test.skip(!existsSync(SERVICE_ENTRY), "needs `mise run build` first");
       if (!svcO) throw new Error("tour-offer service did not start");
       await page.setViewportSize({ width: combo.width, height: 900 });
@@ -4653,29 +4649,20 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       await page.goto(`${svcO.origin}/review/${revGone}?token=${svcO.token}`);
       const since = page.locator('[data-testid="since-section"]');
       await expect(since).toBeVisible({ timeout: 60_000 });
-      const pick = since.locator('[data-testid="since-pick"]');
-      await expect(pick).toBeVisible({ timeout: 30_000 });
-      // The header picker keeps its size when the error lands below
-      // it: same trigger width with and without the message (±2px).
-      const trigger = pick.getByRole("combobox");
-      const wBefore = (await trigger.boundingBox())?.width ?? -1;
-      expect(wBefore).toBeGreaterThan(0);
-      await pick.scrollIntoViewIfNeeded();
-      await trigger.click();
-      const goneOption = page.getByRole("option", { name: new RegExp(`Your last GitHub review \\(${goneShort}`) });
-      await expect(goneOption).toBeVisible({ timeout: 15_000 });
-      await goneOption.click();
-      // The failed pick leaves the stored baseline alone but records
-      // `sinceError`, shown persistently below the header row.
-      const inline = since.getByTestId("since-error");
-      await expect(inline).toContainText(`Couldn't find commit ${goneShort}`, { timeout: 15_000 });
-      await expect(inline).toContainText("Pick another baseline.");
-      await expect(page.locator("#toast")).toBeHidden();
-      const wAfter = (await trigger.boundingBox())?.width ?? -1;
-      expect(Math.abs(wAfter - wBefore)).toBeLessThanOrEqual(2);
-      await stepChecks(page, "since-unfetchable-picker");
+      await stepChecks(page, "since-unfetchable-menu");
+      // Picking the gone commit runs Explain at once and fails loudly
+      // in a toast (the toolbar sits above both panes); the panel is
+      // untouched. The toast dismisses itself, so the shot follows at once.
+      const menuBtn = page.locator('#reviewbar [data-testid="explain-menu-button"]');
+      await menuBtn.click();
+      const goneRow = page.getByTestId("explain-menu").locator("[data-explain-prior]");
+      await expect(goneRow).toBeVisible({ timeout: 15_000 });
+      await goneRow.click();
+      const toast = page.locator("#toast");
+      await expect(toast).toContainText(`Couldn't find commit ${goneShort}`, { timeout: 30_000 });
+      await expect(since).not.toContainText(goneShort);
       await page.mouse.move(20, 20);
-      await shot(page, "since-unfetchable-picker", suffix, `Couldn't find commit ${goneShort}`);
+      await shot(page, "since-unfetchable-menu", suffix, `Couldn't find commit ${goneShort}`);
     });
   }
 });

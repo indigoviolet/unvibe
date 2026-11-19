@@ -5,7 +5,7 @@
  * flattened into an explanation used to repeat IDs (`["b1","b1"]`) — and
  * one nested anchor then matched two blocks, drawing its card twice.
  * End to end over HTTP with the scripted fake runner: a two-card Explain
- * reply, then a depth change, examples and diagram inserts on the
+ * reply, then a slower rewrite, examples and diagram inserts on the
  * expansion, then a follow-up answer and a nested Explain per paragraph.
  */
 import { describe, expect, it, vi } from "vitest";
@@ -55,12 +55,12 @@ Second paragraph about the folded header.
 \`\`\`
 `;
 
-const DEPTH_SIMPLE = `A simpler first paragraph.
+const SLOWER_TWO = `A slower first paragraph.
 
-A simpler second paragraph.
+A slower second paragraph.
 
 \`\`\`json
-{"depth": {"level": "simple", "cardId": "problem"}}
+{"slower": {"cardId": "problem"}}
 \`\`\`
 `;
 
@@ -93,7 +93,7 @@ function fakeAgents(): FakeAgentRunner {
     { match: "reply with exactly", events: textEvents("ready") },
     { match: "# Reader task", events: textEvents(MINIMAL_READER) },
     { match: "## The question\n\nExplain this.", events: textEvents(TWO_CARD_EXPLAIN) },
-    { match: "# Depth rewrite", events: textEvents(DEPTH_SIMPLE) },
+    { match: "# Help me understand", events: textEvents(SLOWER_TWO) },
     { match: "# Examples", events: textEvents(EXAMPLES_REPLY) },
     { match: "# Ask", events: textEvents(ASK_REPLY) },
   ]);
@@ -154,7 +154,7 @@ function assertUnique(ids: string[]): void {
 }
 
 function para(id: string): Block {
-  return { type: "paragraph", id, text: { standard: "Body text." }, citations: [] };
+  return { type: "paragraph", id, text: "Body text.", citations: [] };
 }
 
 function exampleAside(id: string, text = "Example text."): Block {
@@ -162,7 +162,7 @@ function exampleAside(id: string, text = "Example text."): Block {
     type: "aside",
     id,
     kind: "Example",
-    inner: [{ type: "paragraph", id: `${id}-b1`, text: { standard: text }, citations: [] }],
+    inner: [{ type: "paragraph", id: `${id}-b1`, text: text, citations: [] }],
     citations: [],
   };
 }
@@ -228,7 +228,7 @@ describe("answer body block IDs (#116, #136)", () => {
     }
   });
 
-  it("IDs stay unique and stable through depth and examples rewrites", { timeout: 180000 }, async () => {
+  it("IDs stay unique through slower and examples rewrites; undo restores", { timeout: 180000 }, async () => {
     process.env.UNVIBE_REPO_ROOTS = "";
     const { app, ctx } = await createApp("tok", { agents: fakeAgents() });
     try {
@@ -248,21 +248,33 @@ describe("answer body block IDs (#116, #136)", () => {
       const atFirst = topIds(turnBlocks());
       assertUnique(atFirst);
 
-      // Depth and examples act on the answer alone: the card id is the
-      // answer id, and the sibling-free rewrite keeps every block id.
-      const depth = await postAction(app, id, { kind: "depth", cardId: turnId, direction: "simpler" });
-      expect(depth.status).toBe(200);
-      if (depth.json.jobId) await waitForJob(ctx, depth.json.jobId as string);
-      const atDepth = topIds(turnBlocks());
-      assertUnique(atDepth);
-      for (const kept of atFirst) expect(atDepth).toContain(kept);
+      // Slower and examples act on the answer alone: the card id is the
+      // answer id. Issue #398: the reply's blocks become the body
+      // wholesale (fresh parser IDs), while the unconsumed follow-up
+      // survives at its position.
+      const followBefore = turnBlocks().find((b) => b.type === "follow-up");
+      expect(followBefore).toBeTruthy();
+      const slower = await postAction(app, id, { kind: "slower", cardId: turnId });
+      expect(slower.status).toBe(200);
+      if (slower.json.jobId) await waitForJob(ctx, slower.json.jobId as string);
+      const atSlower = topIds(turnBlocks());
+      assertUnique(atSlower);
+      expect(turnBlocks().filter((b) => b.type === "paragraph").map((b) => (b as { text?: string }).text)).toEqual([
+        "A slower first paragraph.",
+        "A slower second paragraph.",
+      ]);
+      expect(turnBlocks().filter((b) => b.type === "follow-up")).toEqual([followBefore]);
+
+      const undo = await postAction(app, id, { kind: "undo", cardId: turnId });
+      expect(undo.status).toBe(200);
+      expect(topIds(turnBlocks())).toEqual(atFirst);
 
       const examples = await postAction(app, id, { kind: "examples", cardId: turnId });
       expect(examples.status).toBe(200);
       if (examples.json.jobId) await waitForJob(ctx, examples.json.jobId as string);
       const atExamples = topIds(turnBlocks());
       assertUnique(atExamples);
-      expect(atExamples.length).toBeGreaterThan(atDepth.length);
+      expect(atExamples.length).toBeGreaterThan(atSlower.length);
     } finally {
       await app.close();
     }
@@ -309,7 +321,7 @@ describe("answer body block IDs (#116, #136)", () => {
       expect(paras.length).toBeGreaterThanOrEqual(2);
       const linkTargets: string[] = [];
       for (const [i, p] of paras.entries()) {
-        const text = (p as { text: { standard: string } }).text.standard.replace(/<[^>]*>/g, " ").trim();
+        const text = (p as { text: string }).text.replace(/<[^>]*>/g, " ").trim();
         const quote = text.split(/\s+/).slice(0, 3).join(" ");
         const before = (ctx.reviews.getSnapshot(id)!.annotations.find((a) => a.id === annId)!.replies ?? []).length;
         const nested = await postAction(app, id, {

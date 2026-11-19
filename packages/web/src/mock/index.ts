@@ -58,7 +58,7 @@ import type {
   UpdateDiffFilterRequest,
   UpdateHunkRequest,
   UpdatePendingSwitch,
-  UpdateReviewResponse,
+  ExplainReviewResponse,
   UpdateStatusResponse,
   UpdateSwitchResponse,
   Version,
@@ -66,7 +66,7 @@ import type {
 } from "@unvibe/shared";
 import type { ApiClient } from "../api/client.js";
 import { UpdateJobsBlockedError } from "../api/updateBlocked.js";
-import { DEFAULT_REVIEW_VIEW_PREFS, CLARITY_PERSONA, GUIDE_PERSONA, SECOND_OPINION_PERSONA, blockPlainText, buildOutboxExportMarkdown, freshBlockId, outboxThreads, parseDocumentMarkdown, parseGitHubRepoInput, renderUntrustedMarkdown } from "@unvibe/shared";
+import { DEFAULT_REVIEW_VIEW_PREFS, GUIDE_PERSONA, SECOND_OPINION_PERSONA, blockPlainText, buildOutboxExportMarkdown, freshBlockId, outboxThreads, parseDocumentMarkdown, parseGitHubRepoInput, renderUntrustedMarkdown } from "@unvibe/shared";
 import { useReview } from "../state/store.js";
 import { HUNK_SUMMARIES, MOCK_FILES } from "./diff.js";
 import { mockFileSlice, mockOutline } from "./fileContents.js";
@@ -168,6 +168,7 @@ const MOCK_REVIEW: Review = {
   prNumber: 5020,
   versions: [MOCK_VERSION],
   currentVersion: 1,
+  guidePersonaId: "guide",
   createdAt: NOW - 3600000,
 };
 
@@ -251,18 +252,14 @@ const MOCK_PLOTLINES: Plotline[] = [
  */
 const MOCK_DESCRIPTION = { ...guideDescription, editable: true, source: "pr" as const };
 
-/** Canned explanation blocks (fixture-shaped: depth variants + citations). */
+/** Canned explanation blocks (fixture-shaped text + citations). */
 function mockExplainBlocks(quote: string): import("@unvibe/shared").Block[] {
   const q = quote.replace(/</g, "&lt;").slice(0, 120) || "this text";
   return [
     {
       type: "paragraph",
       id: `b-mock-exp-${Date.now().toString(36)}`,
-      text: {
-        simple: `<em>${q}</em> is about unfolding folded header values.`,
-        standard: `Mock explanation of <em>${q}</em>: the helper replaces each fold with one space before urllib3 reads the value.`,
-        deep: `Mock deep explanation of <em>${q}</em>: obs-fold handling sits at the recipient per RFC 9112 §5.2, before interpretation or forwarding, so every consumer sees one semantic value.`,
-      },
+      text: `Mock explanation of <em>${q}</em>: the helper replaces each fold with one space before urllib3 reads the value.`,
       citations: [{ target: "diff:src-urllib3-connection.py:80-82" }],
     },
   ] as unknown as import("@unvibe/shared").Block[];
@@ -282,18 +279,6 @@ function mockExampleAside(): import("@unvibe/shared").Block {
 
 function mockDiagramAside(): import("@unvibe/shared").Block {
   return mockAddedD2Block() as unknown as import("@unvibe/shared").Block;
-}
-
-function mockPrincipleAside(): import("@unvibe/shared").Block {
-  return {
-    type: "aside",
-    id: `b-mock-pr-${Date.now().toString(36)}`,
-    kind: "Underlying principle",
-    inner: [
-      { type: "paragraph", id: `b-mock-pr-${Date.now().toString(36)}-p`, text: { standard: "Resolve encoding at the recipient, before interpretation." }, citations: [] },
-    ],
-    citations: [],
-  } as unknown as import("@unvibe/shared").Block;
 }
 
 type MockCardRef =
@@ -316,20 +301,14 @@ function mockCardBlocks(ref: MockCardRef): import("@unvibe/shared").Block[] {
   return (ref.kind === "page" ? ref.card.blocks : ref.turn.blocks) as import("@unvibe/shared").Block[];
 }
 
-function mockCardLevel(ref: MockCardRef): import("@unvibe/shared").DepthLevel {
-  return (ref.kind === "page" ? ref.card.level : ref.turn.level) as import("@unvibe/shared").DepthLevel;
-}
-
-/** Push undo + set blocks/level + bump revision on a page card or answer. */
-function setMockCard(ref: MockCardRef, blocks: import("@unvibe/shared").Block[], level: import("@unvibe/shared").DepthLevel): void {
+/** Push undo + set blocks + bump revision on a page card or answer. */
+function setMockCard(ref: MockCardRef, blocks: import("@unvibe/shared").Block[]): void {
   const cur = mockCardBlocks(ref);
   const body = ref.kind === "page" ? ref.card : ref.turn;
-  (body.undoStack as { blocks: unknown; level: unknown }[]).push({
+  (body.undoStack as { blocks: unknown }[]).push({
     blocks: JSON.parse(JSON.stringify(cur)),
-    level: (body as { level: unknown }).level,
   });
   (body as { blocks: unknown }).blocks = blocks;
-  (body as { level: unknown }).level = level;
   (body as { revision: number }).revision += 1;
 }
 
@@ -525,59 +504,33 @@ function findMockBlock(blockId: string): { ownerId: string; blockId: string } | 
   return null;
 }
 
-/** Card controls in mock: depth/examples/diagram/undo through the patch path. */
-function mockCardControl(a: { kind: string; cardId: string; direction?: string }): {
+/** Card controls in mock: slower/examples/diagram/undo through the patch path. */
+function mockCardControl(a: { kind: string; cardId: string }): {
   accepted: boolean;
   cardId: string;
   jobId?: string;
-  /** Mirrors the service (issue #65): stored switches and at-the-limit repeats reuse. */
+  /** Mirrors the service: repeats that add nothing reuse. */
   reused?: boolean;
-  /** Resulting level for depth actions (issue #65). */
-  level?: import("@unvibe/shared").DepthLevel;
 } {
   const ref = findMockCard(a.cardId);
   if (!ref) throw new Error(`unknown card ${a.cardId}`);
-  const ORDER: import("@unvibe/shared").DepthLevel[] = ["simple", "standard", "deep"];
-  if (a.kind === "depth" && (a.direction === "simpler" || a.direction === "deeper")) {
-    const level = mockCardLevel(ref);
-    const i = ORDER.indexOf(level);
-    const next = a.direction === "simpler" ? ORDER[i - 1] : ORDER[i + 1];
+  // Issue #387: a Help-me-understand press rewrites the first paragraph
+  // more slowly (a visible mock stand-in for the agent turn), so repeats
+  // stack through the undo stack like the service.
+  if (a.kind === "slower") {
     const blocks = mockCardBlocks(ref);
-    if (!next) {
-      // + at the deepest level adds the Underlying principle block once.
-      if (a.direction === "deeper" && !blocks.some((b) => b.type === "aside" && (b as { kind: string }).kind === "Underlying principle")) {
-        const cur = [...blocks];
-        // Fresh ID within this body (#116), inner IDs moving along.
-        const principle = mockPrincipleAside() as { id: string; inner: { id: string }[] };
-        const principleId = freshBlockId(cur as never[], principle.id);
-        const stamped =
-          principleId === principle.id
-            ? principle
-            : {
-                ...principle,
-                id: principleId,
-                inner: principle.inner.map((ib) =>
-                  ib.id.startsWith(`${principle.id}-`)
-                    ? { ...ib, id: `${principleId}-${ib.id.slice(principle.id.length + 1)}` }
-                    : ib,
-                ),
-              };
-        setMockCard(ref, [...cur, stamped] as never, level as never);
-        emitPages();
-        emitAnnotations();
-        return { accepted: true, cardId: a.cardId, level };
-      }
-      return { accepted: true, cardId: a.cardId, reused: true, level };
-    }
-    const cur = [...blocks];
-    setMockCard(ref, cur as never, next as never);
+    const first = blocks.find((b) => b.type === "paragraph");
+    if (!first || first.type !== "paragraph") return { accepted: true, cardId: a.cardId, reused: true };
+    const cur = blocks.map((b) =>
+      b === first && b.type === "paragraph" ? { ...b, text: `More slowly: ${b.text}` } : b,
+    );
+    setMockCard(ref, cur as never);
     emitPages();
     emitAnnotations();
-    return { accepted: true, cardId: a.cardId, reused: true, level: next };
+    return { accepted: true, cardId: a.cardId };
   }
   if (a.kind === "examples" || a.kind === "diagram") {
     const blocks = mockCardBlocks(ref);
-    const level = mockCardLevel(ref);
     const want = a.kind === "examples" ? "Example" : null;
     if (want && blocks.some((b) => b.type === "aside" && (b as { kind: string }).kind === want)) {
       return { accepted: true, cardId: a.cardId };
@@ -605,17 +558,16 @@ function mockCardControl(a: { kind: string; cardId: string; direction?: string }
     // first paragraph when one exists, else append.
     const at = cur.findIndex((b) => b.type === "paragraph");
     const nextBlocks = at >= 0 ? [...cur.slice(0, at + 1), stamped, ...cur.slice(at + 1)] : [...cur, stamped];
-    setMockCard(ref, nextBlocks as never, level as never);
+    setMockCard(ref, nextBlocks as never);
     emitPages();
     emitAnnotations();
     return { accepted: true, cardId: a.cardId };
   }
   if (a.kind === "undo") {
     const body = ref.kind === "page" ? ref.card : ref.turn;
-    const prev = (body.undoStack as { blocks: unknown; level: unknown }[]).pop();
+    const prev = (body.undoStack as { blocks: unknown }[]).pop();
     if (!prev) return { accepted: true, cardId: a.cardId };
     (body as { blocks: unknown }).blocks = prev.blocks;
-    (body as { level: unknown }).level = prev.level;
     (body as { revision: number }).revision += 1;
     emitPages();
     emitAnnotations();
@@ -640,7 +592,6 @@ function ensureMockVariant(
   const created: import("@unvibe/shared").CardVariant = {
     personaId,
     blocks: clone,
-    level: card.level,
     revision: 1,
     undoStack: [],
     working: null,
@@ -650,49 +601,31 @@ function ensureMockVariant(
   return created;
 }
 
-/** Issue #349 step 2 (mock): depth/examples/diagram/undo on a persona's variant. */
-function mockVariantControl(a: { kind: string; cardId: string; direction?: string }, personaId: string): {
+/** Issue #349 step 2 (mock): slower/examples/diagram/undo on a persona's variant. */
+function mockVariantControl(a: { kind: string; cardId: string }, personaId: string): {
   accepted: boolean;
   cardId: string;
   jobId?: string;
   reused?: boolean;
-  level?: import("@unvibe/shared").DepthLevel;
 } {
   const ref = findMockCard(a.cardId);
   if (!ref || ref.kind !== "page") throw new Error(`unknown card ${a.cardId}`);
   const card = ref.card;
   const variant = (card.variants as Record<string, import("@unvibe/shared").CardVariant> | undefined)?.[personaId];
   if (!variant) throw new Error(`persona ${personaId} has not run on card ${a.cardId} yet`);
-  const ORDER: import("@unvibe/shared").DepthLevel[] = ["simple", "standard", "deep"];
   const pushVariantUndo = (): void => {
-    (variant.undoStack as { blocks: unknown; level: unknown }[]).push({
+    (variant.undoStack as { blocks: unknown }[]).push({
       blocks: JSON.parse(JSON.stringify(variant.blocks)),
-      level: variant.level,
     });
   };
-  if (a.kind === "depth" && (a.direction === "simpler" || a.direction === "deeper")) {
-    const i = ORDER.indexOf(variant.level);
-    const next = a.direction === "simpler" ? ORDER[i - 1] : ORDER[i + 1];
-    if (!next) {
-      if (
-        a.direction === "deeper" &&
-        !(variant.blocks as { type: string; kind?: string }[]).some(
-          (b) => b.type === "aside" && b.kind === "Underlying principle",
-        )
-      ) {
-        pushVariantUndo();
-        (variant.blocks as unknown[]).push(mockPrincipleAside() as never);
-        variant.revision += 1;
-        emitPages();
-        return { accepted: true, cardId: a.cardId, level: variant.level };
-      }
-      return { accepted: true, cardId: a.cardId, reused: true, level: variant.level };
-    }
+  if (a.kind === "slower") {
+    const first = (variant.blocks as { type: string; text?: string }[]).find((b) => b.type === "paragraph");
+    if (!first || typeof first.text !== "string") return { accepted: true, cardId: a.cardId, reused: true };
     pushVariantUndo();
-    variant.level = next;
+    first.text = `More slowly: ${first.text}`;
     variant.revision += 1;
     emitPages();
-    return { accepted: true, cardId: a.cardId, reused: true, level: next };
+    return { accepted: true, cardId: a.cardId };
   }
   if (a.kind === "examples" || a.kind === "diagram") {
     const blocks = variant.blocks as { type: string; kind?: string }[];
@@ -709,10 +642,9 @@ function mockVariantControl(a: { kind: string; cardId: string; direction?: strin
     return { accepted: true, cardId: a.cardId };
   }
   if (a.kind === "undo") {
-    const prev = (variant.undoStack as { blocks: never; level: never }[]).pop();
+    const prev = (variant.undoStack as { blocks: never }[]).pop();
     if (!prev) return { accepted: true, cardId: a.cardId };
     (variant.blocks as unknown) = prev.blocks;
-    (variant.level as unknown) = prev.level;
     variant.revision += 1;
     emitPages();
     return { accepted: true, cardId: a.cardId };
@@ -990,13 +922,11 @@ const MOCK_GUIDE_PERSONA = { ...GUIDE_PERSONA, provider: "claude", model: "mock-
 /** Built-in Second opinion persona with the mock model (issue #349). */
 const MOCK_BUILT_IN_PERSONA = { ...SECOND_OPINION_PERSONA, provider: "codex", model: "mock-second" };
 
-/** Built-in Clarity persona with the mock model (issue #359). */
-const MOCK_CLARITY_PERSONA = { ...CLARITY_PERSONA, provider: "claude", model: "mock-clarity" };
-
 const DEFAULT_MOCK_SETTINGS: Settings = {
   uiTheme: "default",
   small: { provider: "claude", model: "mock-small", effort: "" },
-  personas: [MOCK_GUIDE_PERSONA, MOCK_BUILT_IN_PERSONA, MOCK_CLARITY_PERSONA],
+  personas: [MOCK_GUIDE_PERSONA, MOCK_BUILT_IN_PERSONA],
+  defaultGuidePersonaId: "guide",
   sessionsPerProvider: 16,
   inlineBudgetTokens: 40000,
   rebuildSupersededRatio: 0.2,
@@ -1008,8 +938,10 @@ const DEFAULT_MOCK_SETTINGS: Settings = {
   versionPickerEnabled: false,
   fullAccess: false,
   fullAccessAcknowledgedAt: null,
-  autoGoDeeper: true,
+  autoGoDeeper: false,
   recordTraces: false,
+  // Issue #422: experimental gates, both off by default.
+  experimental: { explainTerms: false, markdownDocs: false },
   extensionActiveRepoIds: null,
   extensionModel: { provider: "pi", model: "muse-spark-1.3-contributor", effort: "" },
 };
@@ -1022,7 +954,7 @@ function getMockSettings(): Settings {
     return {
       ...DEFAULT_MOCK_SETTINGS,
       small: { ...DEMO_ROLE_PICKS.small },
-      personas: [{ ...GUIDE_PERSONA }, { ...SECOND_OPINION_PERSONA }, { ...CLARITY_PERSONA }],
+      personas: [{ ...GUIDE_PERSONA }, { ...SECOND_OPINION_PERSONA }],
     };
   }
   return { ...DEFAULT_MOCK_SETTINGS, ...readJson<Partial<Settings>>(SETTINGS_KEY, {}) };
@@ -1296,6 +1228,7 @@ export function resetMockState(): void {
   mockContributions = seedContributions();
   mockUpdatePending = null;
   mockUpdateDown = false;
+  mockRedoPersonaById.clear();
   mockDiffFilter = undefined;
   try {
     localStorage.removeItem(UPDATE_KEY);
@@ -1414,18 +1347,11 @@ function isStaleReview(reviewId: string): boolean {
   return reviewId === "r-old" || reviewId === "stale-demo";
 }
 
-const STALE_RANGE_DIFF = [
-  "1:  a1b2c3d ! unfold folded response headers",
-  "    +++ e4f5a6b ! unfold folded response headers (amended)",
-  "-:  ------- > 2:  c7d8e9f ! add socket-level test for obs-fold",
-].join("\n");
-
 function staleVersionStatus(): VersionStatus {
   const tconn = MOCK_FILES.find((f) => f.path === "test/test_connection.py");
   const changed = tconn?.hunks[2];
   const oldId = changed ? `h:${tconn.fileKey}:${changed.contentHash}` : "h:unknown:old";
   return {
-    stale: true,
     fromVersion: 1,
     toVersion: 2,
     unchangedHunks: 7,
@@ -1435,7 +1361,6 @@ function staleVersionStatus(): VersionStatus {
     renamedFiles: [],
     changedOldIds: [oldId],
     changedNewIds: [`${oldId}:new`],
-    rangeDiff: STALE_RANGE_DIFF,
     fetchedAt: NOW,
   };
 }
@@ -1454,13 +1379,15 @@ function staleHunkStates(): HunkState[] {
 
 const MOCK_VERSION_2: Version = { ...MOCK_VERSION, n: 2, headSha: "e4f5a6b7c8d", fetchedAt: NOW };
 
-function currentSnapshot(reviewId = "demo", version?: number): ReviewSnapshot {
+function currentSnapshot(reviewId = "demo"): ReviewSnapshot {
   const stale = isStaleReview(reviewId);
-  const viewing = version ?? (stale ? 2 : 1);
+  const viewing = stale ? 2 : 1;
   const base: ReviewSnapshot = {
     review: {
       ...MOCK_REVIEW,
       id: reviewId,
+      // Issue #393: a mock redo-with review keeps its recorded persona.
+      guidePersonaId: mockRedoPersonaById.get(reviewId) ?? MOCK_REVIEW.guidePersonaId,
       // The real demo review uses repoId "demo" (service `pipeline/demo.ts`);
       // the mock snapshot matches so demo-only rules apply (no GitHub
       // link-out, no refresh). The summary list keeps its urllib3 row, so
@@ -1470,6 +1397,8 @@ function currentSnapshot(reviewId = "demo", version?: number): ReviewSnapshot {
       currentVersion: stale ? 2 : 1,
     },
     version: stale ? { ...MOCK_VERSION, n: viewing } : MOCK_VERSION,
+    // Issue #421: the mock guide describes the mock head.
+    guideHead: { version: 1, sha: MOCK_VERSION.headSha },
     files: MOCK_FILES,
     description,
     ingest: { status: "ready" },
@@ -1485,6 +1414,22 @@ function currentSnapshot(reviewId = "demo", version?: number): ReviewSnapshot {
     existingComments,
     plotlines: [...MOCK_PLOTLINES],
     ...(mockDiffFilter !== undefined ? { diffFilter: { ...mockDiffFilter } } : {}),
+    // The bundled demo is one version with one recorded commit, and that
+    // commit is the head (#413): its sha matches the version's head, so
+    // nothing earlier exists and the guide shows no Explain row.
+    ...(reviewId === "demo"
+      ? {
+          commits: [
+            {
+              sha: MOCK_VERSION.headSha,
+              subject: "Unfold obsolete line folding",
+              body: "",
+              files: [],
+              hunks: [],
+            },
+          ],
+        }
+      : {}),
   };
   if (stale && viewing === 2) base.versionStatus = staleVersionStatus();
   return base;
@@ -1649,7 +1594,6 @@ function mirrorMockPromotedTurn(tid: string, replyId: string): void {
     const card = p.cards.find((c) => c.id === mapping.cardId);
     if (!card) continue;
     card.blocks = JSON.parse(JSON.stringify(turn.blocks));
-    card.level = turn.level;
     card.revision = turn.revision;
     card.undoStack = JSON.parse(JSON.stringify(turn.undoStack));
     emitPages();
@@ -1728,8 +1672,7 @@ function ensureMockHunkCard(fileKey: string, contentHash: string): { id: string;
         kind: "explain",
         who: "agent",
         question: null,
-        blocks: [{ type: "paragraph", id: blockId, text: { standard: safe }, citations: [] }],
-        level: "standard",
+        blocks: [{ type: "paragraph", id: blockId, text: safe, citations: [] }],
         revision: 1,
         undoStack: [],
         working: null,
@@ -1785,9 +1728,8 @@ function mockReplyText(reply: { blocks?: Array<{ type: string }> }): string {
   const parts: string[] = [];
   for (const b of ((reply.blocks ?? []) as Array<Record<string, unknown>>)) {
     if (b["type"] === "paragraph") {
-      const t = b["text"] as Record<string, unknown> | undefined;
-      const std = typeof t?.["standard"] === "string" ? (t["standard"] as string) : "";
-      const plain = std.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+      const t = b["text"];
+      const plain = (typeof t === "string" ? t : "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
       if (plain) parts.push(plain);
     }
   }
@@ -1813,8 +1755,7 @@ function mockCommentReply(who: "you" | "agent", text: string, suggested = false,
     kind: "comment",
     who,
     question: null,
-    blocks: [{ type: "paragraph", id: "b1", text: { standard: esc }, citations: [] }],
-    level: "standard",
+    blocks: [{ type: "paragraph", id: "b1", text: esc, citations: [] }],
     revision: 1,
     undoStack: [],
     ...(suggested ? { suggested: true } : {}),
@@ -2155,6 +2096,9 @@ function mockUpdateBuild(): UpdateBuildInfo | null {
 }
 
 /** #92: loading snapshot for a mock loading list entry. */
+/** Issue #393: guide persona recorded by mock redo-with, by new review id. */
+const mockRedoPersonaById = new Map<string, string>();
+
 function mockLoadingSnapshot(entry: ReviewSummary): ReviewSnapshot {
   const now = Date.now();
   return {
@@ -2165,6 +2109,7 @@ function mockLoadingSnapshot(entry: ReviewSummary): ReviewSnapshot {
       ...(entry.prNumber !== undefined ? { prNumber: entry.prNumber } : {}),
       versions: [],
       currentVersion: 0,
+      guidePersonaId: mockRedoPersonaById.get(entry.id) ?? "guide",
       createdAt: entry.createdAt,
     },
     version: { n: 0, headSha: "", mergeBaseSha: "", baseRef: "", fetchedAt: now, idMapping: {} },
@@ -2178,6 +2123,8 @@ function mockLoadingSnapshot(entry: ReviewSummary): ReviewSnapshot {
     contributions: [],
     logTail: [],
     rev: 1,
+    // Issue #421: no guide yet (placeholder version 0).
+    guideHead: { version: 0, sha: "" },
     ingest: { status: "loading", step: entry.ingestStep ?? "fetching" },
   };
 }
@@ -2193,6 +2140,7 @@ function mockFailedSnapshot(entry: ReviewSummary, error: string): ReviewSnapshot
       ...(entry.prNumber !== undefined ? { prNumber: entry.prNumber } : {}),
       versions: [],
       currentVersion: 0,
+      guidePersonaId: "guide",
       createdAt: entry.createdAt,
     },
     version: { n: 0, headSha: "", mergeBaseSha: "", baseRef: "", fetchedAt: now, idMapping: {} },
@@ -2206,6 +2154,8 @@ function mockFailedSnapshot(entry: ReviewSummary, error: string): ReviewSnapshot
     contributions: [],
     logTail: [],
     rev: 1,
+    // Issue #421: no guide (failed open).
+    guideHead: { version: 0, sha: "" },
     ingest: { status: "failed", error },
   };
 }
@@ -2525,7 +2475,7 @@ export const mockApi = {
     const id = `mock-doc-${now.toString(36)}`;
     const version: Version = { n: 1, headSha: "mockdoc", mergeBaseSha: "mockdoc", baseRef: "document", fetchedAt: now, idMapping: {} };
     return {
-      review: { id, repoId: first?.repoId ?? "demo", branch: "document", versions: [version], currentVersion: 1, createdAt: now },
+      review: { id, repoId: first?.repoId ?? "demo", branch: "document", versions: [version], currentVersion: 1, guidePersonaId: "guide", createdAt: now },
       document,
       contextRepos: body.contextRepos.map((pick) => {
         const r = getRepos().find((x) => x.id === pick.repoId);
@@ -2540,6 +2490,8 @@ export const mockApi = {
         };
       }),
       version,
+      // Issue #421: the mock document guide describes this head.
+      guideHead: { version: 1, sha: "mockdoc" },
       files: [],
       pages: [],
       annotations: [],
@@ -2617,6 +2569,7 @@ export const mockApi = {
           ...(body.pr !== undefined ? { prNumber: body.pr } : {}),
           versions: [],
           currentVersion: 0,
+          guidePersonaId: "guide",
           createdAt: now,
         },
         version: { n: 0, headSha: "", mergeBaseSha: "", baseRef: "", fetchedAt: now, idMapping: {} },
@@ -2630,6 +2583,8 @@ export const mockApi = {
         contributions: [],
         logTail: [],
         rev: 1,
+        // Issue #421: no guide yet (failed/loading placeholder).
+        guideHead: { version: 0, sha: "" },
         ingest: { status: "failed", error: fail },
       };
     }
@@ -2672,6 +2627,7 @@ export const mockApi = {
           ...(body.pr !== undefined ? { prNumber: body.pr } : {}),
           versions: [],
           currentVersion: 0,
+          guidePersonaId: "guide",
           createdAt: now,
         },
         version: { n: 0, headSha: "", mergeBaseSha: "", baseRef: "", fetchedAt: now, idMapping: {} },
@@ -2685,6 +2641,8 @@ export const mockApi = {
         contributions: [],
         logTail: [],
         rev: 1,
+        // Issue #421: no guide yet (failed/loading placeholder).
+        guideHead: { version: 0, sha: "" },
         ingest: { status: "loading", step },
       };
     }
@@ -2735,7 +2693,7 @@ export const mockApi = {
     return { ok: true };
   },
 
-  redoReview: async (id: string): Promise<ReviewSnapshot> => {
+  redoReview: async (id: string, personaId?: string): Promise<ReviewSnapshot> => {
     await wait(50);
     if (id === "demo")
       throw new Error(`POST /api/reviews/${id}/redo: 409 {"error":"the demo guide can't be re-done"}`);
@@ -2749,8 +2707,10 @@ export const mockApi = {
         `POST /api/reviews/${id}/redo: 409 {"error":"${old.ingestError ?? "the review couldn't be opened"}"}`,
       );
     // Same as delete + create: the old row goes, a new loading review
-    // takes its source (repo, PR/branch, title).
+    // takes its source (repo, PR/branch, title). Issue #393: a persona
+    // choice rides along and the new review records it.
     const newId = `mock-loading-${Date.now().toString(36)}`;
+    mockRedoPersonaById.set(newId, personaId ?? "guide");
     mockReviewList.splice(i, 1);
     const entry = {
       ...old,
@@ -2766,6 +2726,27 @@ export const mockApi = {
     delete (entry as { ingestError?: string }).ingestError;
     mockReviewList.unshift(entry);
     return mockLoadingSnapshot(entry);
+  },
+
+  /**
+   * Issue #393: a fresh install ships no prompt folders, so no fork is
+   * guide-capable and nothing drifts. Tests opt into a forked setup
+   * with the `unvibe.mock.forks` localStorage hook (a serialized
+   * `PromptForksResponse`).
+   */
+  promptForks: async () => {
+    try {
+      const raw = localStorage.getItem("unvibe.mock.forks");
+      if (raw) return JSON.parse(raw) as import("@unvibe/shared").PromptForksResponse;
+    } catch {
+      // Non-fatal: fall through to the fresh-install default.
+    }
+    return {
+      forks: [
+        { personaId: "guide", name: "Guide", enabled: true, guideCapable: false, drifted: [] },
+        { personaId: "second-opinion", name: "Second opinion", enabled: true, guideCapable: false, drifted: [] },
+      ],
+    };
   },
 
   resetData: async (): Promise<ResetDataResponse> => {
@@ -2819,7 +2800,7 @@ export const mockApi = {
     return mockDiagramSvg(hash, theme);
   },
 
-  review: async (id: string, version?: number): Promise<ReviewSnapshot> => {
+  review: async (id: string): Promise<ReviewSnapshot> => {
     await wait(50);
     // #92: mock loading/failed reviews — stateless by id prefix + hooks so
     // the status survives SPA navigation even if the list entry is gone.
@@ -2831,7 +2812,7 @@ export const mockApi = {
           if (entry) return mockLoadingSnapshot(entry);
           const now = Date.now();
           return {
-            review: { id, repoId: "urllib3", branch: "feature", versions: [], currentVersion: 0, createdAt: now },
+            review: { id, repoId: "urllib3", branch: "feature", versions: [], currentVersion: 0, guidePersonaId: "guide", createdAt: now },
             version: { n: 0, headSha: "", mergeBaseSha: "", baseRef: "", fetchedAt: now, idMapping: {} },
             files: [],
             pages: [],
@@ -2843,6 +2824,8 @@ export const mockApi = {
             contributions: [],
             logTail: [],
             rev: 1,
+            // Issue #421: no guide yet (failed/loading placeholder).
+            guideHead: { version: 0, sha: "" },
             ingest: { status: "loading", step: "fetching" },
           };
         }
@@ -2853,7 +2836,7 @@ export const mockApi = {
           entry.currentVersion = 1;
           entry.guideStatus = "ready";
         }
-        return currentSnapshot(id, version);
+        return currentSnapshot(id);
       }
       if (id.startsWith("mock-failed-")) {
         const fail = localStorage.getItem("unvibe.mock.createReviewFail");
@@ -2862,7 +2845,7 @@ export const mockApi = {
           if (entry) return mockFailedSnapshot(entry, fail);
           const now = Date.now();
           return {
-            review: { id, repoId: "urllib3", branch: "feature", versions: [], currentVersion: 0, createdAt: now },
+            review: { id, repoId: "urllib3", branch: "feature", versions: [], currentVersion: 0, guidePersonaId: "guide", createdAt: now },
             version: { n: 0, headSha: "", mergeBaseSha: "", baseRef: "", fetchedAt: now, idMapping: {} },
             files: [],
             pages: [],
@@ -2874,6 +2857,8 @@ export const mockApi = {
             contributions: [],
             logTail: [],
             rev: 1,
+            // Issue #421: no guide yet (failed/loading placeholder).
+            guideHead: { version: 0, sha: "" },
             ingest: { status: "failed", error: fail },
           };
         }
@@ -2884,7 +2869,7 @@ export const mockApi = {
           entry.currentVersion = 1;
           entry.guideStatus = "ready";
         }
-        return currentSnapshot(id, version);
+        return currentSnapshot(id);
       }
     } catch {
       // Fall through to the list lookup below.
@@ -2905,7 +2890,7 @@ export const mockApi = {
       entry.versionCount = 1;
       entry.currentVersion = 1;
       entry.guideStatus = "ready";
-      return currentSnapshot(id, version);
+      return currentSnapshot(id);
     }
     if (entry?.ingestStatus === "failed") {
       let fail: string | null = null;
@@ -2918,10 +2903,7 @@ export const mockApi = {
       const error = fail ?? entry.ingestError ?? "mock ingest failed";
       return mockFailedSnapshot(entry, error);
     }
-    if (isStaleReview(id) && version !== undefined && version !== 1 && version !== 2) {
-      throw new Error(`GET /api/reviews/${id}?version=${version}: 404 {"error":"unknown version ${version}"}`);
-    }
-    return currentSnapshot(id, version);
+    return currentSnapshot(id);
   },
 
   refresh: async (id: string): Promise<RefreshResponse> => {
@@ -2937,7 +2919,6 @@ export const mockApi = {
           oldHeadSha: MOCK_VERSION.headSha,
           newHeadSha: "e4f5a6b7c8",
           renames: [],
-          rangeDiff: status.rangeDiff,
           unchangedHunks: status.unchangedHunks,
           changedHunks: status.changedHunks,
           newHunks: status.newHunks,
@@ -2951,10 +2932,10 @@ export const mockApi = {
     return { review: MOCK_REVIEW, newVersion: false };
   },
 
-  update: async (id: string): Promise<UpdateReviewResponse> => {
+  explain: async (id: string): Promise<ExplainReviewResponse> => {
     await wait(100);
-    const jobId = `mock-update-${id}`;
-    trackMockJob(jobId, "update-pass");
+    const jobId = `mock-explain-${id}`;
+    trackMockJob(jobId, "explain-pass");
     window.setTimeout(() => settleMockJob(jobId), 800);
     return { jobId, toVersion: isStaleReview(id) ? 2 : 1 };
   },
@@ -3097,7 +3078,6 @@ export const mockApi = {
             who: "agent",
             question: (a as { message: string }).message,
             blocks: [],
-            level: "standard",
             revision: 1,
             undoStack: [],
             working: "Writing answer",
@@ -3181,7 +3161,6 @@ export const mockApi = {
               who: "agent",
               question: a.message,
               blocks: [],
-              level: "standard",
               revision: 1,
               undoStack: [],
               working: "Thinking",
@@ -3212,7 +3191,6 @@ export const mockApi = {
           who: "agent",
           question: (a as { message: string }).message,
           blocks: [],
-          level: "standard",
           revision: 1,
           undoStack: [],
           working: "Writing answer",
@@ -3262,7 +3240,7 @@ export const mockApi = {
       answerTurnLater(found.id, last.id, last.question ?? found.anchor.quotedText, retryJobId, "ask", demoMatchText(found.anchor.quotedText, last.question ?? undefined, found.anchor.host as never));
       return { accepted: true, annotationId: found.id, replyId: last.id, jobId: retryJobId };
     }
-    // M4 interaction (mock): explain, depth, examples, diagram, undo,
+    // M4 interaction (mock): explain, slower, examples, diagram, undo,
     // generate, followup, concept, promote, close + instant card state.
     // Canned content derives from the fixture snapshot so the UI exercises
     // the real shapes (working → streamed text → blocks, error + retry via
@@ -3289,7 +3267,6 @@ export const mockApi = {
           who: "agent",
           question: a.quote,
           blocks: [],
-          level: "standard",
           revision: 1,
           undoStack: [],
           working: "Thinking",
@@ -3366,7 +3343,6 @@ export const mockApi = {
             who: "agent",
             question: null,
             blocks: [],
-            level: "standard",
             revision: 1,
             undoStack: [],
             working: "Thinking",
@@ -3379,7 +3355,7 @@ export const mockApi = {
       answerTurnLater(id, replyId, a.quote, jobId, "explain", demoMatchText(a.quote, undefined, host as never));
       return { accepted: true, annotationId: id, replyId, jobId };
     }
-    if (a.kind === "depth" || a.kind === "examples" || a.kind === "diagram" || a.kind === "undo") {
+    if (a.kind === "slower" || a.kind === "examples" || a.kind === "diagram" || a.kind === "undo") {
       const personaId = (a as { personaId?: string }).personaId;
       if (typeof personaId === "string" && personaId !== "") {
         const res = mockVariantControl(a as never, personaId);
@@ -3417,7 +3393,7 @@ export const mockApi = {
           {
             type: "paragraph",
             id: `${card.id}-b1`,
-            text: { standard: `Mock generated card for <em>${card.id}</em>: the live agent would fill this from the repo.` },
+            text: `Mock generated card for <em>${card.id}</em>: the live agent would fill this from the repo.`,
             citations: [{ target: "diff:src-urllib3-connection.py:80-82" }],
           },
           { type: "follow-up", id: `${card.id}-f1`, items: [{ label: "What happens to a fold that ends in a bare LF?", ask: "bare lf" }], citations: [] },
@@ -3448,7 +3424,6 @@ export const mockApi = {
           id: replyId,
           question: message,
           blocks: [],
-          level: "standard",
           revision: 1,
           undoStack: [],
           working: "Writing answer",
@@ -3502,7 +3477,7 @@ export const mockApi = {
         post: false,
         working: "Writing answer",
         replies: [
-          { id: replyId, seq: 1, kind: "ask", who: "agent", question: item.ask ?? item.label, blocks: [], level: "standard", revision: 1, undoStack: [], working: "Writing answer" },
+          { id: replyId, seq: 1, kind: "ask", who: "agent", question: item.ask ?? item.label, blocks: [], revision: 1, undoStack: [], working: "Writing answer" },
         ],
       } as unknown as import("@unvibe/shared").Thread);
       emitAnnotations();
@@ -3531,7 +3506,7 @@ export const mockApi = {
           kind: "concept",
           title: slug,
           parent: "root",
-          cards: [{ id: `cc-${slug}`, pageId, title: null, level: "standard", collapsed: false, revision: 1, blocks: [], undoStack: [] }],
+          cards: [{ id: `cc-${slug}`, pageId, title: null, collapsed: false, revision: 1, blocks: [], undoStack: [] }],
         });
         emitPages();
         page = mockPages.find((p) => p.id === pageId)!;
@@ -3551,7 +3526,6 @@ export const mockApi = {
               id: `cc-${slug}`,
               pageId,
               title: null,
-              level: "standard",
               collapsed: false,
               revision: 2,
               blocks: demoBlocks,
@@ -3571,14 +3545,13 @@ export const mockApi = {
             id: `cc-${slug}`,
             pageId,
             title: null,
-            level: "standard",
             collapsed: false,
             revision: 2,
             blocks: [
-              { type: "paragraph", id: `cc-${slug}-b1`, text: { standard: `Mock concept page for <em>${slug}</em>: written on first open.` }, citations: [{ target: "diff:src-urllib3-connection.py:80-82" }] },
+              { type: "paragraph", id: `cc-${slug}-b1`, text: `Mock concept page for <em>${slug}</em>: written on first open.`, citations: [{ target: "diff:src-urllib3-connection.py:80-82" }] },
               ...(known
                 ? [
-                    { type: "paragraph", id: `cc-${slug}-b2`, text: { standard: 'Whitespace is one of the <a class="cx" data-link="concept:ows-rws">OWS and RWS</a> rules.' }, citations: [] },
+                    { type: "paragraph", id: `cc-${slug}-b2`, text: 'Whitespace is one of the <a class="cx" data-link="concept:ows-rws">OWS and RWS</a> rules.', citations: [] },
                     mockExampleAside(),
                   ]
                 : []),
@@ -3621,7 +3594,6 @@ export const mockApi = {
             id: cardIds[i],
             pageId,
             title: i === 0 ? quote || null : (turn.question ?? null),
-            level: turn.level,
             collapsed: false,
             revision: turn.revision,
             blocks: JSON.parse(JSON.stringify(turn.blocks)),
@@ -3789,25 +3761,15 @@ export const mockApi = {
     return { jobIds };
   },
 
-  // Issue #169: mirrors the service PATCH semantics (null clears a field;
-  // unknown plotlines and levels are refused). Issue #351: `sinceBaseline`
-  // joins the filter (true shows only the delta; false and null clear).
+  // Issue #169: mirrors the service PATCH semantics (null clears the
+  // plotline; unknown plotlines are refused).
   updateDiffFilter: async (_id: string, body: UpdateDiffFilterRequest): Promise<{ ok: boolean }> => {
-    const { plotline, sinceBaseline } = body;
+    const { plotline } = body;
     if (plotline !== undefined && plotline !== null) {
       const ids = new Set([...MOCK_PLOTLINES.map((p) => p.id), "other"]);
       if (!ids.has(plotline)) throw new Error(`unknown plotline ${plotline}`);
     }
-    if (sinceBaseline !== undefined && sinceBaseline !== null && typeof sinceBaseline !== "boolean") {
-      throw new Error("sinceBaseline must be a boolean or null");
-    }
-    const next: DiffFilter = mockDiffFilter?.plotline ? { plotline: mockDiffFilter.plotline } : {};
-    if (mockDiffFilter?.sinceBaseline === true) next.sinceBaseline = true;
-    if (plotline === null) delete next.plotline;
-    else if (plotline !== undefined) next.plotline = plotline;
-    if (sinceBaseline === null) delete next.sinceBaseline;
-    else if (sinceBaseline === true) next.sinceBaseline = true;
-    else if (sinceBaseline === false) delete next.sinceBaseline;
+    const next: DiffFilter = typeof plotline === "string" ? { plotline } : {};
     mockDiffFilter = Object.keys(next).length === 0 ? undefined : next;
     emitDiffFilter();
     return { ok: true };
@@ -4113,6 +4075,13 @@ export const mockApi = {
 
   providers: async (): Promise<{ providers: string[] }> => ({ providers: ["claude", "codex"] }),
 
+  // Issue #404: mock provenance mirrors the service rule — only patched
+  // keys count as saved (the static demo stays fully unsaved).
+  savedSettingsKeys: async (): Promise<import("@unvibe/shared").SavedKeysResponse> => {
+    if (STATIC_DEMO) return { savedKeys: [] };
+    return { savedKeys: Object.keys(readJson<Partial<Settings>>(SETTINGS_KEY, {})) };
+  },
+
   prompts: async (reviewId?: string): Promise<PromptsResponse> => {
     const templates: PromptTemplate[] = MOCK_TEMPLATES;
     if (!reviewId) return { templates };
@@ -4194,7 +4163,7 @@ export const mockApi = {
     const ref = findMockCard(cardId);
     let revision = 2;
     if (ref?.kind === "page") {
-      ref.card.undoStack.push({ blocks: JSON.parse(JSON.stringify(ref.card.blocks)), level: ref.card.level });
+      ref.card.undoStack.push({ blocks: JSON.parse(JSON.stringify(ref.card.blocks)) });
       ref.card.revision += 1;
       revision = ref.card.revision;
       emitPages();

@@ -60,9 +60,8 @@ conversation card that appears right under the block the text came from.
   fairly instead of defending the card. Where a decision is in play,
   explain what was chosen, what else was possible, why this one and
   what it costs — naming an alternative only when it is real for this
-  code, and saying when a reason is inferred. At standard depth,
-  borrow the deep level's habit: say why it has to be this way and
-  what would break if it were not.
+  code, and saying when a reason is inferred. Say why it has to be
+  this way and what would break if it were not.
 - If the question has no answer in the code (maintainer intent, unseen
   behaviour), say what you checked and what is not known instead of
   guessing. Record the question in the trailing block's `open_questions`

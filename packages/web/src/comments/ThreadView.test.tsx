@@ -24,8 +24,7 @@ function mkReply(who: "you" | "agent", text: string, opts: { suggested?: boolean
     kind: "comment",
     who,
     question: null,
-    blocks: [{ type: "paragraph", id: "b1", text: { standard: esc }, citations: [] }],
-    level: "standard",
+    blocks: [{ type: "paragraph", id: "b1", text: esc, citations: [] }],
     revision: 1,
     undoStack: [],
     ...(opts.suggested ? { suggested: true } : {}),
@@ -56,7 +55,7 @@ function thread(over: Partial<Thread> = {}): Thread {
 function seedSnapshot(): void {
   useReview.getState().clear();
   useReview.getState().setSnapshot({
-    review: { id: REVIEW_ID, repoId: "r", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
+    review: { id: REVIEW_ID, repoId: "r", branch: "b", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: 0 },
     version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
     files: [],
     pages: [],
@@ -181,8 +180,7 @@ describe("Ask thread entries (issue #315)", () => {
       kind,
       who: "agent",
       question,
-      blocks: [{ type: "paragraph", id: "b1", text: { standard: "An answer." }, citations: [] }],
-      level: "standard",
+      blocks: [{ type: "paragraph", id: "b1", text: "An answer.", citations: [] }],
       revision: 1,
       undoStack: [],
     };
@@ -380,8 +378,7 @@ describe("ThreadView per-reply delete + quote chip (issue #364)", () => {
           who: "agent",
           seq: 1,
           question: "What does this do?",
-          blocks: [{ type: "paragraph", id: "b1", text: { standard: "It folds lines." }, citations: [] }],
-          level: "standard",
+          blocks: [{ type: "paragraph", id: "b1", text: "It folds lines.", citations: [] }],
           revision: 1,
           undoStack: [],
         } as Reply,

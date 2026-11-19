@@ -1,17 +1,18 @@
 /**
- * Since-B step 1 (issue #351): an existing review gains commits, and the
- * update pass explains the delta and appends.
+ * Since-B step 1 (issue #351) as Explain does it (issue #413): an
+ * existing review gains commits, and Explain writes the Changes-since-X
+ * section while the old guide stays byte-for-byte.
  *
- * - Refresh defaults B to the version last opened and computes the B..head
- *   hunk set by hunk-content comparison (rebase-proof, no git ancestry).
- * - Update writes the dated Since-B section plus an addendum on an
- *   affected card while the old card text stays unchanged.
+ * - Refresh defaults X to the version last opened and computes the
+ *   X..head hunk set by hunk-content comparison (rebase-proof).
+ * - Explain writes the section with a feedback link; the old card text
+ *   is unchanged and no addendum is appended.
  * - A feedback link ties the change to the review comment it answers
  *   (matched by file, line and time); unrelated and out-of-window
  *   remarks stay out of the prompt.
- * - Plotline `+N` markers and new-plotline markers land on the snapshot.
- * - The `since-baseline` picker route and the Since-B diff filter.
- * - A rebased-B case: content comparison, not ancestry.
+ * - No plotline placement, no new plotlines, no stale markers.
+ * - The `since-baseline` record route; the Since diff filter flag.
+ * - A rebased-X case: content comparison, not ancestry.
  *
  * Fake runner + stub `gh` only (branch reviews make no gh calls at all);
  * made-up fixtures, no live spend.
@@ -24,14 +25,14 @@ import {
   fileKeyForPath,
   hunkChangedSinceB,
   isSinceBaseline,
+  type ExplainPassResult,
   type ReviewSnapshot,
-  type UpdatePassResult,
 } from "@unvibe/shared";
 import { RealCommandRunner } from "../src/exec/index.js";
 import { JobQueue } from "../src/jobs/index.js";
 import { createApp } from "../src/server.js";
 import { computeSinceHunks, formatSinceContext, matchSinceFeedback, resolveSinceBaseline } from "../src/versions/since.js";
-import { JsonBlockReplyParser } from "../src/versions/update.js";
+import { buildExplainVariables, JsonBlockReplyParser } from "../src/versions/explain.js";
 
 const real = new RealCommandRunner();
 const authed = { authorization: "Bearer tok" };
@@ -67,14 +68,9 @@ function fakeReply(snap: ReviewSnapshot): string {
   const changed = snap.sinceHunks?.changed ?? [];
   const added = snap.sinceHunks?.added ?? [];
   const target = changed[0] ?? added[0] ?? "h:missing:none";
-  const card = snap.pages.flatMap((p) => p.cards)[0];
   const commitSha = snap.commits?.find((c) => /rework/i.test(c.subject))?.sha ?? snap.commits?.[0]?.sha ?? "deadbee";
   const baselineVersion = snap.sinceBaseline?.kind === "version" ? snap.sinceBaseline.version : 1;
-  const result: UpdatePassResult = {
-    revisedCards: [],
-    recheckedFindings: [],
-    newFindings: [],
-    hunkSummaries: {},
+  const result: ExplainPassResult = {
     baseline: { kind: "version", version: baselineVersion },
     sinceHunks: { added: [...added], changed: [...changed] },
     sinceSection: {
@@ -82,14 +78,13 @@ function fakeReply(snap: ReviewSnapshot): string {
         id: "since-delta-1",
         pageId: "since",
         title: "Alpha reworked, gamma added",
-        level: "standard",
         collapsed: false,
         revision: 1,
         undoStack: [],
         blocks: [{
           type: "paragraph",
           id: "b-since-1",
-          text: { standard: "Alpha now returns 11 and gamma is new, answering the review comment." },
+          text: "Alpha now returns 11 and gamma is new, answering the review comment.",
           citations: [{ target }],
         }],
         // Agent-shaped `{ kind, id }` pointers: the JSON text goes
@@ -103,34 +98,12 @@ function fakeReply(snap: ReviewSnapshot): string {
         ] as unknown as import("@unvibe/shared").SinceFeedbackLink[],
       }],
     },
-    addenda: card
-      ? [{
-        cardId: card.id,
-        blocks: [{
-          type: "paragraph",
-          id: "b-add-1",
-          text: { standard: "Updated since v1: alpha returns 11 now." },
-          citations: [{ target }],
-        }],
-        answers: [
-          { kind: "comment", id: "7" },
-          { kind: "bogus" as never, id: "x" },
-        ],
-      }]
-      : [],
-    plotlineAssignments: {},
-    newPlotlines: [{ id: "perf", name: "Perf", description: "Follow-up perf work." }],
   };
-  const plot = (snap.plotlines ?? [])[0];
-  const assignHash = target.split(":").slice(2).join(":");
-  if (plot && assignHash && assignHash !== "none") {
-    result.plotlineAssignments = { [assignHash]: plot.id };
-  }
-  return `Explained the delta and appended.\n\n\`\`\`json\n${JSON.stringify(result)}\n\`\`\`\n`;
+  return `Explained the delta.\n\n\`\`\`json\n${JSON.stringify(result)}\n\`\`\`\n`;
 }
 
 describe("since-B step 1", () => {
-  it("refresh defaults B, update appends section + addendum with a feedback link and plotline markers", async () => {
+  it("refresh defaults X, explain writes the section with a feedback link and leaves the old guide alone", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-351-"));
     await git(dir, "init", "-b", "main");
     await git(dir, "config", "user.email", "t@example.com");
@@ -145,7 +118,7 @@ describe("since-B step 1", () => {
     const queue = new JobQueue();
     const seenPrompts: string[] = [];
     const baseRunner = {
-      runUpdatePrompt: async (prompt: string) => {
+      runExplainPrompt: async (prompt: string) => {
         seenPrompts.push(prompt);
         const live = (globalThis as { __snap351?: ReviewSnapshot }).__snap351;
         if (!live) throw new Error("no snapshot for fake reply");
@@ -175,11 +148,10 @@ describe("since-B step 1", () => {
             id: "c-a",
             pageId: "p-root",
             title: "Alpha",
-            level: "standard",
             collapsed: false,
             revision: 1,
             undoStack: [],
-            blocks: [{ type: "paragraph", id: "b1", text: { standard: "old prose" }, citations: [{ target: hk }] }],
+            blocks: [{ type: "paragraph", id: "b1", text: "old prose", citations: [{ target: hk }] }],
           }],
         });
       });
@@ -237,8 +209,7 @@ describe("since-B step 1", () => {
             kind: "comment",
             who: "you",
             question: null,
-            blocks: [{ type: "paragraph", id: "b-t1", text: { standard: "Agreed, fix alpha." }, citations: [] }],
-            level: "standard",
+            blocks: [{ type: "paragraph", id: "b-t1", text: "Agreed, fix alpha.", citations: [] }],
             revision: 1,
             undoStack: [],
           }],
@@ -268,22 +239,22 @@ describe("since-B step 1", () => {
       const badHigh = await app.inject({ method: "POST", url: `/api/reviews/${id}/since-baseline`, headers: authed, payload: { version: 99 } });
       expect(badHigh.statusCode).toBe(400);
 
-      // Run the update pass on the fake runner.
+      // Run the explain pass on the fake runner.
       (globalThis as { __snap351?: ReviewSnapshot }).__snap351 = ctx.reviews.getSnapshot(id) ?? undefined;
-      const enq = await app.inject({ method: "POST", url: `/api/reviews/${id}/update`, headers: authed });
+      const enq = await app.inject({ method: "POST", url: `/api/reviews/${id}/explain`, headers: authed });
       expect(enq.statusCode).toBe(202);
       await queue.drain(5000);
       const jobId = (enq.json() as { jobId: string }).jobId;
       expect(queue.get(jobId)?.state).toBe("done");
       expect(seenPrompts).toHaveLength(1);
       expect(seenPrompts[0]).toContain("## Baseline");
-      expect(seenPrompts[0]).toContain("append");
+      expect(seenPrompts[0]).not.toContain("append");
       expect(seenPrompts[0]).toContain("[comment 7]");
       expect(seenPrompts[0]).toContain("[thread t-1]");
       expect(seenPrompts[0]).toContain("[conversation 3]");
 
       const after = ctx.reviews.getSnapshot(id)!;
-      // The dated Since-B section, with its cards cited into the new hunks.
+      // The Changes-since-X section, with its cards cited into the new hunks.
       expect(after.sinceSection?.baseline).toEqual({ kind: "version", version: 1 });
       expect(after.sinceSection?.headVersion).toBe(2);
       expect(after.sinceSection?.cards).toHaveLength(1);
@@ -291,23 +262,14 @@ describe("since-B step 1", () => {
       expect(sc.title).toContain("Alpha");
       const cites = sc.blocks.flatMap((b) => ("citations" in b ? b.citations : []));
       expect(cites.some((c) => c.target === changedId || (after.sinceHunks?.added ?? []).includes(c.target))).toBe(true);
-      // Append, don't rewrite: the old card text is byte-for-byte, with a dated addendum.
+      // Untouched, not rewritten: the old card text is byte-for-byte, with no addendum.
       const card = after.pages.flatMap((p) => p.cards).find((c) => c.id === "c-a")!;
       expect(card.blocks).toHaveLength(1);
       expect(card.blocks[0].type).toBe("paragraph");
       if (card.blocks[0].type !== "paragraph") throw new Error("unexpected block");
-      expect(card.blocks[0].text.standard).toBe("old prose");
-      expect(card.addenda).toHaveLength(1);
-      expect(card.addenda![0].baseline).toEqual({ kind: "version", version: 1 });
-      expect(card.addenda![0].version).toBe(2);
-      expect(card.stale).toBe(false);
-      // The addendum's bogus pointer is dropped; comment 7 resolves.
-      expect(card.addenda![0].answers).toHaveLength(1);
-      expect(card.addenda![0].answers![0]).toMatchObject({
-        kind: "comment",
-        url: "https://example.test/pr/1#issuecomment-7",
-      });
-      // The Since-B card's pointers resolve; unknown id 999 is dropped.
+      expect(card.blocks[0].text).toBe("old prose");
+      expect("addenda" in card).toBe(false);
+      // The Changes-since-X card's pointers resolve; unknown id 999 is dropped.
       expect(sc.answers).toHaveLength(4);
       const byKind = Object.fromEntries(sc.answers!.map((a) => [a.kind, a]));
       expect(byKind["comment"].label).toContain("@reviewer on a.py:");
@@ -316,35 +278,21 @@ describe("since-B step 1", () => {
       expect(byKind["thread"].excerpt).toContain("Agreed, fix alpha.");
       expect(byKind["conversation"].url).toBe("https://example.test/pr/1#issue-3");
       expect(byKind["commit"].label).toContain("rework alpha");
-      // Plotlines: the assigned hunk joins its plotline; perf is new since B.
+      // No plotline placement: no new plotlines, assignments untouched.
       const plotIds = new Set((after.plotlines ?? []).map((p) => p.id));
       expect(plotIds.has("core")).toBe(true);
-      expect(plotIds.has("perf")).toBe(true);
-      expect(after.plotlines!.find((p) => p.id === "perf")?.newSinceBaseline).toBe(true);
-      // The new hunk joined its existing plotline.
-      const assignedId = [...(after.sinceHunks?.changed ?? []), ...(after.sinceHunks?.added ?? [])][0]!;
-      const assignedHash = assignedId.split(":").slice(2).join(":");
-      expect(after.hunkStates.find((s) => s.contentHash === assignedHash)?.plotline).toBe("core");
-      // The update stored the baseline it explained.
+      expect(plotIds.has("perf")).toBe(false);
+      // No plotline placement: the new hunk stays unclaimed ("Other").
+      const assignedHash = changedHunk.contentHash;
+      expect(after.hunkStates.find((s) => s.contentHash === assignedHash)?.plotline).toBeUndefined();
+      // Explain recorded the X it explained from.
       expect(after.sinceBaseline).toEqual({ kind: "version", version: 1 });
 
-      // The Since-B diff filter: only the delta passes.
+      // #413: the diff Since filter is gone — the diff always shows the
+      // whole PR, and the filter route no longer takes the flag.
       const setFilter = await app.inject({ method: "PATCH", url: `/api/reviews/${id}/diff-filter`, headers: authed, payload: { sinceBaseline: true } });
-      expect(setFilter.statusCode).toBe(200);
-      const filtered = ctx.reviews.getSnapshot(id)!;
-      expect(filtered.diffFilter?.sinceBaseline).toBe(true);
-      const sinceSet = new Set([...(filtered.sinceHunks?.added ?? []), ...(filtered.sinceHunks?.changed ?? [])]);
-      for (const f of filtered.files) {
-        for (const h of f.hunks) {
-          const hid = `h:${f.fileKey}:${h.contentHash}`;
-          expect(hunkChangedSinceB(hid, filtered.sinceHunks)).toBe(sinceSet.has(hid));
-        }
-      }
-      const clearFilter = await app.inject({ method: "PATCH", url: `/api/reviews/${id}/diff-filter`, headers: authed, payload: { sinceBaseline: false } });
-      expect(clearFilter.statusCode).toBe(200);
+      expect(setFilter.statusCode).toBe(400);
       expect(ctx.reviews.getSnapshot(id)!.diffFilter).toBeUndefined();
-      const badFilter = await app.inject({ method: "PATCH", url: `/api/reviews/${id}/diff-filter`, headers: authed, payload: { sinceBaseline: "yes" } });
-      expect(badFilter.statusCode).toBe(400);
     } finally {
       await app.close();
       delete (globalThis as { __snap351?: ReviewSnapshot }).__snap351;
@@ -385,10 +333,10 @@ describe("since-B step 1", () => {
     expect(hunkChangedSinceB(`h:${key}:h1`, since)).toBe(false);
   });
 
-  it("JsonBlockReplyParser reads the since-B fields and drops malformed ones", () => {
+  it("JsonBlockReplyParser reads the explain fields and drops malformed ones", () => {
     const parser = new JsonBlockReplyParser();
     const ok = parser.parseReply(
-      'prose\n```json\n{"revisedCards":[],"recheckedFindings":[],"newFindings":[],"hunkSummaries":{},"baseline":{"kind":"version","version":1},"sinceHunks":{"added":["h:k:a"],"changed":[]},"sinceSection":{"cards":[{"id":"s-1","answers":[{"kind":"comment","id":"7"},{"kind":"nope","id":"x"}]}]},"addenda":[{"cardId":"c-a","blocks":[],"answers":[{"kind":"thread","id":"t-1"}]}],"plotlineAssignments":{"abc":"core"},"newPlotlines":[{"id":"perf","name":"Perf"}]}\n```\n',
+      'prose\n```json\n{"baseline":{"kind":"version","version":1},"sinceHunks":{"added":["h:k:a"],"changed":[]},"sinceSection":{"cards":[{"id":"s-1","answers":[{"kind":"comment","id":"7"},{"kind":"nope","id":"x"}]}]}}\n```\n',
     );
     expect(ok.baseline).toEqual({ kind: "version", version: 1 });
     expect(ok.sinceHunks).toEqual({ added: ["h:k:a"], changed: [] });
@@ -396,24 +344,121 @@ describe("since-B step 1", () => {
     expect((ok.sinceSection?.cards[0] as unknown as { answerRefs?: unknown }).answerRefs).toEqual([
       { kind: "comment", id: "7" },
     ]);
-    expect(ok.addenda).toEqual([{ cardId: "c-a", blocks: [], answers: [{ kind: "thread", id: "t-1" }] }]);
-    expect(ok.plotlineAssignments).toEqual({ abc: "core" });
-    expect(ok.newPlotlines).toEqual([{ id: "perf", name: "Perf" }]);
     const dropped = parser.parseReply(
-      'prose\n```json\n{"revisedCards":[],"recheckedFindings":[],"newFindings":[],"hunkSummaries":{},"baseline":{"kind":"commit","sha":"x"},"sinceHunks":{"added":"nope"},"addenda":[{"nope":1}]}\n```\n',
+      'prose\n```json\n{"baseline":{"kind":"commit","sha":"x"},"sinceHunks":{"added":"nope"}}\n```\n',
     );
     expect(dropped.baseline).toBeUndefined();
     expect(dropped.sinceHunks).toBeUndefined();
-    expect(dropped.addenda).toBeUndefined();
   });
 
   it("JsonBlockReplyParser keeps a commit-sha baseline (step 2)", () => {
     const parser = new JsonBlockReplyParser();
     const sha = "a".repeat(40);
     const ok = parser.parseReply(
-      `prose\n\`\`\`json\n{"revisedCards":[],"recheckedFindings":[],"newFindings":[],"hunkSummaries":{},"baseline":{"kind":"commit","sha":"${sha}"}}\n\`\`\`\n`,
+      `prose\n\`\`\`json\n{"baseline":{"kind":"commit","sha":"${sha}"}}\n\`\`\`\n`,
     );
     expect(ok.baseline).toEqual({ kind: "commit", sha });
     expect(isSinceBaseline(ok.baseline)).toBe(true);
+  });
+});
+
+describe("explain uses the requested X, not the stored default (#413)", () => {
+  // One-version review: the stored/default baseline is v1, which is the
+  // head. The reviewer requests an older commit X instead.
+  const c1 = "c1".padEnd(40, "0");
+  const headSha = "d4".padEnd(40, "4");
+  function snap(): ReviewSnapshot {
+    return {
+      sinceBaseline: { kind: "version", version: 1 },
+      review: {
+        id: "r-x",
+        currentVersion: 1,
+        versions: [
+          { n: 1, headSha, mergeBaseSha: "m".repeat(40), baseRef: "main", fetchedAt: 2000, idMapping: {} },
+        ],
+      },
+      version: { n: 1, headSha, mergeBaseSha: "m".repeat(40), baseRef: "main", fetchedAt: 2000, idMapping: {} },
+      files: [
+        {
+          fileKey: "a",
+          path: "a.py",
+          category: "source",
+          hunks: [
+            {
+              contentHash: "h1",
+              header: "@@ -1 +1 @@",
+              newStart: 1,
+              newEnd: 1,
+              oldStart: 1,
+              oldEnd: 1,
+              added: 1,
+              removed: 0,
+              lines: [{ kind: "add", text: "x = 2" }],
+            },
+          ],
+        },
+      ],
+      commits: [{ sha: c1, subject: "rework alpha", body: "The reviewer asked for 2.", files: [], hunks: ["h:a:h1"] }],
+      existingComments: [
+        {
+          id: 7,
+          path: "a.py",
+          line: 1,
+          body: "Should return 2 here.",
+          bodyHtml: "Should return 2 here.",
+          author: "reviewer",
+          // Predates the stored v1 window: a version-X prompt would drop
+          // it, but the requested commit X has no lower time bound.
+          createdAt: new Date(1000).toISOString(),
+        },
+      ],
+      pages: [],
+      annotations: [],
+      hunkStates: [],
+      jobs: [],
+      contributions: [],
+      logTail: [],
+      rev: 1,
+      ingest: { status: "ready" },
+    } as unknown as ReviewSnapshot;
+  }
+
+  it("the prompt's Baseline names the requested commit X with its subject", () => {
+    const s = snap();
+    const since = { added: ["h:a:h1"], changed: [] as string[] };
+    const vars = buildExplainVariables(s, since, { baseline: { kind: "commit", sha: c1 } });
+    expect(vars.x_context).toContain(`B is commit ${c1.slice(0, 8)} "rework alpha"`);
+    expect(vars.x_context).not.toContain("B is v1 ");
+    expect(vars.x_hunks).toContain("[[h:a:h1]]");
+  });
+
+  it("the feedback window follows the requested X, not the stored default", () => {
+    const s = snap();
+    const since = { added: ["h:a:h1"], changed: [] as string[] };
+    // Requested commit X: no lower time bound, so the old comment counts.
+    const fbX = matchSinceFeedback(s, since, { kind: "commit", sha: c1 });
+    expect(fbX.baseline).toEqual({ kind: "commit", sha: c1 });
+    expect(fbX.comments.map((c) => c.comment.id)).toEqual([7]);
+    // Stored default v1 (= head): the same comment is out of window.
+    const fbStored = matchSinceFeedback(s, since);
+    expect(fbStored.baseline).toEqual({ kind: "version", version: 1 });
+    expect(fbStored.comments).toEqual([]);
+  });
+
+  it("a requested version X names that version", () => {
+    const s = snap();
+    s.review.versions.push({
+      n: 2,
+      headSha,
+      mergeBaseSha: "m".repeat(40),
+      baseRef: "main",
+      fetchedAt: 3000,
+      idMapping: {},
+    });
+    s.review.currentVersion = 2;
+    s.version = { ...s.version, n: 2, fetchedAt: 3000 };
+    const since = { added: ["h:a:h1"], changed: [] as string[] };
+    const vars = buildExplainVariables(s, since, { baseline: { kind: "version", version: 1 } });
+    expect(vars.x_context).toContain("B is v1");
   });
 });

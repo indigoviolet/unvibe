@@ -30,8 +30,7 @@ function comment(id: string, host: Thread["anchor"]["host"], messages: MsgLike[]
       kind: "comment" as const,
       who: m.who === "ai" ? ("agent" as const) : ("you" as const),
       question: null,
-      blocks: [{ type: "paragraph" as const, id: `b${i + 1}`, text: { standard: m.text }, citations: [] as never[] }],
-      level: "standard" as const,
+      blocks: [{ type: "paragraph" as const, id: `b${i + 1}`, text: m.text, citations: [] as never[] }],
       revision: 1,
       undoStack: [],
       ...(m.suggested ? { suggested: true } : {}),
@@ -43,7 +42,7 @@ function comment(id: string, host: Thread["anchor"]["host"], messages: MsgLike[]
 
 function snapshot(): ReviewSnapshot {
   return {
-    review: { id: "rv_214", repoId: "r", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
+    review: { id: "rv_214", repoId: "r", branch: "b", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: 0 },
     version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
     files: [
       {
@@ -74,10 +73,9 @@ function snapshot(): ReviewSnapshot {
           {
             id: "problem",
             title: "The problem",
-            level: "standard",
             revision: 1,
             collapsed: false,
-            blocks: [{ type: "paragraph", id: "b1", text: { standard: GUIDE_TEXT }, citations: [] }],
+            blocks: [{ type: "paragraph", id: "b1", text: GUIDE_TEXT, citations: [] }],
             secondOpinions: [],
           } as unknown as ReviewSnapshot["pages"][number]["cards"][number],
         ],

@@ -167,7 +167,7 @@ describe("resolveSelectionHost inside AI-suggested comments (issue #163)", () =>
   function seedSuggested(): void {
     useReview.getState().clear();
     useReview.getState().setSnapshot({
-      review: { id: "r", repoId: "r", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
+      review: { id: "r", repoId: "r", branch: "b", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: 0 },
       version: { n: 1, headSha: "a", mergeBaseSha: "b", baseRef: "main", fetchedAt: 0, idMapping: {} },
       files: [],
       pages: [],
@@ -232,7 +232,7 @@ function seedConversationCard(): void {
   const card: Thread = {
     id: "ann_1",
     type: "thread",
-    replies: [{ id: "ans_9", seq: 1, kind: "ask" as const, who: "agent" as const, question: null, blocks: [], level: "standard", revision: 1, undoStack: [] }],
+    replies: [{ id: "ans_9", seq: 1, kind: "ask" as const, who: "agent" as const, question: null, blocks: [], revision: 1, undoStack: [] }],
     anchor: {
       host: { kind: "diff-line", fileKey: "conn", line: 91 },
       quotedText: "code",
@@ -247,7 +247,7 @@ function seedConversationCard(): void {
   };
   useReview.getState().clear();
   useReview.getState().setSnapshot({
-    review: { id: "r", repoId: "x", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
+    review: { id: "r", repoId: "x", branch: "b", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: 0 },
     version: { n: 1, headSha: "a", mergeBaseSha: "b", baseRef: "main", fetchedAt: 0, idMapping: {} },
     files: [],
     pages: [],

@@ -31,7 +31,7 @@ import {
   type PromptReviewSnapshot,
 } from "../src/context/index.js";
 import { createApp } from "../src/server.js";
-import { buildUpdateVariables } from "../src/versions/update.js";
+import { buildExplainVariables } from "../src/versions/explain.js";
 
 // --- synthetic snapshots -------------------------------------------------
 
@@ -276,8 +276,10 @@ async function makeBigReview(
     }
   }
   const snap: ReviewSnapshot = {
-    review: { id, repoId: "demo", branch: "main", versions: [], currentVersion: 1, createdAt: Date.now() },
+    review: { id, repoId: "demo", branch: "main", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: Date.now() },
     version: { n: 1, headSha: "abc1234def5678abc1234def5678abc1234def5", mergeBaseSha: "0000000", baseRef: "main", fetchedAt: Date.now(), idMapping: {} },
+    // Issue #421: the fixture guide describes this head.
+    guideHead: { version: 1, sha: "abc1234def5678abc1234def5678abc1234def5" },
     files,
     ingest: { status: "ready" },
     pages: [
@@ -292,14 +294,13 @@ async function makeBigReview(
             id: `c${i}`,
             pageId: "root",
             title: `Card ${i}`,
-            level: "standard",
             collapsed: false,
             revision: 1,
             blocks: [
               {
                 type: "paragraph",
                 id: `b${i}`,
-                text: { standard: `See [[${target}]]` },
+                text: `See [[${target}]]`,
                 citations: [{ target }],
               },
             ],
@@ -388,14 +389,13 @@ describe("top-N auto hunk summaries (#376)", () => {
             id: `c${i}`,
             pageId: "root",
             title: `Card ${i}`,
-            level: "standard",
             collapsed: false,
             revision: 1,
             blocks: [
               {
                 type: "paragraph",
                 id: `b${i}`,
-                text: { standard: `See [[h:${byHash.get(hash)?.fileKey}:${hash}]]` },
+                text: `See [[h:${byHash.get(hash)?.fileKey}:${hash}]]`,
                 citations: [{ target: `h:${byHash.get(hash)?.fileKey}:${hash}` }],
               },
             ],
@@ -459,8 +459,10 @@ describe("top-N auto hunk summaries (#376)", () => {
       };
     });
     const snap: ReviewSnapshot = {
-      review: { id, repoId: "demo", branch: "main", versions: [], currentVersion: 1, createdAt: Date.now() },
+      review: { id, repoId: "demo", branch: "main", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: Date.now() },
       version: { n: 1, headSha: "abc1234def5678abc1234def5678abc1234def5", mergeBaseSha: "0000000", baseRef: "main", fetchedAt: Date.now(), idMapping: {} },
+      // Issue #421: the fixture guide describes this head.
+      guideHead: { version: 1, sha: "abc1234def5678abc1234def5678abc1234def5" },
       files: reviewFiles,
       ingest: { status: "ready" },
       pages: [],
@@ -735,7 +737,7 @@ describe("assembled base message cap (#107)", () => {
   });
 });
 
-describe("update-pass changed hunks cap (#107)", () => {
+describe("explain-pass X hunks cap (#107)", () => {
   it("truncates thousands of changed hunks with a notice instead of overflowing", async () => {
     const agents = new FakeAgentRunner([]);
     const { app, ctx } = await demoApp(agents);
@@ -745,7 +747,6 @@ describe("update-pass changed hunks cap (#107)", () => {
       const snap = ctx.reviews.getSnapshot(id)!;
       await ctx.reviews.mutate(id, (draft) => {
         draft.versionStatus = {
-          stale: true,
           fromVersion: 1,
           toVersion: 2,
           unchangedHunks: 0,
@@ -759,23 +760,30 @@ describe("update-pass changed hunks cap (#107)", () => {
             const n = Number(h.slice(2));
             return `h:f${Math.floor(n / 25)}:${h}`;
           }),
-          rangeDiff: "",
           fetchedAt: Date.now(),
         };
       });
-      const vars = buildUpdateVariables(ctx.reviews.getSnapshot(id) ?? snap, { capTokens: 3000 });
-      expect(charTokenEstimator.estimateTokens(vars.changed_hunks)).toBeLessThanOrEqual(3000);
-      expect(vars.changed_hunks).toContain("omitted to fit");
-      expect(vars.changed_hunks).toContain("get_hunk");
+      const live = ctx.reviews.getSnapshot(id) ?? snap;
+      const since = {
+        added: [],
+        // hunk n lives in file floor(n/25): the `h:` id must match.
+        changed: hashes.map((h) => {
+          const n = Number(h.slice(2));
+          return `h:f${Math.floor(n / 25)}:${h}`;
+        }),
+      };
+      const vars = buildExplainVariables(live, since, { capTokens: 3000 });
+      expect(charTokenEstimator.estimateTokens(vars.x_hunks)).toBeLessThanOrEqual(3000);
+      expect(vars.x_hunks).toContain("omitted to fit");
+      expect(vars.x_hunks).toContain("get_hunk");
       // Under the default cap the same 1,200 hunks fit whole: no notice.
-      const whole = buildUpdateVariables(ctx.reviews.getSnapshot(id) ?? snap);
-      expect(whole.changed_hunks).not.toContain("omitted to fit");
-      expect(whole.changed_hunks).toContain("h:f47:hx1199");
+      const whole = buildExplainVariables(live, since);
+      expect(whole.x_hunks).not.toContain("omitted to fit");
+      expect(whole.x_hunks).toContain("h:f47:hx1199");
       // The assembled variables stay under the cap together.
       const totalVars =
-        charTokenEstimator.estimateTokens(whole.changed_hunks) +
-        charTokenEstimator.estimateTokens(whole.stale_cards) +
-        charTokenEstimator.estimateTokens(whole.findings);
+        charTokenEstimator.estimateTokens(whole.x_hunks) +
+        charTokenEstimator.estimateTokens(whole.x_context);
       expect(totalVars).toBeLessThanOrEqual(DEFAULT_BASE_PROMPT_CAP_TOKENS);
     } finally {
       await app.close();

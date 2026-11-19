@@ -3,10 +3,10 @@
  *
  * With the replay runner and scripted fakes: every action over HTTP
  * (`POST /api/reviews/:id/actions`) on the demo review, asserting the
- * patches and final state — depth round-trip without a second agent
- * call, undo preserving annotations, promote, close-keeps-answer, dedupe,
- * ask follow-up reusing the session, malformed reply and retryable-error
- * paths, concurrent actions on different cards.
+ * patches and final state — slower presses stacking with the fake
+ * runner, undo preserving annotations, promote, close-keeps-answer,
+ * dedupe, ask follow-up reusing the session, malformed reply and
+ * retryable-error paths, concurrent actions on different cards.
  */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,7 +17,7 @@ import { NO_AGENT_MESSAGE } from "../src/agent/none.js";
 import { ReplayAgentRunner } from "../src/replay/runner.js";
 import { createApp } from "../src/server.js";
 import { precheckD2Source } from "../src/diagrams/precheck.js";
-import { applyUndo, insertExamples, mergeDepthText, pushUndo, type CardTarget } from "../src/interaction/cards.js";
+import { applyUndo, insertExamples, pushUndo, replaceSlowerBody, type CardTarget } from "../src/interaction/cards.js";
 import {
   getInteractionHandler,
   setInteractionHandler,
@@ -77,10 +77,10 @@ const VALID_EXPLAIN = `An explanation with no citations.
 
 
 
-const VALID_DEPTH_SIMPLE = `A simpler problem paragraph.
+const VALID_SLOWER = `A slower problem paragraph, with the skipped step filled in.
 
 \`\`\`json
-{"depth": {"level": "simple", "cardId": "problem"}}
+{"slower": {"cardId": "problem"}}
 \`\`\`
 `;
 
@@ -298,7 +298,7 @@ describe("M4 actions on the demo review (replay)", () => {
     }
   });
 
-  it("depth fills via agent, then round-trips instantly from cache (no second agent call)", { timeout: 60000 }, async () => {
+  it("slower presses stack through the agent; undo steps back", { timeout: 60000 }, async () => {
     const agents = replay();
     const { app, ctx } = await createApp("tok", { agents });
     try {
@@ -307,30 +307,48 @@ describe("M4 actions on the demo review (replay)", () => {
         const s = ctx.reviews.getSnapshot(id);
         return !!s?.pages.find((p) => p.id === "root")?.cards.find((c) => c.id === "central")?.blocks.length;
       });
+      const centralId = "central";
+      const centralText = (): string =>
+        ctx
+          .reviews.getSnapshot(id)!
+          .pages.find((p) => p.id === "root")!
+          .cards.find((c) => c.id === centralId)!.blocks.filter((b) => b.type === "paragraph")
+          .map((b) => (b as { text: string }).text)
+          .join("\n\n");
+      const before = centralText();
       const promptsBefore = agents.prompts.length;
 
-      // Issue #341: the re-recorded reader carries standard text only, so
-      // the first leg fills via the agent (depth recording central:simple).
-      const down = await postAction(app, id, { kind: "depth", cardId: "central", direction: "simpler" });
-      expect(down.status).toBe(200);
-      expect(down.json.jobId).toBeDefined();
-      await waitForJob(ctx, down.json.jobId as string);
-      const promptsAfterFill = agents.prompts.length;
-      expect(promptsAfterFill).toBeGreaterThan(promptsBefore);
-      expect(ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "central")!.level).toBe(
-        "simple",
-      );
+      // First press rewrites via the agent (slower recording central:1).
+      const first = await postAction(app, id, { kind: "slower", cardId: centralId });
+      expect(first.status).toBe(200);
+      expect(first.json.jobId).toBeDefined();
+      await waitForJob(ctx, first.json.jobId as string);
+      const promptsAfterFirst = agents.prompts.length;
+      expect(promptsAfterFirst).toBeGreaterThan(promptsBefore);
+      // The prompt carries the card's current text.
+      expect(agents.prompts[agents.prompts.length - 1].text).toContain("The central idea");
+      const afterFirst = centralText();
+      expect(afterFirst).not.toBe(before);
+      expect(afterFirst).toContain("obs-fold");
 
-      // The way back is cached: instant, no agent call (PRD §4.4).
-      const up = await postAction(app, id, { kind: "depth", cardId: "central", direction: "deeper" });
-      expect(up.status).toBe(200);
-      expect(up.json.jobId).toBeUndefined();
-      const central = ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "central")!;
-      expect(central.level).toBe("standard");
+      // Second press stacks on the rewrite (slower recording central:2).
+      const second = await postAction(app, id, { kind: "slower", cardId: centralId });
+      expect(second.status).toBe(200);
+      expect(second.json.jobId).toBeDefined();
+      await waitForJob(ctx, second.json.jobId as string);
+      expect(agents.prompts.length).toBeGreaterThan(promptsAfterFirst);
+      // The second prompt carries the first rewrite.
+      expect(agents.prompts[agents.prompts.length - 1].text).toContain("swaps each match it finds for a single space");
+      const afterSecond = centralText();
+      expect(afterSecond).not.toBe(afterFirst);
+      const central = ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === centralId)!;
       expect(central.revision).toBeGreaterThanOrEqual(3);
       expect(central.undoStack.length).toBe(2);
-      // Switching back cost no agent call.
-      expect(agents.prompts.length).toBe(promptsAfterFill);
+
+      // Undo steps back through the presses.
+      const undo = await postAction(app, id, { kind: "undo", cardId: centralId });
+      expect(undo.status).toBe(200);
+      expect(centralText()).toBe(afterFirst);
     } finally {
       await app.close();
     }
@@ -393,6 +411,9 @@ describe("M4 actions on the demo review (replay)", () => {
   it("followup answers under the suggestion and consumes it; concept pages fill from a stub", { timeout: 90000 }, async () => {
     const { app, ctx } = await createApp("tok", { agents: replay() });
     try {
+      // g-alt is a go-deeper card: written automatically only with the
+      // setting on (off by default, #389).
+      ctx.settings.update({ autoGoDeeper: true });
       const id = await createDemoReview(app);
       // Issue #341: the re-recorded guide's g-alt card carries
       // 3 follow-ups (not 2).
@@ -497,7 +518,7 @@ describe("M4 actions on the demo review (replay)", () => {
     }
   });
 
-  it("interaction log: explain/depth/example land with the right scope; closed threads settle", { timeout: 120000 }, async () => {
+  it("interaction log: explain/slower/example land with the right scope; closed threads settle", { timeout: 120000 }, async () => {
     const { app, ctx } = await createApp("tok", { agents: replay() });
     try {
       const id = await createDemoReview(app);
@@ -511,7 +532,7 @@ describe("M4 actions on the demo review (replay)", () => {
           .logTail.filter(
             (e) =>
               (e.kind === "new-card" && JSON.stringify(e.payload).includes("raw CRLF")) ||
-              e.kind === "depth-rewrite" ||
+              e.kind === "slower-rewrite" ||
               e.kind === "example" ||
               e.kind === "thread-summary",
           );
@@ -528,14 +549,12 @@ describe("M4 actions on the demo review (replay)", () => {
       const newCard = myEntries().find((e) => e.kind === "new-card")!;
       expect(newCard.scope).toEqual({ scope: "global" });
 
-      // Depth rewrite via agent → `depth-rewrite`, card scope. g-regex
-      // only carries standard text, so the agent path runs (issue #341:
-      // the re-recorded reader's pending cards replaced g-design).
-      const depth = await postAction(app, id, { kind: "depth", cardId: "g-regex", direction: "simpler" });
-      expect(depth.status).toBe(200);
-      if (depth.json.jobId) await waitForJob(ctx, depth.json.jobId as string);
-      await waitFor(() => myEntries().some((e) => e.kind === "depth-rewrite"));
-      const rewrite = myEntries().find((e) => e.kind === "depth-rewrite")!;
+      // Slower rewrite via agent → `slower-rewrite`, card scope.
+      const slower = await postAction(app, id, { kind: "slower", cardId: "g-regex" });
+      expect(slower.status).toBe(200);
+      if (slower.json.jobId) await waitForJob(ctx, slower.json.jobId as string);
+      await waitFor(() => myEntries().some((e) => e.kind === "slower-rewrite"));
+      const rewrite = myEntries().find((e) => e.kind === "slower-rewrite")!;
       expect(rewrite.scope).toEqual({ scope: "card", cardId: "g-regex" });
 
       // Examples → `example`, card scope.
@@ -806,9 +825,9 @@ describe("M4 failure paths (scripted fakes)", () => {
     }
   });
 
-  it("depth via agent fills the level; concurrent actions on different cards", { timeout: 90000 }, async () => {
+  it("slower via agent rewrites the text; concurrent actions on different cards", { timeout: 90000 }, async () => {
     const agents = fakeWith([
-      { match: "# Depth rewrite", events: textEvents(VALID_DEPTH_SIMPLE) },
+      { match: "# Help me understand", events: textEvents(VALID_SLOWER) },
       { match: "# Examples", events: textEvents(VALID_EXAMPLES) },
     ]);
     const { app, ctx } = await createApp("tok", { agents });
@@ -816,22 +835,31 @@ describe("M4 failure paths (scripted fakes)", () => {
       const id = await createDemoReview(app);
       await waitFor(() => !!ctx.reviews.getSnapshot(id)?.pages.find((p) => p.id === "root")?.cards.length);
 
-      // The fake reader only wrote standard text: depth needs the agent.
-      const depth = await postAction(app, id, { kind: "depth", cardId: "problem", direction: "simpler" });
-      expect(depth.status).toBe(200);
-      expect(depth.json.jobId).toBeTruthy();
-      await waitForJob(ctx, depth.json.jobId as string);
-      const simple = ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "problem")!;
-      expect(simple.level).toBe("simple");
+      // A slower press rewrites the card via the agent.
+      const before = ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "problem")!;
+      const beforeText = before.blocks.filter((b) => b.type === "paragraph").map((b) => (b as { text: string }).text).join(" ");
+      const slower = await postAction(app, id, { kind: "slower", cardId: "problem" });
+      expect(slower.status).toBe(200);
+      expect(slower.json.jobId).toBeTruthy();
+      await waitForJob(ctx, slower.json.jobId as string);
+      const rewritten = ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "problem")!;
+      const afterText = rewritten.blocks.filter((b) => b.type === "paragraph").map((b) => (b as { text: string }).text).join(" ");
+      expect(afterText).not.toBe(beforeText);
+      expect(afterText).toContain("A slower problem paragraph");
 
-      // Concurrent actions on different cards stay independent.
-      const [a, b, c] = await Promise.all([
+      // Concurrent examples on different cards stay independent — and a
+      // later examples press still inserts onto a wholesale-rewritten
+      // body (issue #398: same-card writes are last-writer-wins, so the
+      // slower press settles before the concurrent examples pair).
+      const slowCentral = await postAction(app, id, { kind: "slower", cardId: "central" });
+      expect(slowCentral.status).toBe(200);
+      if (slowCentral.json.jobId) await waitForJob(ctx, slowCentral.json.jobId as string);
+      const [a, b] = await Promise.all([
         postAction(app, id, { kind: "examples", cardId: "problem" }),
         postAction(app, id, { kind: "examples", cardId: "central" }),
-        postAction(app, id, { kind: "depth", cardId: "central", direction: "simpler" }),
       ]);
-      expect([a.status, b.status, c.status]).toEqual([200, 200, 200]);
-      for (const r of [a, b, c]) {
+      expect([a.status, b.status]).toEqual([200, 200]);
+      for (const r of [a, b]) {
         if (r.json.jobId) await waitForJob(ctx, r.json.jobId as string);
       }
       const snap = ctx.reviews.getSnapshot(id)!;
@@ -839,7 +867,6 @@ describe("M4 failure paths (scripted fakes)", () => {
       const central = snap.pages.find((p) => p.id === "root")!.cards.find((x) => x.id === "central")!;
       expect(problem.blocks.filter((x) => x.type === "aside").length).toBe(2);
       expect(central.blocks.filter((x) => x.type === "aside").length).toBe(2);
-      expect(central.level).toBe("simple");
     } finally {
       await app.close();
     }
@@ -957,6 +984,7 @@ describe("M4 actions under UNVIBE_AGENT=none", () => {
         if (ev.type === "patch") patches.push(ev);
       });
       const base = JSON.parse(JSON.stringify(ctx.reviews.getSnapshot(id)!)) as ReviewSnapshot;
+      const centralBefore = base.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "central")!;
       const diff = firstDiffLine(ctx.reviews.getSnapshot(id)!);
 
       const note = await postAction(app, id, {
@@ -969,8 +997,8 @@ describe("M4 actions under UNVIBE_AGENT=none", () => {
       const noteId = note.json.annotationId as string;
 
       expect((await postAction(app, id, { kind: "collapse", cardId: "central", collapsed: true })).status).toBe(200);
-      // Issue #341: depth now needs an agent (reader carries standard text
-      // only), so the non-agent chain toggles collapse instead.
+      // Slower rewrites need an agent, so the non-agent chain toggles
+      // collapse instead.
       expect((await postAction(app, id, { kind: "collapse", cardId: "central", collapsed: false })).status).toBe(200);
       expect((await postAction(app, id, { kind: "close", annotationId: noteId })).status).toBe(200);
       const note2 = await postAction(app, id, {
@@ -981,7 +1009,10 @@ describe("M4 actions under UNVIBE_AGENT=none", () => {
       expect((await postAction(app, id, { kind: "delete", targetId: note2.json.annotationId as string })).status).toBe(200);
 
       const snap = ctx.reviews.getSnapshot(id)!;
-      expect(snap.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "central")!.level).toBe("standard");
+      // Failed agent actions leave the card alone: same revision as setup.
+      expect(snap.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "central")!.revision).toBe(
+        centralBefore.revision,
+      );
       expect(snap.annotations.find((a) => a.id === noteId)!.open).toBe(false);
       expect(snap.annotations.some((a) => a.id === (note2.json.annotationId as string))).toBe(false);
       unsub();
@@ -1060,15 +1091,15 @@ describe("M4 actions under UNVIBE_AGENT=none", () => {
       expect(expansion.error).toContain("no agent configured");
 
       // Card rewrites needing generation fail fast with the message in
-      // the response; the card is unchanged (issue #341: g-design left
-      // with the old reader's pending cards; g-regex is standard-only).
-      const depth = await postAction(app, id, { kind: "depth", cardId: "g-regex", direction: "simpler" });
-      expect(depth.status).toBe(500);
-      expect(String(depth.json.error)).toContain("no agent configured");
-      expect(depth.json.code).toBe("no-agent");
+      // the response; the card is unchanged.
+      const gRegexBefore = ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "g-regex")!.revision;
+      const slower = await postAction(app, id, { kind: "slower", cardId: "g-regex" });
+      expect(slower.status).toBe(500);
+      expect(String(slower.json.error)).toContain("no agent configured");
+      expect(slower.json.code).toBe("no-agent");
       expect(
-        ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "g-regex")!.level,
-      ).toBe("standard");
+        ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!.cards.find((c) => c.id === "g-regex")!.revision,
+      ).toBe(gRegexBefore);
 
       const examples = await postAction(app, id, { kind: "examples", cardId: "central" });
       expect(examples.status).toBe(500);
@@ -1103,7 +1134,7 @@ describe("M4 interaction pure logic", () => {
   });
 
   it("insertExamples never duplicates; applyUndo restores without touching annotations", () => {
-    const para = { type: "paragraph", id: "b1", text: { standard: "hi" }, citations: [] };
+    const para = { type: "paragraph", id: "b1", text: "hi", citations: [] };
     const aside = {
       type: "aside",
       id: "b2",
@@ -1120,21 +1151,20 @@ describe("M4 interaction pure logic", () => {
       id: "c",
       pageId: "root",
       title: null,
-      level: "standard",
       collapsed: false,
       revision: 1,
       blocks: first.blocks,
-      undoStack: [{ blocks: [para], level: "standard" as const }],
+      undoStack: [{ blocks: [para] as const }],
     };
     expect(applyUndo({ kind: "page-card", pageId: "root", card } as never)).toBe(true);
     expect(card.blocks).toHaveLength(1);
   });
 
-  it("second opinions and accepted corrections survive depth rewrites and undo", () => {
-    const para = (id: string, standard: string, extra: Record<string, string> = {}): ParagraphBlock => ({
+  it("slower replaces the body wholesale; undo restores the exact previous blocks", () => {
+    const para = (id: string, text: string): ParagraphBlock => ({
       type: "paragraph",
       id,
-      text: { standard, ...extra },
+      text,
       citations: [],
     });
     const corr = para("b-corr-ct_1", "Accepted suggestion (from ct_1): use spaces.");
@@ -1142,33 +1172,34 @@ describe("M4 interaction pure logic", () => {
       id: "central",
       pageId: "root",
       title: "The central change",
-      level: "standard",
       collapsed: false,
       revision: 2,
-      blocks: [para("b1", "Body one.", { simple: "Simple one." }), corr],
+      blocks: [para("b1", "Body one."), corr],
       undoStack: [],
     };
     const target: CardTarget = { kind: "page-card", pageId: "root", card };
 
-    // Agent depth rewrite with a correction paragraph present: the merge
-    // fills per-level text positionally and never drops blocks.
-    const reply = [para("b1", "Ignored standard.", { simple: "Fresh simple one." })];
-    pushUndo(target, [...card.blocks], "standard");
-    const merged = mergeDepthText(card.blocks, reply, "simple");
-    card.blocks = merged;
-    card.level = "simple";
+    // Issue #398: the reply's parsed blocks become the body, wholesale —
+    // including blocks the card never had, and dropping blocks the reply
+    // does not echo (the correction survives only when the agent carries
+    // it, since it rides the prompt's card text).
+    const reply = [para("n1", "Fresh slower one."), para("b-corr-ct_1", "Accepted suggestion (from ct_1): use two spaces.")];
+    pushUndo(target, [...card.blocks]);
+    card.blocks = replaceSlowerBody(card.blocks, reply);
     card.revision += 1;
-    expect(card.blocks.map((b) => b.id)).toEqual(["b1", "b-corr-ct_1"]);
-    const firstBlock = card.blocks[0];
-    const secondBlock = card.blocks[1];
+    expect(card.blocks.map((b) => b.id)).toEqual(["n1", "b-corr-ct_1"]);
+    const blocks = card.blocks;
+    const firstBlock = blocks[0];
+    const secondBlock = blocks[1];
     if (firstBlock?.type !== "paragraph" || secondBlock?.type !== "paragraph") throw new Error("expected paragraphs");
-    expect(firstBlock.text.simple).toBe("Fresh simple one.");
-    expect(secondBlock.text.standard).toContain("Accepted suggestion");
+    expect(firstBlock.text).toBe("Fresh slower one.");
+    expect(secondBlock.text).toContain("Accepted suggestion");
 
-    // Undo restores the pre-rewrite blocks; corrections ride along
-    // (annotations live outside cards regardless).
+    // Undo restores the exact pre-rewrite blocks.
     expect(applyUndo(target)).toBe(true);
-    expect(card.level).toBe("standard");
     expect(card.blocks.map((b) => b.id)).toEqual(["b1", "b-corr-ct_1"]);
+    const undone = card.blocks[1];
+    if (undone?.type !== "paragraph") throw new Error("expected paragraph");
+    expect(undone.text).toContain("use spaces.");
   });
 });

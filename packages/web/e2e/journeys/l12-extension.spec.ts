@@ -22,6 +22,8 @@
  *
  * Guards kept: #322 (button starts the review, confirm flow intact);
  * #333 (one conversation button, no duplicates, quiet failure);
+ * #410 (new PR Overview PageHeader: one button in PH_Actions across
+ * tab switches, never in the sticky mini-header);
  * extension origin + token gate (403 on unknown origin for pr-status,
  * open and the create-or-open endpoint; pinned origin allowed);
  * network privacy (github.com routed locally, no non-local page
@@ -41,6 +43,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { cpuThrottleFromEnv } from "../cpu-throttle.js";
+import { pageHeaderBody, pageHeaderFixtureHtml } from "../extension-pageheader-fixture.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import {apiJson, git, makeScratchRepo, realGitPath, writeFakeGitOffline, writeFakeShell, fakeServicePath} from "./journey-helpers.js";
 
@@ -118,6 +121,25 @@ const CLASSIC_SWAP_BODY = `<div class="gh-header">
 </div>
 <main><p>Fixture PR body. Served locally; github.com is routed here.</p></main>`;
 
+// #392: the open review dialog shares the page with the PR header. Its
+// made-up markup carries everything the removed fallbacks keyed off — a
+// heading and a "Code"-like button — so only a header-only anchor keeps
+// the button out of it.
+const DIALOG_HTML = `<div role="dialog" aria-label="Finish your review">
+  <div class="dialog-header"><h1>Finish your review</h1><button type="button" aria-label="Close">\u00d7</button></div>
+  <div class="dialog-body"><button type="button">Code</button> <button type="button">Comment</button></div>
+</div>`;
+
+// #392: page with no PR-header hook at all — a heading, a "Code"
+// button and a container, but no PR title hook and no header hook.
+// The removed fallbacks would have anchored here; now there is no button.
+const NO_HOOK_BODY = `<main><div><h1>Some other tab</h1><div role="group"><button type="button">Code</button></div></div></main>`;
+
+// #392: SSO re-authentication screen served under a PR URL: a heading,
+// a form and buttons, but no PR title/state header. The URL matches a
+// PR page, so only the title-hook gate keeps the button away.
+const SSO_BODY = `<main><div class="sso-page"><h1>Single sign-on required</h1><p>Your session expired. Sign in again to continue.</p><form><label>Username <input type="text" name="user"></label> <button type="submit">Verify</button> <button type="button">Cancel</button></form></div></main>`;
+
 function writeFakeGh(binDir: string, logDir: string, repoDir: string): void {
   const script = `#!/bin/sh
 LOG="${logDir}"
@@ -171,7 +193,7 @@ async function startOnExtensionPort(
 }
 
 // The extension flows drive their own contexts; each created page gets the
-// shared throttle hook (one throttled core in `test:affected`, #363 §6).
+// shared throttle hook (`UNVIBE_E2E_CPU_THROTTLE`, set when reproducing a flake).
 
 test.describe("L12 extension PR button", () => {
   let repoDir = "";
@@ -382,8 +404,9 @@ test.describe("L12 extension PR button", () => {
       );
       expect(await button.evaluate((el) => getComputedStyle(el).color)).toBe("rgb(255, 255, 255)");
 
-      // Turbo-style morph drops the data attribute: the ARIA/structure
-      // hooks still land the same single button in the header actions.
+      // Turbo-style morph drops the data attribute: with no header hook
+      // the button is left where it is (#392) — still one, still in the
+      // header actions, never moved elsewhere.
       await page.evaluate(() => {
         document.querySelector("[data-testid]")?.removeAttribute("data-testid");
       });
@@ -415,6 +438,164 @@ test.describe("L12 extension PR button", () => {
       }, CONVERSATION_BODY);
       await expect(button).toBeVisible({ timeout: 30_000 });
       expect(await page.locator("#unvibe-review-button").count()).toBe(1);
+
+      expect(errors).toEqual([]);
+    } finally {
+      await ctx.close().catch(() => {});
+      rmSync(profileDir, { recursive: true, force: true });
+    }
+  });
+
+  test("new PR Overview layout: one button in the PageHeader actions across tab switches (#410)", async () => {
+    test.setTimeout(240_000);
+    const profileDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-l12-410-profile-"));
+    const ctx = await chromium.launchPersistentContext(profileDir, {
+      channel: "chromium",
+      headless: true,
+      ignoreDefaultArgs: ["--disable-extensions"],
+      args: [`--load-extension=${EXTENSION_DIR}`, `--disable-extensions-except=${EXTENSION_DIR}`],
+    });
+    try {
+      await ctx.route("https://github.com/**", async (route) => {
+        await route.fulfill({ status: 200, contentType: "text/html", body: pageHeaderFixtureHtml(OWNER, NAME, PR_NUMBER) });
+      });
+      const page = await ctx.newPage();
+      await cpuThrottleFromEnv(page);
+      const errors: string[] = [];
+      page.on("pageerror", (e) => errors.push(String(e)));
+      await page.goto(`${PR_URL}?overview=true`);
+
+      const inActions = page.locator('[data-component="PageHeader"] [data-component="PH_Actions"] #unvibe-review-button');
+      const sticky = page.locator('[data-testid="diff-comparison-viewer-sticky-header-bar"] #unvibe-review-button');
+      const button = page.locator("#unvibe-review-button");
+
+      // Overview: exactly one button, in the PageHeader actions beside
+      // Preview / Code, never in the sticky mini-header; brand look kept.
+      await expect(inActions).toBeVisible({ timeout: 30_000 });
+      expect(await button.count()).toBe(1);
+      await expect(sticky).toHaveCount(0);
+      await expect(button).toHaveText(/^(Review in Unvibe|Open review|Start Unvibe)$/);
+      expect(await button.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe("rgb(56, 48, 158)");
+      // It sits on the actions row, vertically aligned with GitHub's
+      // buttons (same height, centres within 2px).
+      const [btnBox, codeBox] = await Promise.all([
+        button.boundingBox(),
+        page.locator('[data-component="PH_Actions"] button', { hasText: "Code" }).boundingBox(),
+      ]);
+      expect(btnBox && codeBox).toBeTruthy();
+      expect(Math.abs(btnBox!.y + btnBox!.height / 2 - (codeBox!.y + codeBox!.height / 2))).toBeLessThanOrEqual(2);
+      // Spaced like its neighbours: the gap to the previous action
+      // button equals the gap between GitHub's own buttons.
+      const gaps = await page.locator('[data-component="PH_Actions"] > button').evaluateAll((els) =>
+        els.slice(1).map((el, i) => Math.round(el.getBoundingClientRect().left - els[i].getBoundingClientRect().right)),
+      );
+      expect(new Set(gaps).size).toBe(1);
+
+      // Client-side tab switches re-render the whole header (new nodes)
+      // and change the URL: the button follows into the new PH_Actions,
+      // never duplicates and never lands in the sticky bar.
+      for (const [tab, sub] of [["Files changed", "/files"], ["Commits", "/commits"], ["Overview", "?overview=true"]] as const) {
+        await page.evaluate(
+          ([body, url]) => {
+            history.pushState({}, "", url);
+            document.body.innerHTML = body;
+          },
+          [pageHeaderBody(PR_NUMBER, tab), `${new URL(PR_URL).pathname}${sub}`] as const,
+        );
+        await expect(page.locator('[data-component="PH_Navigation"] [aria-current="page"]')).toHaveText(tab);
+        await expect(inActions).toBeVisible({ timeout: 30_000 });
+        expect(await button.count()).toBe(1);
+        await expect(sticky).toHaveCount(0);
+      }
+
+      // Dark scheme: still one visible button with the brand colours.
+      await page.emulateMedia({ colorScheme: "dark" });
+      await expect(inActions).toBeVisible();
+      expect(await button.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe("rgb(56, 48, 158)");
+      expect(await button.evaluate((el) => getComputedStyle(el).color)).toBe("rgb(255, 255, 255)");
+
+      expect(errors).toEqual([]);
+    } finally {
+      await ctx.close().catch(() => {});
+      rmSync(profileDir, { recursive: true, force: true });
+    }
+  });
+
+  test("dialogs and non-PR pages never host the button (#392)", async () => {
+    test.setTimeout(240_000);
+    const profileDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-l12-392-profile-"));
+    const ctx = await chromium.launchPersistentContext(profileDir, {
+      channel: "chromium",
+      headless: true,
+      ignoreDefaultArgs: ["--disable-extensions"],
+      args: [`--load-extension=${EXTENSION_DIR}`, `--disable-extensions-except=${EXTENSION_DIR}`],
+    });
+    try {
+      // PR page with an open review dialog alongside the header: the
+      // dialog carries a heading and a "Code"-like button, everything
+      // the removed fallbacks keyed off.
+      await ctx.route("https://github.com/**", async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "text/html",
+          body: `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Fix the thing \u00b7 Pull Request #${PR_NUMBER} \u00b7 ${OWNER}/${NAME}</title>
+<style>${CONVERSATION_STYLE}</style></head>
+<body>
+${CONVERSATION_BODY}
+${DIALOG_HTML}
+</body></html>`,
+        });
+      });
+      const page = await ctx.newPage();
+      await cpuThrottleFromEnv(page);
+      const errors: string[] = [];
+      page.on("pageerror", (e) => errors.push(String(e)));
+      await page.goto(PR_URL);
+
+      // The button lands in the page header, none appears in the dialog.
+      const button = page.locator("#unvibe-review-button");
+      await expect(button).toBeVisible({ timeout: 30_000 });
+      expect(await page.locator("#unvibe-review-button").count()).toBe(1);
+      await expect(
+        page.locator('[data-testid="pr-conversation-header-actions"] #unvibe-review-button'),
+      ).toBeVisible();
+      await expect(page.locator('[role="dialog"] #unvibe-review-button')).toHaveCount(0);
+
+      // The dialog opens later (a DOM mutation): the observer must not
+      // move the button or add a second one.
+      await page.evaluate((dialog) => {
+        document.querySelector('[role="dialog"]')?.remove();
+        document.body.insertAdjacentHTML("beforeend", dialog);
+      }, DIALOG_HTML);
+      // Poll for the observer settle: the header button stays put and
+      // stays the only one, never a fixed sleep (#363 B2).
+      await expect(
+        page.locator('[data-testid="pr-conversation-header-actions"] #unvibe-review-button'),
+      ).toBeVisible({ timeout: 30_000 });
+      expect(await page.locator("#unvibe-review-button").count()).toBe(1);
+      await expect(page.locator('[role="dialog"] #unvibe-review-button')).toHaveCount(0);
+
+      // A page with no PR-header hook: no button at all. Absence is
+      // only meaningful after the script had its chance: the content
+      // script debounces on a 250 ms timer, so yield past it (with
+      // throttle margin) and then assert the settled state — polling
+      // for 0 would pass instantly before the script ever ran.
+      await page.evaluate((body) => {
+        document.body.innerHTML = body;
+      }, NO_HOOK_BODY);
+      await page.evaluate(() => new Promise((r) => setTimeout(r, 3000)));
+      expect(await page.locator("#unvibe-review-button").count()).toBe(0);
+
+      // An SSO re-authentication screen served under the same PR URL:
+      // headings, a form and buttons, but no PR title/state header —
+      // the URL match alone must not bring the button back.
+      await page.evaluate((body) => {
+        document.body.innerHTML = body;
+      }, SSO_BODY);
+      await page.evaluate(() => new Promise((r) => setTimeout(r, 3000)));
+      expect(await page.locator("#unvibe-review-button").count()).toBe(0);
+      expect(page.url()).toBe(PR_URL);
 
       expect(errors).toEqual([]);
     } finally {

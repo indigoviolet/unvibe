@@ -7,7 +7,7 @@ variables: [direction, glossary]
 # Go deeper
 
 The reader asked to generate one of the review's placeholder cards. Write
-its content at standard depth.
+its content.
 
 ## Direction
 
@@ -31,9 +31,8 @@ the review. It tells you what the card must cover and why it matters.
 - Explain, do not just restate: where the direction touches a decision,
   cover what was chosen, what else was possible, why this one and what
   it costs — naming an alternative only when it is real for this code,
-  and saying when a reason is inferred. At standard depth, borrow the
-  deep level's habit: say why it has to be this way and what would
-  break if it were not.
+  and saying when a reason is inferred. Say why it has to be this way
+  and what would break if it were not.
 - Every paragraph that states something about the change carries its
   citations. Fetch what you need with `get_hunk` or `get_code` first.
 - If the direction needs a diagram, use a fenced `d2` block per the D2

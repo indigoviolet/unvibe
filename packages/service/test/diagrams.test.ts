@@ -1539,13 +1539,14 @@ describe("real d2 binary", () => {
     return { runner, path: bin.path };
   }
 
-  it("renders the three reference diagrams deterministically", async () => {
+  it("renders the reference diagram deterministically", async () => {
     const real = await realBin();
     if (!real) return;
     const { renderD2Theme, checkD2Source, D2_THEME_LIGHT, D2_THEME_DARK } = await import("../src/diagrams/render.js");
     const { runner } = real;
     const bin = { path: real.path };
-    const sources = ["diagram-central.md", "diagram-buildup.md"].map((f) =>
+    // Issue #405 drops the buildup card, so its diagram recording is gone.
+    const sources = ["diagram-central.md"].map((f) =>
       fs.readFileSync(path.join(fixturesDir, "recordings", f), "utf8"),
     );
     const { parseReply } = await import("@unvibe/shared");
@@ -1758,7 +1759,7 @@ function rootDiagramOf(
 describe("reader inline diagrams (#145)", () => {
   it("splitFinalizedBlocks restores the per-card split, extras to the last card", async () => {
     const { splitFinalizedBlocks } = await import("../src/pipeline/apply.js");
-    const p = (id: string): ParagraphBlock => ({ type: "paragraph", id, text: { standard: "" }, citations: [] });
+    const p = (id: string): ParagraphBlock => ({ type: "paragraph", id, text: "", citations: [] });
     const dg = (id: string): DiagramBlock => ({ type: "diagram", id, source: "", citations: [] });
     const cards = [
       { title: "The problem", blocks: [p("b1"), dg("b2")] },

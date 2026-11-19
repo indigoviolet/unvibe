@@ -1,10 +1,10 @@
 /**
  * L8 — Personas and providers (#363 package C).
  *
- * The personas area in usage order: built-ins seeded and listed, Clarity
- * following the main model until pinned, add/edit/delete of a custom
+ * The personas area in usage order: built-ins seeded and listed
+ * (exactly Guide and Second opinion), add/edit/delete of a custom
  * persona through the shared inline confirm, a persona run on a card
- * with tabs and a persona-tab Ask, Clarity's run keeping citations,
+ * with tabs and a persona-tab Ask,
  * the model/provider halves (pick a model, effort stays Default; display
  * names on the real service), and the pi provider (pickers, a review run
  * on the fake pi, fallback without pi on PATH, stubs-only probing).
@@ -15,17 +15,17 @@
  * plain service with pi hidden — fixed ports 4529/4530, the j279
  * convention).
  *
- * Absorbs: `j349-personas` (behaviour: built-ins listed, Clarity
- * follows, add/edit/delete; the edit/add form frames → tour),
+ * Absorbs: `j349-personas` (behaviour: built-ins listed; add/edit/delete;
+ * the edit/add form frames → tour),
  * `j349b-personas-variants` (both), `j279-pi` (all 4), the
  * model/provider halves of `j11-settings-combos` (pick a model, effort
  * Default, appearance/repo/reset/access halves stay for package D's L9)
  * and the model-display-names half of `j5-settings-versions` (the rest
  * stays for L9).
  *
- * Guards kept: #349 (built-ins seeded; Second opinion lens + card
- * instruction; Clarity follows main until pinned); #359 (Clarity follows
- * the main model at run time); #346 (persona delete through the shared
+ * Guards kept: #349 (built-ins seeded — exactly Guide and Second opinion;
+ * Second opinion lens + card instruction); #423 (Clarity removed);
+ * #346 (persona delete through the shared
  * inline confirm, with the Escape path); #279/#280 (no test reads or
  * writes the real home: scratch HOME, stub `claude`/`codex`/`pi` first
  * on PATH that answer `--version`; #300 option A: explicit overrides so
@@ -50,7 +50,7 @@
  *
  * Frames removed (tour owns them; package D re-adds): the j349
  * personas-1440-light / edit-form / add-form / delete-confirm shots and
- * the j349b persona-dropdown / persona-version / persona-clarity shots.
+ * the j349b persona-dropdown / persona-version shots.
  * The `checkLayout` sweeps stay (package A convention). No `shot()` or
  * `screenshot` lines remain in the gate.
  */
@@ -123,9 +123,10 @@ test.describe("L8 personas settings", () => {
 
   test("built-ins are seeded and listed", async ({ page }) => {
     const s = service();
-    await test.step("the API seeds the fixed Guide, Second opinion and Clarity", async () => {
+    await test.step("the API seeds exactly the Guide and Second opinion", async () => {
       const list = await personas(s);
-      expect.soft(list).toHaveLength(3);
+      expect.soft(list).toHaveLength(2);
+      expect.soft(list.map((p) => p.id)).toEqual(["guide", "second-opinion"]);
       // Issue #379: the fixed Guide seeds first (the main agent).
       expect.soft(list[0]).toMatchObject({
         id: "guide",
@@ -145,17 +146,12 @@ test.describe("L8 personas settings", () => {
       });
       expect.soft(list[1]!.lens).toContain("second reader");
       expect.soft(list[1]!.cardInstruction).toContain("check its claims against the code");
-      // Issue #359: Clarity follows the Guide's model at run time.
-      expect.soft(list[2]).toMatchObject({
-        id: "clarity",
-        name: "Clarity",
-        followMain: true,
-        enabled: true,
-      });
-      expect.soft(list[2]!.lens).toContain("You are Clarity");
+      // Issue #423 removes the Clarity built-in; issue #405 removed Teach.
+      expect.soft(list.map((p) => p.id)).not.toContain("clarity");
+      expect.soft(list.map((p) => p.id)).not.toContain("teach");
     });
 
-    await test.step("Settings lists all three with their models", async () => {
+    await test.step("Settings lists both with their models", async () => {
       await page.setViewportSize({ width: 1440, height: 900 });
       await gotoPersonas(page, s);
       const guideRow = page.getByTestId("persona-guide");
@@ -166,42 +162,9 @@ test.describe("L8 personas settings", () => {
       await expect.soft(row).toContainText("Second opinion");
       await expect.soft(row).toContainText("codex/gpt-6.1-sol");
       await expect.soft(row.getByTestId("persona-second-opinion-swatch")).toBeVisible();
-      const clarityRow = page.getByTestId("persona-clarity");
-      await expect.soft(clarityRow).toBeVisible();
-      await expect.soft(clarityRow).toContainText("Clarity");
-      await expect.soft(clarityRow).toContainText("Guide's model (claude/claude-opus-5-5)");
+      await expect.soft(page.getByTestId("persona-clarity")).toHaveCount(0);
+      await expect.soft(page.getByTestId("persona-teach")).toHaveCount(0);
       await checkLayout(page, "personas-1440-light");
-    });
-  });
-
-  test("Clarity follows the main model until pinned", async ({ page }) => {
-    test.setTimeout(120_000);
-    const s = service();
-    await page.setViewportSize({ width: 1440, height: 900 });
-    await gotoPersonas(page, s);
-    const row = page.getByTestId("persona-clarity");
-    await expect(row).toBeVisible();
-    await row.getByTestId("persona-clarity-edit").click();
-    await test.step("seeded following main: the box is checked, the pin fields hide", async () => {
-      await expect.soft(page.getByTestId("persona-clarity-lens")).toBeVisible();
-      await expect.soft(page.getByTestId("persona-clarity-follow-main")).toBeChecked();
-      await expect.soft(page.getByTestId("persona-clarity-provider")).toHaveCount(0);
-      await expect.soft(page.getByTestId("persona-clarity-model")).toHaveCount(0);
-    });
-    await test.step("uncheck shows pickers; re-check and save: still following main", async () => {
-      // Uncheck: the provider/model pickers come back (no CLIs on PATH,
-      // so the model list shows the adapter error — the saved pick below
-      // still applies). Re-check and save: still following main.
-      await page.getByTestId("persona-clarity-follow-main").click();
-      await expect.soft(page.getByTestId("persona-clarity-provider")).toBeVisible();
-      await page.getByTestId("persona-clarity-follow-main").click();
-      await expect.soft(page.getByTestId("persona-clarity-provider")).toHaveCount(0);
-      await page.getByTestId("persona-clarity-save").click();
-      await expect.soft(page.getByTestId("persona-clarity-lens")).toHaveCount(0);
-      const list = await personas(s);
-      const clarity = list.find((p) => p.id === "clarity");
-      expect.soft(clarity?.followMain).toBe(true);
-      await expect.soft(row).toContainText("Guide's model (claude/claude-opus-5-5)");
     });
   });
 
@@ -225,7 +188,7 @@ test.describe("L8 personas settings", () => {
       const seed = await personas(s);
       const added = await apiJson(s, "PUT", "/api/settings", { personas: [...seed, custom] });
       expect(added.status).toBe(200);
-      expect((added.json as { personas: PersonaBody[] }).personas).toHaveLength(4);
+      expect((added.json as { personas: PersonaBody[] }).personas).toHaveLength(3);
       await gotoPersonas(page, s);
       const row = page.getByTestId("persona-perf-sceptic");
       await expect.soft(row).toBeVisible({ timeout: 15_000 });
@@ -262,11 +225,11 @@ test.describe("L8 personas settings", () => {
       await page.keyboard.press("Escape");
       await expect.soft(row.getByText("Confirm delete the “Perf sceptic” persona")).toHaveCount(0);
       await expect.soft(row).toBeVisible();
-      // Confirm: the row goes and the API forgets it (both built-ins stay).
+      // Confirm: the row goes and the API forgets it (the built-ins stay).
       await row.getByRole("button", { name: "Delete Perf sceptic" }).click();
       await row.getByRole("button", { name: "Confirm delete the “Perf sceptic” persona" }).click();
       await expect.soft(row).toHaveCount(0);
-      expect.soft((await personas(s)).map((p) => p.id)).toEqual(["guide", "second-opinion", "clarity"]);
+      expect.soft((await personas(s)).map((p) => p.id)).toEqual(["guide", "second-opinion"]);
     });
   });
 
@@ -351,8 +314,6 @@ test.describe("L8 personas settings", () => {
 test.describe("L8 persona runs on cards", () => {
   const PERSONA_ID = "second-opinion";
   const PERSONA_RGB = "14, 124, 134";
-  const CLARITY_ID = "clarity";
-  const CLARITY_RGB = "194, 65, 12";
 
   let dataDir = "";
   let svc: RunningService | null = null;
@@ -381,6 +342,11 @@ test.describe("L8 persona runs on cards", () => {
     dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-l8run-data-"));
     reviewId = createSeededDemoReview(dataDir, "l8run-seed");
     svc = await startService(dataDir, { agent: "replay", label: "l8run" });
+    // Issue #422: the #418 menu needs the Explain-terms gate on.
+    const gate = await apiJson(svc, "PUT", "/api/settings", {
+      experimental: { explainTerms: true, markdownDocs: false },
+    });
+    expect(gate.status).toBe(200);
   });
 
   test.afterAll(async () => {
@@ -458,22 +424,24 @@ test.describe("L8 persona runs on cards", () => {
       expect.soft(clip).not.toContain("[[");
     });
 
-    await test.step("depth on the persona tab rewrites the variant, never the Guide version", async () => {
+    await test.step("Help me understand on the persona tab rewrites the variant, never the Guide version", async () => {
       const tabs = page.locator('[data-testid="versions-central"]');
       const card = page.locator("#C-central");
-      // The depth stepper's dots (not the icons) on the persona tab:
-      // deeper rewrites the variant, never the Guide version.
+      // One icon button (no stepper, no pips) on the persona tab: the
+      // press rewrites the variant, never the Guide version.
       const variantTextBefore = await card.locator(".prose, .lst").first().innerText();
-      await card.getByRole("button", { name: "Deeper" }).click();
+      // Issue #418: the button opens the menu; Simplify is today's press.
+      await card.getByRole("button", { name: "Help me understand" }).click();
+      await page.locator('[data-understand-menu-list="central"]').getByRole("menuitem", { name: "Simplify" }).click();
       const deadline = Date.now() + 90_000;
       for (;;) {
         const variants = await centralVariants(s, reviewId);
-        if (variants[PERSONA_ID]?.level === "deep") break;
-        if (Date.now() > deadline) throw new Error("persona depth never landed");
+        if ((variants[PERSONA_ID]?.revision ?? 0) >= 2) break;
+        if (Date.now() > deadline) throw new Error("persona rewrite never landed");
         await new Promise((r) => setTimeout(r, 500));
       }
-      const afterDepth = (await centralVariants(s, reviewId))[PERSONA_ID]!;
-      expect.soft(afterDepth.revision).toBeGreaterThanOrEqual(2);
+      const afterSlower = (await centralVariants(s, reviewId))[PERSONA_ID]!;
+      expect.soft(afterSlower.revision).toBeGreaterThanOrEqual(2);
       await expect.soft(card.locator(".prose, .lst").first()).not.toHaveText(variantTextBefore, { timeout: 15_000 });
       // Back on Guide: the variant rewrite left it untouched.
       await tabs.locator('[data-version-tab="guide"]').click();
@@ -481,11 +449,11 @@ test.describe("L8 persona runs on cards", () => {
         timeout: 15_000,
       });
       await tabs.locator(`[data-version-tab="${PERSONA_ID}"]`).click();
-      await expect.soft(card).toContainText("CRLF is the framing delimiter", { timeout: 15_000 });
+      await expect.soft(card).toContainText("agree with each other", { timeout: 15_000 });
     });
 
     await test.step("Ask on the persona text stays with the persona and wears its colour", async () => {
-      await selectText(page, "#C-central", "framing delimiter");
+      await selectText(page, "#C-central", "agree with each other");
       await page.locator('#selbar [data-act="ask"]').click();
       const composer = page.locator('#C-central .ithread[data-pending-thread]');
       await expect.soft(composer).toBeVisible({ timeout: 10_000 });
@@ -525,56 +493,13 @@ test.describe("L8 persona runs on cards", () => {
     });
   });
 
-  test("Clarity run on a card: tab with citations intact", async ({ page }) => {
-    test.setTimeout(300_000);
-    const s = service();
-    await openReview(page);
-
-    await test.step("the persona menu lists Clarity beside Second opinion", async () => {
-      const menuButton = page.locator('#C-central [data-persona-menu="central"]');
-      await expect.soft(menuButton).toBeVisible({ timeout: 15_000 });
-      await menuButton.click();
-      const menu = page.locator('[data-persona-menu-list="central"]');
-      await expect.soft(menu).toBeVisible();
-      await expect.soft(menu.locator(`[data-persona-option="${CLARITY_ID}"]`)).toContainText("Clarity");
-      await menu.locator(`[data-persona-option="${CLARITY_ID}"]`).click();
-    });
-
-    await test.step("Clarity stores revision 1 with the rewrite's citations", async () => {
-      const tabs = page.locator('[data-testid="versions-central"]');
-      await expect.soft(tabs).toBeVisible({ timeout: 60_000 });
-      const deadline = Date.now() + 90_000;
-      for (;;) {
-        const variants = await centralVariants(s, reviewId);
-        if (variants[CLARITY_ID]?.blocks.length) break;
-        if (Date.now() > deadline) throw new Error("clarity variant never stored");
-        await new Promise((r) => setTimeout(r, 500));
-      }
-      const stored = (await centralVariants(s, reviewId))[CLARITY_ID]!;
-      expect.soft(stored.revision).toBe(1);
-      expect.soft(stored.error ?? null).toBeNull();
-      expect.soft(JSON.stringify(stored.blocks)).toContain("src-urllib3-connection");
-    });
-
-    await test.step("the Clarity tab shows the rewrite under its own colour border", async () => {
-      const tabs = page.locator('[data-testid="versions-central"]');
-      await tabs.locator(`[data-version-tab="${CLARITY_ID}"]`).click();
-      await expect.soft(tabs.locator(`[data-version-tab="${CLARITY_ID}"]`)).toContainText("Clarity");
-      const card = page.locator("#C-central");
-      await expect.soft(card).toContainText("reads more directly", { timeout: 15_000 });
-      const ring = await card.evaluate((el) => getComputedStyle(el).boxShadow);
-      expect.soft(ring).toContain(CLARITY_RGB);
-      await page.mouse.move(720, 20);
-      await checkLayout(page, "persona-clarity-1440-light");
-    });
-  });
-
   test("Guide model + style lens flow into the next main run", async ({ page }) => {
     test.setTimeout(300_000);
     const s = service();
     // Issue #379: the fixed Guide owns the main model and a writing-style
-    // lens. Editing both, then running depth on the Guide version, must
-    // reach the runner on the Guide's model with the lens up front.
+    // lens. Editing both, then pressing Help me understand on the Guide
+    // version, must reach the runner on the Guide's model with the lens
+    // up front.
     const LENS = "Write with short sentences. No jargon without a gloss.";
 
     await test.step("edit the Guide lens through the Settings UI", async () => {
@@ -617,7 +542,7 @@ test.describe("L8 persona runs on cards", () => {
       });
     });
 
-    await test.step("deeper on the Guide version runs on the Guide model with the lens up front", async () => {
+    await test.step("Help me understand on the Guide version runs on the Guide model with the lens up front", async () => {
       const before = (
         (await apiJson(s, "GET", `/api/jobs?review=${reviewId}`)).json as { jobs: { id: string }[] }
       ).jobs.map((j) => j.id);
@@ -629,32 +554,30 @@ test.describe("L8 persona runs on cards", () => {
         await tabs.locator('[data-version-tab="guide"]').click();
       }
       const card = page.locator("#C-central");
-      await card.getByRole("button", { name: "Deeper" }).click();
-      const deadline = Date.now() + 90_000;
-      for (;;) {
-        const res = await apiJson(s, "GET", `/api/reviews/${reviewId}`);
-        const level = ((res.json as { pages: { cards: { id: string; level: string }[] }[] }).pages ?? [])
-          .flatMap((p) => p.cards)
-          .find((c) => c.id === "central")?.level;
-        if (level === "deep") break;
-        if (Date.now() > deadline) throw new Error("guide depth never landed");
-        await new Promise((r) => setTimeout(r, 500));
-      }
-      // The new depth job ran on the Guide's model…
+      const guideTextBefore = await card.locator(".prose, .lst").first().innerText();
+      // Issue #418: the button opens the menu; Simplify is today's press.
+      await card.getByRole("button", { name: "Help me understand" }).click();
+      await page.locator('[data-understand-menu-list="central"]').getByRole("menuitem", { name: "Simplify" }).click();
+      await expect
+        .soft.poll(
+          async () => card.locator(".prose, .lst").first().innerText(),
+          { timeout: 90_000 },
+        )
+        .not.toBe(guideTextBefore);
+      // The new slower job ran on the Guide's model…
       const after = (await apiJson(s, "GET", `/api/jobs?review=${reviewId}`)).json as {
         jobs: { id: string; kind: string; provider: string; model: string }[];
       };
-      const depth = after.jobs.filter((j) => j.kind === "depth" && !before.includes(j.id)).at(-1);
-      expect(depth).toBeDefined();
-      expect(depth).toMatchObject({ provider: "codex", model: "gpt-6.1-sol", effort: "high" });
+      const slower = after.jobs.filter((j) => j.kind === "slower" && !before.includes(j.id)).at(-1);
+      expect(slower).toBeDefined();
+      expect(slower).toMatchObject({ provider: "codex", model: "gpt-6.1-sol", effort: "high" });
       // …with the lens at the start of the turn and the task rules intact.
-      const full = (await apiJson(s, "GET", `/api/jobs/${depth!.id}`)).json as {
+      const full = (await apiJson(s, "GET", `/api/jobs/${slower!.id}`)).json as {
         job: { promptSnapshot: string; effort: string };
       };
       expect(full.job.effort).toBe("high");
       expect(full.job.promptSnapshot.startsWith(`# Writing style\n\n${LENS}\n\n`)).toBe(true);
-      expect(full.job.promptSnapshot).toContain("# Depth rewrite");
-      await expect.soft(card.locator(".prose, .lst").first()).toContainText("CRLF", { timeout: 15_000 });
+      expect(full.job.promptSnapshot).toContain("# Help me understand");
     });
   });
 });

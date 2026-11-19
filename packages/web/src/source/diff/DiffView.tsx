@@ -30,7 +30,6 @@ import {
   hideLevelStats,
   hunkCategory,
   hunkMatchesFilter,
-  sinceBaselineLabel,
   type HideCategory,
 } from "@unvibe/shared";
 import { api, apiErrorCode } from "../../api/client.js";
@@ -39,13 +38,6 @@ import { Icon } from "../../components/Icon.js";
 import { stripCodeSpans } from "../../components/inlineCode.js";
 import { toast } from "../../floating/Toast.js";
 import { useReview } from "../../state/store.js";
-import {
-  statusToBanner,
-  VersionBanner,
-  type BannerCounts,
-} from "../../versions/VersionBanner.js";
-import { useReviewVersion } from "../../versions/useReviewVersion.js";
-import { useRefresh } from "../../versions/useRefresh.js";
 import { FileSection, type DiffViewMode, type HunkActions, type HunkUiState } from "./FileSection.js";
 import { Button, DiffStat } from "../../ui/index.js";
 import {
@@ -53,13 +45,13 @@ import {
   filterFiles,
   hunkOverlaps,
   hunkPlotVisible,
-  hunkVisibleId,
   shouldHideHunk,
   tailPathParts,
   type TreeRow,
 } from "./diffLogic.js";
 import { useGithubThreads } from "../../comments/GithubThreads.js";
 import { useLineSlots, type LineSlots } from "./lineSlots.js";
+import { resolveHunkTarget } from "../../guide/citations.js";
 import {
   observeDiffPinned,
   onRevealSource,
@@ -156,17 +148,12 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [highlight, setHighlight] = useState<Highlight | null>(null);
   const [fileHighlight, setFileHighlight] = useState<string | null>(null);
-  // #241: the Refresh button lives in the review top bar now; its banner
-  // state is shared (see `versions/refreshStore.ts`) so the "new commits
-  // available" UI still renders here.
-  const { banner, clearBanner } = useRefresh(reviewId);
   const [eagerFiles, setEagerFiles] = useState<ReadonlySet<string>>(new Set());
   // Reviews without readable file content (issue #133: the service
   // answers `no-content`, e.g. the demo) hide every expansion control
   // instead of showing load errors. One probe per review, decided by the
   // service — never by "is demo".
   const [noContent, setNoContent] = useState(false);
-  const versionParam = useReviewVersion();
   const [briefs, setBriefs] = useState<Record<string, string> | null>(null);
   const hlTimer = useRef<number | undefined>(undefined);
   const ctxSlots = useLineSlots();
@@ -220,13 +207,12 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
   }, [reviewId, storedFilterKey, snapshot?.diffFilter]);
 
   // Snapshot: the guide column fetches it too; fetch here when absent so the
-  // diff pane works standalone (tests, deep links). `?version=n` views an
-  // older version read-only (PRD §8).
+  // diff pane works standalone (tests, deep links).
   useEffect(() => {
     if (snapshot) return;
     let cancelled = false;
     api
-      .review(reviewId, versionParam)
+      .review(reviewId)
       .then((snap) => {
         if (!cancelled) setSnapshot(snap);
       })
@@ -236,7 +222,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
     return () => {
       cancelled = true;
     };
-  }, [reviewId, versionParam, snapshot, setSnapshot]);
+  }, [reviewId, snapshot, setSnapshot]);
 
   // Content probe (issue #133): hide expansion where the review has no
   // file content to read. Only `no-content` hides; any other outcome
@@ -260,16 +246,6 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
       cancelled = true;
     };
   }, [reviewId, probeHead, probePath]);
-
-  const onUpdated = useCallback(async () => {
-    clearBanner();
-    try {
-      setSnapshot(await api.review(reviewId));
-      toast("Review updated");
-    } catch {
-      toast("Updated. Reload the page to see it.");
-    }
-  }, [reviewId, setSnapshot, clearBanner]);
 
   // Mock-only hidden-row brief copy (prototype BRIEF; M2's hunk pass
   // produces these per hunk). Code-split so production never loads it.
@@ -392,37 +368,6 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
     [states],
   );
   const plotActive = plotFilter.plotline !== undefined;
-  // Issue #351: the Since-B filter shows only hunks changed or added
-  // since the baseline (snapshot `sinceHunks`, by content comparison).
-  const sinceActive = plotFilter.sinceBaseline === true;
-  const sinceIds = useMemo(() => {
-    if (!sinceActive) return undefined;
-    const ids = new Set<string>();
-    for (const f of snapshot?.files ?? []) {
-      for (const h of f.hunks) {
-        const id = hunkVisibleId(f.fileKey, h.contentHash);
-        if (
-          snapshot?.sinceHunks?.added.includes(id) === true ||
-          snapshot?.sinceHunks?.changed.includes(id) === true
-        ) {
-          ids.add(id);
-        }
-      }
-    }
-    return ids;
-  }, [sinceActive, snapshot]);
-  // Issue #351: hunks the Since-B filter hides (hunk-granular, unlike the
-  // file-granular `hiddenHunks` behind the plotline chip).
-  const sinceHidden = useMemo(() => {
-    if (!sinceIds) return 0;
-    let n = 0;
-    for (const f of snapshot?.files ?? []) {
-      for (const h of f.hunks) {
-        if (!sinceIds.has(hunkVisibleId(f.fileKey, h.contentHash))) n += 1;
-      }
-    }
-    return n;
-  }, [sinceIds, snapshot]);
   const visible = useMemo(
     () =>
       snapshot
@@ -431,12 +376,11 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
             cats,
             hideReviewed: prefs.hideReviewed,
             reviewedCount,
-            ...(plotActive || sinceActive ? { plot: plotFilter } : {}),
-            ...(sinceIds ? { sinceIds } : {}),
+            ...(plotActive ? { plot: plotFilter } : {}),
             hunkStateOf,
           })
         : [],
-    [snapshot, fq, cats, prefs.hideReviewed, reviewedCount, plotActive, sinceActive, sinceIds, plotFilter, hunkStateOf],
+    [snapshot, fq, cats, prefs.hideReviewed, reviewedCount, plotActive, plotFilter, hunkStateOf],
   );
 
   const progress = useMemo(() => {
@@ -478,12 +422,6 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
     }, 2600);
   }, []);
 
-  // Older versions are view-only for user data (reviewed, summaries):
-  // those writes are refused with a pointer back. Folding only hides
-  // code, so it stays allowed while browsing history.
-  const readOnly =
-    versionParam !== undefined && snapshot !== null && versionParam !== snapshot.review.currentVersion;
-
   // Issue #376: the diff header names how many hunks carry a summary.
   // Summarize more queues the next N in the automatic pass's order;
   // the button stays disabled while a summary batch runs.
@@ -513,7 +451,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
     [snapshot],
   );
   const summarizeMore = useCallback(async () => {
-    if (readOnly || morePending) return;
+    if (morePending) return;
     setMorePending(true);
     try {
       const res = await api.summarizeMore(reviewId);
@@ -524,25 +462,20 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
     } finally {
       setMorePending(false);
     }
-  }, [reviewId, readOnly, morePending]);
+  }, [reviewId, morePending]);
 
   const setPlotFilterAndPersist = useCallback(
     (next: DiffFilter) => {
       setPlotFilter(next);
       ownFilterEchoes.current.add(JSON.stringify(next));
-      // Read-only history: the choice still applies to this view, it just
-      // is not remembered with the review.
-      if (readOnly) return;
       const body: UpdateDiffFilterRequest = {
         ...(next.plotline !== undefined ? { plotline: next.plotline } : { plotline: null }),
-        // Issue #351: false and null both clear the Since-B filter.
-        sinceBaseline: next.sinceBaseline === true ? true : null,
       };
       api.updateDiffFilter(reviewId, body).catch(() => {
         toast("Couldn't save the filter");
       });
     },
-    [reviewId, readOnly],
+    [reviewId],
   );
 
   // Issue #169: the header plotline chip is the selector — clicking it
@@ -557,21 +490,12 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
     [plotFilter, setPlotFilterAndPersist],
   );
 
-  // Issue #351: the Since-B toolbar toggle — clicking it shows only
-  // hunks changed or added since the baseline.
-  const toggleSinceBaseline = useCallback(() => {
-    const next: DiffFilter = { ...plotFilter };
-    if (next.sinceBaseline === true) delete next.sinceBaseline;
-    else next.sinceBaseline = true;
-    setPlotFilterAndPersist(next);
-  }, [plotFilter, setPlotFilterAndPersist]);
   const hiddenHunks = useMemo(() => {
     const shown = visible.reduce((s, f) => s + f.hunks.length, 0);
     return Math.max(0, progress.total - shown);
   }, [visible, progress.total]);
 
-  const plotlines: Plotline[] = useMemo(() => snapshot?.plotlines ?? [], [snapshot?.plotlines]);
-  const plotlineNames = useMemo(() => new Map(plotlines.map((p) => [p.id, p.name])), [plotlines]);
+  const plotlines: Plotline[] = useMemo(() => snapshot?.plotlines ?? [], [snapshot?.plotlines]);  const plotlineNames = useMemo(() => new Map(plotlines.map((p) => [p.id, p.name])), [plotlines]);
 
   const doReveal = useCallback(
     (target: RevealTarget, keepFilters = false) => {
@@ -637,7 +561,13 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
     if (!snapshot) return;
     const p = takePendingReveal();
     if (p) {
-      const t = parseDiffRef(p.ref);
+      // Issue #413: the pending ref may be an `h:` citation (requested
+      // while the Diff view was still mounting, so no listener heard
+      // the live dispatch — the case the section reveal hit). Resolve
+      // it against the head like the live path; unparseable refs are
+      // dropped exactly as before.
+      const resolved = p.ref.startsWith("h:") ? (resolveHunkTarget(snapshot, p.ref) ?? "") : p.ref;
+      const t = parseDiffRef(resolved);
       if (t) doReveal(t, p.keepFilters);
     }
   }, [snapshot, doReveal]);
@@ -683,27 +613,19 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
 
   const patchHunk = useCallback(
     async (hash: string, body: UpdateHunkRequest) => {
-      if (readOnly && (body.reviewed !== undefined || body.summary !== undefined)) {
-        toast("Viewing an older version · read-only");
-        return;
-      }
       try {
         await api.updateHunk(reviewId, hash, body);
       } catch {
         toast("Couldn't save hunk state");
       }
     },
-    [reviewId, readOnly],
+    [reviewId],
   );
 
   const actions: HunkActions = useMemo(
     () => ({
       toggleFold: (hash, folded) => void patchHunk(hash, { folded: !folded }),
       summarize: (hash) => {
-        if (readOnly) {
-          toast("Viewing an older version · read-only");
-          return;
-        }
         setBusy((prev) => ({ ...prev, [hash]: true }));
         api.summarizeHunk(reviewId, hash).catch(() => {
           toast("Couldn't summarize the hunk");
@@ -729,10 +651,6 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
   );
 
   const foldAll = useCallback(async () => {
-    if (readOnly) {
-      toast("Viewing an older version · read-only");
-      return;
-    }
     const snap = useReview.getState().snapshot;
     if (!snap) return;
     const st = new Map(snap.hunkStates.map((s) => [s.contentHash, s]));
@@ -742,8 +660,7 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
       cats: new Set(prefs.cats),
       hideReviewed: prefs.hideReviewed,
       reviewedCount,
-      ...(plotActive || sinceActive ? { plot: plotFilter } : {}),
-      ...(sinceIds ? { sinceIds } : {}),
+      ...(plotActive ? { plot: plotFilter } : {}),
       hunkStateOf: (hash) => {
         const s = st.get(hash);
         return s ? { score: s.score, plotline: s.plotline } : undefined;
@@ -762,7 +679,6 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
         if (
           !hunkPlotVisible(h, f.fileKey, {
             plot: plotFilter,
-            ...(sinceIds ? { sinceIds } : {}),
             hunkStateOf: (hash) => {
               const s = st.get(hash);
               return s ? { score: s.score, plotline: s.plotline } : undefined;
@@ -781,13 +697,9 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
     await Promise.all(targets.map(({ hunk }) => api.updateHunk(reviewId, hunk.contentHash, { folded: true }).catch(() => {})));
     const foldedNoun = `${targets.length} ${targets.length === 1 ? "hunk" : "hunks"}`;
     toast(`Folded ${foldedNoun}.`);
-  }, [reviewId, readOnly, fq, prefs, reviewedCount, unhidden, plotActive, sinceActive, sinceIds, plotFilter, hideLevel]);
+  }, [reviewId, fq, prefs, reviewedCount, unhidden, plotActive, plotFilter, hideLevel]);
 
   const unfoldAll = useCallback(async () => {
-    if (readOnly) {
-      toast("Viewing an older version · read-only");
-      return;
-    }
     const snap = useReview.getState().snapshot;
     if (!snap) return;
     await Promise.all(
@@ -796,21 +708,17 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
         ...f.hunks.map((h) => api.updateHunk(reviewId, h.contentHash, { folded: false }).catch(() => {})),
       ]),
     );
-  }, [reviewId, readOnly]);
+  }, [reviewId]);
 
   const markFileReviewed = useCallback(
     (file: ReviewFile, allReviewed: boolean) => {
-      if (readOnly) {
-        toast("Viewing an older version · read-only");
-        return;
-      }
       void Promise.all(
         file.hunks.map((h) =>
           api.updateHunk(reviewId, h.contentHash, { reviewed: !allReviewed, folded: !allReviewed }).catch(() => {}),
         ),
       ).catch(() => toast("Couldn't save that change"));
     },
-    [reviewId, readOnly],
+    [reviewId],
   );
 
   // Issue #168: one show/hide control for existing GitHub comments,
@@ -839,26 +747,6 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
   // Tooltip is the action only (#225); Fold all only folds (#376).
   const foldTip = "Fold the code";
 
-  // Update banner: the local refresh result wins; otherwise the snapshot's
-  // own `versionStatus` (set when a refresh created a newer version).
-  // Hidden while viewing an older version. Issue #367: the banner stays
-  // mounted after an update pass (now reading "Updated to vN"), so the
-  // baseline label rides along for the up-to-date state.
-  const rawCounts: BannerCounts | null = readOnly
-    ? null
-    : (banner ?? (snapshot.versionStatus ? statusToBanner(snapshot.versionStatus) : null));
-  const bannerCounts: BannerCounts | null =
-    rawCounts === null
-      ? null
-      : {
-          ...rawCounts,
-          sinceLabel:
-            rawCounts.sinceLabel ??
-            (snapshot.sinceBaseline !== undefined
-              ? sinceBaselineLabel(snapshot.sinceBaseline)
-              : `v${rawCounts.fromVersion}`),
-        };
-
   return (
     <div>
       <div className="dtool">
@@ -877,21 +765,6 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
               ×
             </button>
           </span>
-        ) : null}
-        {snapshot.sinceHunks !== undefined && snapshot.sinceBaseline !== undefined && !readOnly ? (
-          <Button
-            variant="secondary"
-            size="sm"
-            type="button"
-            aria-pressed={sinceActive}
-            data-filterchip="since"
-            data-tip={sinceActive ? "Show all hunks" : `Show only hunks changed since ${sinceBaselineLabel(snapshot.sinceBaseline)}`}
-            aria-label={sinceActive ? "Show all hunks" : `Show only hunks changed since ${sinceBaselineLabel(snapshot.sinceBaseline)}`}
-            onClick={toggleSinceBaseline}
-          >
-            Since {sinceBaselineLabel(snapshot.sinceBaseline)}
-            {sinceActive ? ` · ${sinceHidden} hidden` : ""}
-          </Button>
         ) : null}
         <Button
           variant="secondary"
@@ -994,14 +867,6 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
           <i style={{ width: `${progress.total === 0 ? 0 : (100 * progress.reviewed) / progress.total}%` }} />
         </span>
       </div>
-      {readOnly ? (
-        <div className="dbar" role="status">
-          <span className="hint">Viewing v{versionParam} · read-only</span>
-        </div>
-      ) : null}
-      {bannerCounts ? (
-        <VersionBanner reviewId={reviewId} counts={bannerCounts} onUpdated={() => void onUpdated()} />
-      ) : null}
       {summaryCounts.missing > 0 ? (
         <div className="dbar dsumbar" role="status">
           <span className="hint">
@@ -1137,7 +1002,6 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
               onOpenPage={onOpenPage ?? (() => {})}
               onFollowUp={onFollowUp ?? (() => {})}
               plotFilter={plotActive ? plotFilter : undefined}
-              sinceIds={sinceActive ? sinceIds : undefined}
               plotlineNames={plotlineNames}
               onSelectPlotline={togglePlotline}
               isHidden={isHidden}
@@ -1150,8 +1014,8 @@ export function DiffView({ reviewId, lineSlots, commentedLines, onLineClick, loo
             />
           </ErrorBoundary>
         ))
-      ) : bannerCounts?.empty ? null : (
-        // #179: the empty banner above already says it — don't repeat it.
+      ) : (
+        // #179: the diff itself says it — nothing to review or filter to.
         <p className="hint" style={{ padding: 16 }} {...(snapshot.files.length === 0 ? { "data-testid": "diff-empty" } : {})}>
           {snapshot.files.length === 0 ? "No changes to review — the diff is empty." : "No files match the filters."}
         </p>

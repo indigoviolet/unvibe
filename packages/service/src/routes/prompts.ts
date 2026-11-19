@@ -14,10 +14,10 @@
  *
  * Expansion rules (documented for the settings UI):
  * - Base templates (reader, base_pack, critic, hunk_pass, concept_*,
- *   update_pass, consolidate, persona_card) expand against real review
+ *   explain_pass, consolidate, persona_card) expand against real review
  *   data: source blurb, diff section (with the same budget fallback the
  *   pipeline uses), pinned code, guide, concepts, hunk summaries, the log.
- * - Turn templates (explain, ask, depth, examples, diagram,
+ * - Turn templates (explain, ask, slower, examples, diagram,
  *   go_deeper) have no live anchor "now": their L4 renders with the
  *   review's real change list plus clearly-marked `(…)` placeholders for
  *   the anchor quote, thread, card-under-edit and user message.
@@ -32,12 +32,16 @@ import {
   parseId,
   renderMarkdown,
   type Block,
+  type Persona,
   type PromptExpanded,
+  type PromptForksResponse,
+  type PromptForkStatus,
   type PromptLayerSpan,
   type PromptsResponse,
   type PromptTemplate,
   type ReviewSnapshot,
 } from "@unvibe/shared";
+import { forkDrift, forkPersonaIds, isGuideCapable } from "../prompts/personas.js";
 import {
   buildConceptsSection,
   buildGlossarySection,
@@ -128,7 +132,6 @@ export function guideRevisionForSnapshot(snap: ReviewSnapshot): string {
     p.cards.map((c) => [
       c.id,
       c.title,
-      c.level,
       c.revision,
       c.blocks.map((b) => [b.id, b.type]),
     ]),
@@ -234,7 +237,6 @@ export function toPromptSnapshot(
   const cards: GuideCardInput[] = (root?.cards ?? []).map((c) => ({
     id: c.id,
     title: c.title,
-    level: c.level,
     revision: c.revision,
     markdown: renderMarkdown(c.blocks).trim(),
   }));
@@ -257,7 +259,7 @@ export function toPromptSnapshot(
         slug: p.id.startsWith("c-") ? p.id.slice(2) : p.id,
         title: p.title,
         oneLine:
-          first && first.type === "paragraph" ? plainText(first.text.standard) : "",
+          first && first.type === "paragraph" ? plainText(first.text) : "",
       };
     });
 
@@ -346,8 +348,10 @@ export interface PromptsRouteDeps {
   /**
    * Issue #160: stored settings, so the `?review=` expansion previews the
    * L0 variant the setting selects. Absent → the lock-down preview.
+   * Issue #393: `personas` (when present) names the entries behind
+   * `GET /api/prompt-forks`.
    */
-  settings?: { get(): { fullAccess: boolean } };
+  settings?: { get(): { fullAccess: boolean; personas?: Persona[] } };
 }
 
 /** An expanded prompt with its layer spans (extends the shared contract). */
@@ -399,13 +403,11 @@ const PH = {
   thread: "(no thread yet)",
   message: "(the reader's message is attached when the action runs)",
   card: "(no card selected)",
-  level: "(target level)",
   direction: "(no placeholder selected)",
-  changedHunks: "(no newer version — the update pass lists changed hunks here)",
-  staleCards: "(guide is current — affected cards are listed here after a refresh)",
-  // Issue #351: same fallback `buildUpdateVariables` uses when there is
-  // no baseline yet — the preview is placeholder-based by design.
-  sinceContext: "(no baseline yet)",
+  xHunks: "(no hunks yet — the explain pass lists the X→head hunks here)",
+  // Issue #351/#413: same fallback `buildExplainVariables` uses when X
+  // is the head — the preview is placeholder-based by design.
+  xContext: "(no baseline yet)",
   citedCode: "(cited excerpts are attached when the action runs)",
   topic: "(select a card or finding)",
   mentions: "(mentions resolve when the action runs)",
@@ -469,10 +471,6 @@ export function expandAll(lib: TemplateLibrary, snapshot: PromptReviewSnapshot, 
     : PH.topic;
   const contributionLines = formatContributionLines(snapshot.contributions ?? []);
   const contributionsText = contributionLines !== "" ? contributionLines : PH.contributions;
-
-  const findingsText = snapshot.findings
-    .map((f) => `### ${f.title} (${f.confidence}) [[page:${f.pageId}]]\n\n${f.summary}\n`)
-    .join("\n");
 
   const baseSpans = (cached: boolean): Span[] => [
     { layer: "L0", label: "instructions", text: l0, cached },
@@ -546,15 +544,19 @@ export function expandAll(lib: TemplateLibrary, snapshot: PromptReviewSnapshot, 
     changed_hunks: "(no changes)",
     message: PH.message,
   });
-  forked("depth", { card: cardText, level: PH.level });
-  forked("examples", { card: cardText, level: PH.level });
-  forked("diagram", { card: cardText, level: PH.level });
+  forked("slower", {
+    card: cardText,
+    // Issue #388: the preview shows the ordinary press (no picked terms);
+    // the terms block attaches when the action runs.
+    terms: "",
+    guide: "",
+  });
+  forked("examples", { card: cardText });
+  forked("diagram", { card: cardText });
   forked("go_deeper", { direction: PH.direction, glossary: glossaryForPreview });
-  forked("update_pass", {
-    changed_hunks: PH.changedHunks,
-    stale_cards: PH.staleCards,
-    findings: findingsText === "" ? "(no findings)" : findingsText,
-    since_context: PH.sinceContext,
+  forked("explain_pass", {
+    x_hunks: PH.xHunks,
+    x_context: PH.xContext,
   });
 
   push("hunk_pass", [
@@ -645,6 +647,36 @@ export async function registerPrompts(
           .send({ error: "expansion failed", detail: err instanceof Error ? err.message : String(err) });
       }
     }
+    return body;
+  });
+
+  // Issue #393: one call behind the Re-do menu and the Settings drift
+  // warning — every settings persona plus every fork folder, with its
+  // guide capability and drifted files.
+  app.get("/api/prompt-forks", async (_req, reply) => {
+    if (!lib || !dir) {
+      return reply
+        .code(501)
+        .send({ error: "prompts unavailable", detail: loadError ?? `no prompts dir (set UNVIBE_PROMPTS_DIR)` });
+    }
+    let personas: Persona[] = [];
+    try {
+      personas = deps.settings?.get().personas ?? [];
+    } catch {
+      personas = [];
+    }
+    const ids = [...new Set([...personas.map((p) => p.id), ...forkPersonaIds(dir)])].sort();
+    const forks: PromptForkStatus[] = ids.map((personaId) => {
+      const persona = personas.find((p) => p.id === personaId);
+      return {
+        personaId,
+        name: persona?.name ?? personaId,
+        enabled: persona?.enabled ?? false,
+        guideCapable: isGuideCapable(dir, personaId),
+        drifted: forkDrift(dir, personaId, lib),
+      };
+    });
+    const body: PromptForksResponse = { forks };
     return body;
   });
 }

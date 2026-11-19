@@ -25,14 +25,13 @@ function pagesWithConversation(): { pages: ReviewSnapshot["pages"]; annotations:
           id: "central",
           pageId: "root",
           title: "Central",
-          level: "standard",
           collapsed: false,
           revision: 1,
           blocks: [
             {
               type: "paragraph",
               id: "b1",
-              text: { standard: "Does the thing [[diff:a-py:1-2]]" },
+              text: "Does the thing [[diff:a-py:1-2]]",
               citations: [{ target: "diff:a-py:1-2" }],
             },
           ],
@@ -66,11 +65,10 @@ function pagesWithConversation(): { pages: ReviewSnapshot["pages"]; annotations:
             {
               type: "paragraph",
               id: "e1",
-              text: { standard: "Explanation [[diff:a-py:1-2]]" },
+              text: "Explanation [[diff:a-py:1-2]]",
               citations: [{ target: "diff:a-py:1-2" }],
             },
           ],
-          level: "standard",
           revision: 1,
           undoStack: [],
         },
@@ -91,12 +89,12 @@ async function setupWith(pages: ReviewSnapshot["pages"], annotations: ReviewSnap
   ctx.repos.upsert(repo);
   const reviewId = `rv_m4_${Math.random().toString(36).slice(2, 8)}`;
   const version = versionRow();
-  const review = { id: reviewId, repoId: repo.id, branch: "feature", prNumber: 7, versions: [version], currentVersion: 1, createdAt: 1 };
+  const review = { id: reviewId, repoId: repo.id, branch: "feature", prNumber: 7, versions: [version], currentVersion: 1, guidePersonaId: "guide", createdAt: 1 };
   const files = [sourceFile()];
   const description = descriptionFor("First para.\n\nSecond para.\n");
   writeReviewRows(ctx.db, repo.id, { review, version, files, description, commits: [], title: review.branch, worktreePath: "/tmp" });
   ctx.reviews.putSnapshot(reviewId, {
-    review, version, files, description, pages, annotations, hunkStates: [], fileStates: [], viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false, hideLevel: "uninteresting" }, jobs: [], contributions: [], logTail: [], rev: 1, ingest: { status: "ready" },
+    review, version, guideHead: { version: version.n, sha: version.headSha }, files, description, pages, annotations, hunkStates: [], fileStates: [], viewPrefs: { showExistingComments: true, existingCommentsCollapsed: false, hideLevel: "uninteresting" }, jobs: [], contributions: [], logTail: [], rev: 1, ingest: { status: "ready" },
   });
   return { app, ctx, reviewId, agents };
 }

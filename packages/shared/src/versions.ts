@@ -67,13 +67,11 @@ export interface VersionComparison {
   removed: SoloHunk[];
   added: SoloHunk[];
   renames: FileRename[];
-  /** Raw `git range-diff` output for display (may be empty when git fails). */
-  rangeDiff: string;
 }
 
 export type VersionComparisonSummary = Pick<
   VersionComparison,
-  "oldVersion" | "newVersion" | "oldHeadSha" | "newHeadSha" | "renames" | "rangeDiff"
+  "oldVersion" | "newVersion" | "oldHeadSha" | "newHeadSha" | "renames"
 > & {
   unchangedHunks: number;
   changedHunks: number;
@@ -92,7 +90,6 @@ export function summarizeComparison(c: VersionComparison): VersionComparisonSumm
     oldHeadSha: c.oldHeadSha,
     newHeadSha: c.newHeadSha,
     renames: c.renames,
-    rangeDiff: c.rangeDiff,
     unchangedHunks: c.unchanged.length,
     changedHunks: c.changed.length,
     newHunks: c.added.length,
@@ -102,10 +99,11 @@ export function summarizeComparison(c: VersionComparison): VersionComparisonSumm
   };
 }
 
-/** Review-level staleness for the "New commits · Update" banner + start page. */
+/** Review-level version info for the "New commits · vN → vM" banner (#413).
+ * Written on every refresh that creates a version; the banner offers
+ * "Explain changes since vN" from it. No stale flag: staleness as a
+ * signal was removed in #413 (the banner is the only signal). */
 export interface VersionStatus {
-  /** True when the current version has unprocessed changes (update not yet run). */
-  stale: boolean;
   fromVersion: number;
   toVersion: number;
   unchangedHunks: number;
@@ -117,8 +115,6 @@ export interface VersionStatus {
   changedOldIds: string[];
   /** New-side `h:` IDs (for the update-pass prompt). */
   changedNewIds: string[];
-  /** `git range-diff` output for display. */
-  rangeDiff: string;
   /** Epoch ms when the new version was fetched. */
   fetchedAt: number;
   /** #179: the new version's diff is empty (no hunks to review). */
@@ -126,15 +122,14 @@ export interface VersionStatus {
 }
 
 /**
- * Issue #367: the one shared update-availability predicate. The service
- * (`enqueueUpdatePass`) refuses an update when this is false, so the web
- * UI must not offer one either — card banners and the diff banner both
- * read this, never a local `stale` flag alone. An update pass clears
- * review-level staleness (option A also clears every card), so after a
- * pass this is false until the next refresh marks new changes.
+ * Issue #413: whether a snapshot's `versionStatus` means unreviewed new
+ * commits — the one signal behind the "New commits · vN → vM" banner
+ * and the start-page marks. True when the status names real hunk
+ * changes (an empty diff says so in the banner instead). Pure.
  */
-export function isUpdateAvailable(status: VersionStatus | undefined | null): boolean {
-  return status?.stale === true;
+export function hasNewCommits(status: VersionStatus | undefined | null): boolean {
+  if (!status) return false;
+  return status.changedHunks + status.newHunks + status.removedHunks > 0;
 }
 
 /** Reader-pinned excerpt stored in the snapshot (PRD §8 "Pinned code"). */
@@ -158,35 +153,7 @@ export type AnchorRemap =
   | { status: "moved"; newLine: number; lineShift: number; newHunkHash?: string }
   | { status: "outdated"; reason: string };
 
-/** Finding recheck verdict produced by the update pass. */
-export type FindingVerdict = "still-applies" | "resolved" | "changed";
-
-/** One revised card from the update pass (new revision, same IDs). */
-export interface RevisedCard {
-  cardId: string;
-  /** Full replacement blocks (IDs preserved by the agent per the prompt). */
-  blocks: import("./entities.js").Block[];
-  revision: number;
-}
-
-/** One rechecked finding from the update pass. */
-export interface RecheckedFinding {
-  pageId: string;
-  verdict: FindingVerdict;
-  evidence?: string;
-  newSummary?: string;
-}
-
-/** One new finding for new code from the update pass. */
-export interface NewFinding {
-  pageId: string;
-  title: string;
-  confidence: string;
-  summary: string;
-  cards: import("./entities.js").Card[];
-}
-
-/** Structured result of the update pass, applied to review state. */
+/** Structured result of the explain pass, applied to review state. */
 /**
  * Issue #351: one feedback item the delta answers, as the agent writes
  * it — a pointer. The service resolves it against the snapshot
@@ -200,10 +167,12 @@ export interface SinceFeedbackRef {
 }
 
 /**
- * Issue #351: a resolved feedback link rendered under a Since-B card or
- * addendum ("Answers: <excerpt> ↗"). Remote remarks link to GitHub via
- * their stored URL; local threads link to the thread on the page;
- * commits render as text (no stable URL).
+ * Issue #351: a resolved feedback link rendered under a Since card
+ * ("Answers: <excerpt> ↗"). Remote remarks link to GitHub via their
+ * stored URL; local threads link to the thread on the page; commits
+ * render as text (no stable URL). Commit-only Answers lines are hidden
+ * by the UI (#413: Answers shows only for comment/thread/conversation
+ * feedback).
  */
 export interface SinceFeedbackLink {
   kind: SinceFeedbackRef["kind"];
@@ -213,54 +182,32 @@ export interface SinceFeedbackLink {
   url?: string;
 }
 
-export interface UpdatePassResult {
-  revisedCards: RevisedCard[];
-  recheckedFindings: RecheckedFinding[];
-  newFindings: NewFinding[];
-  /** contentHash → regenerated one-line summary for changed hunks. */
-  hunkSummaries: Record<string, string>;
-  /** Old pins that no longer apply (paths the agent dropped). */
-  droppedPins?: string[];
+/**
+ * Issue #413: structured result of the explain-since-X pass. The pass
+ * explains the X→head range only: it writes the Changes-since-X
+ * section and nothing else. The old guide is left untouched (no
+ * revised cards, no finding rechecks, no new findings, no hunk
+ * summaries, no plotline placement, no pinning).
+ */
+export interface ExplainPassResult {
   /**
-   * Issue #351 step 1: the baseline this pass explained. Defaults to the
-   * version last opened; step 2 adds a commit kind alongside `version`.
+   * The X this pass explained: an earlier version or commit sha the
+   * reviewer chose when clicking Explain (defaults to the version
+   * last opened).
    */
   baseline?: SinceBaseline;
   /**
-   * Issue #351 step 1: new-side `h:` IDs changed or added since the
-   * baseline, by hunk-content comparison (rebase-proof, PRD §8). Drives
-   * the Since-B diff filter and the plotline `+N since B` markers.
+   * New-side `h:` IDs changed or added between X and the head, by
+   * hunk-content comparison (rebase-proof). Stored for the citation
+   * reveal; the Since diff filter and plotline markers (on hold in
+   * #413) read the same stored `sinceHunks` the refresh writes.
    */
   sinceHunks?: SinceHunks;
   /**
-   * Issue #351 step 1: new guide cards for the dated Since-B section.
-   * Fresh card IDs; the service appends the section, never rewrites it.
+   * New guide cards for the Changes-since-X section. Fresh card IDs;
+   * the service replaces the section whole, never revises it.
    */
   sinceSection?: { cards: import("./entities.js").Card[] };
-  /**
-   * Issue #351 step 1: dated blocks appended to existing cards, leaving
-   * the old text unchanged. The service stamps id/version/baseline/at.
-   */
-  addenda?: CardAddendumDraft[];
-  /**
-   * Issue #367 option A: stale card IDs the pass judged unaffected —
-   * checked, but needing neither revision, recheck nor addendum. In the
-   * same single reply, no extra agent call. A stale card in none of
-   * revised/rechecked/addenda/unaffected was missed by the pass: it is
-   * still cleared (the pass saw the whole delta) and logged, hunks keep
-   * their own marks.
-   */
-  unaffectedCards?: string[];
-  /**
-   * Issue #351 step 1: new-side contentHash → plotline id for hunks
-   * since the baseline. Genuinely new threads arrive as `newPlotlines`.
-   */
-  plotlineAssignments?: Record<string, string>;
-  /**
-   * Issue #351 step 1: genuinely new threads of work. The service marks
-   * each `newSinceBaseline` so the row reads "new since B".
-   */
-  newPlotlines?: import("./scores.js").Plotline[];
 }
 
 /**
@@ -328,17 +275,6 @@ export function emptySinceHunks(): SinceHunks {
   return { added: [], changed: [] };
 }
 
-/**
- * Strip a leading "Updated since vN …:" from an addendum body. The
- * prompt tells the agent not to write it, but older passes may have;
- * the dated header above the body already says it. Pure. (Moved here
- * from the web's `SinceAnswers` in issue #377 so the copy converter
- * strips the same prefix the card shows without.)
- */
-export function stripAddendumPrefix(standard: string): string {
-  return standard.replace(/^updated since (?:v\d+|[0-9a-f]{7,8})\s*(·[^:]*)?[:\-–—]\s*/i, "");
-}
-
 /** Both sides as one lookup set. Pure. */
 export function sinceHunkSet(s: SinceHunks | undefined): Set<string> {
   if (!s) return new Set();
@@ -352,15 +288,21 @@ export function hunkChangedSinceB(hunkId: string, s: SinceHunks | undefined): bo
 }
 
 /**
- * Issue #351: the dated, collapsible Since-B section at the top of the
- * guide. Written once per update pass (replaced on the next pass) —
- * never revised in place.
+ * Issue #351/#413/#421: the Changes section at the top of the guide.
+ * Dated, collapsible, replaced whole on the next Explain run — never
+ * revised in place. One grouped panel (matching the Contents box),
+ * the commit range in the header, cards inside.
  */
 export interface SinceSection {
   /** Baseline B this section explains (version or commit). */
   baseline: SinceBaseline;
   /** Head version at the time of the pass that wrote it. */
   headVersion: number;
+  /**
+   * Issue #421: head commit the section was written at (the `to` of
+   * the header range). Stored at write time — required, no fallback.
+   */
+  headSha: string;
   /** Epoch ms the pass wrote it. */
   at: number;
   /** Cards explaining what changed, why, and what feedback caused it. */
@@ -368,32 +310,27 @@ export interface SinceSection {
 }
 
 /**
- * Issue #351: one appended addendum as the agent writes it — the target
- * card plus the new blocks. The service stamps id/version/baseline/at.
+ * Issue #421: the head the current guide was written at. Stamped when
+ * the reader lands (so it follows a Re-do, which writes a new review)
+ * and never touched by refreshes or Explain runs. The new-commits
+ * banner counts and explains from this commit.
  */
-export interface CardAddendumDraft {
-  cardId: string;
-  blocks: import("./entities.js").Block[];
-  /** Feedback pointers (resolved by the service, unknown ids dropped). */
-  answers?: SinceFeedbackRef[];
+export interface GuideHead {
+  /** Guide's version (the current version when the reader landed). */
+  version: number;
+  /** Head commit the guide was written at. */
+  sha: string;
 }
 
 /**
- * Issue #351: a dated addendum block appended to an existing card when a
- * change since B affects it. The card's old blocks stay unchanged.
+ * Issue #421: commits after a reference sha in an oldest-first commit
+ * list. Null when the reference is gone from the list (a rewrite moved
+ * it) — callers decide the fallback. Pure.
  */
-export interface CardAddendum {
-  /** Stable id: `add-v<toVersion>-<index>` within the card. */
-  id: string;
-  /** Head version whose update pass wrote this addendum. */
-  version: number;
-  /** Baseline B it is relative to (version or commit). */
-  baseline: SinceBaseline;
-  /** Epoch ms the update pass wrote it. */
-  at: number;
-  blocks: import("./entities.js").Block[];
-  /** Resolved feedback links (unknown ids dropped at apply time). */
-  answers?: SinceFeedbackLink[];
+export function newerCommitsSince(commits: readonly { sha: string }[], refSha: string): number | null {
+  const idx = commits.findIndex((c) => c.sha.toLowerCase() === refSha.toLowerCase());
+  if (idx < 0) return null;
+  return commits.length - 1 - idx;
 }
 
 /**
@@ -403,6 +340,6 @@ export interface CardAddendum {
  * otherwise the service depends on this interface and tests inject a fake.
  * The default implementation below parses the trailing fenced JSON block.
  */
-export interface UpdateReplyParser {
-  parseReply(text: string): UpdatePassResult;
+export interface ExplainReplyParser {
+  parseReply(text: string): ExplainPassResult;
 }

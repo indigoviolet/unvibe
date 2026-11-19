@@ -1,5 +1,5 @@
 /**
- * Since-B baseline computation (issue #351 step 1).
+ * Changes-since-X baseline computation (issue #351 step 1).
  *
  * "Since B" is computed by hunk-content comparison between the stored
  * version diffs (the existing §8 `compareHunks`), never git ancestry —
@@ -24,6 +24,7 @@ import {
   fileKeyForPath,
   isCommitSha,
   isSinceBaseline,
+  parseBlocks,
   shortBaselineSha,
 } from "@unvibe/shared";
 import { compareHunks, hunkId } from "./compare.js";
@@ -120,9 +121,32 @@ const MAX_COMMENT_MATCHES = 20;
 const MAX_THREAD_MATCHES = 10;
 const MAX_CONVERSATION_MATCHES = 10;
 
-function excerpt(text: string, cap: number): string {
+/**
+ * One-line excerpt capped at `cap` code points (issue #411): cut at the
+ * last sentence boundary (`.`, `!`, `?` followed by a space or the end)
+ * within the limit when there is one, else at the last word boundary,
+ * with an ellipsis. Pure. Never leaves a trailing space before the
+ * ellipsis; text within the cap passes through untouched.
+ */
+export function excerpt(text: string, cap: number): string {
   const oneLine = text.replace(/\s+/g, " ").trim();
-  return oneLine.length > cap ? `${oneLine.slice(0, cap)}…` : oneLine;
+  if (oneLine.length <= cap) return oneLine;
+  const window = oneLine.slice(0, cap);
+  let cut = -1;
+  for (let i = window.length - 1; i >= 0; i--) {
+    const ch = window[i];
+    if (
+      (ch === "." || ch === "!" || ch === "?") &&
+      (i + 1 >= oneLine.length || oneLine[i + 1] === " ")
+    ) {
+      cut = i + 1;
+      break;
+    }
+  }
+  if (cut > 0) return `${window.slice(0, cut).trimEnd()}…`;
+  const space = window.lastIndexOf(" ");
+  if (space > 0) return `${window.slice(0, space)}…`;
+  return `${window}…`;
 }
 
 /**
@@ -133,8 +157,8 @@ function excerpt(text: string, cap: number): string {
  * (their messages say why), and PR conversation remarks in the window.
  * Pure. Capped so the prompt variable stays small.
  */
-export function matchSinceFeedback(snapshot: ReviewSnapshot, since: SinceHunks): SinceFeedback {
-  const baseline = resolveSinceBaseline(snapshot);
+export function matchSinceFeedback(snapshot: ReviewSnapshot, since: SinceHunks, baselineArg?: SinceBaseline): SinceFeedback {
+  const baseline = baselineArg ?? resolveSinceBaseline(snapshot);
   const headVersion = snapshot.review.currentVersion;
   const bRow = baseline.kind === "version" ? versionRow(snapshot, baseline.version) : null;
   const headRow = versionRow(snapshot, headVersion);
@@ -191,7 +215,7 @@ export function matchSinceFeedback(snapshot: ReviewSnapshot, since: SinceHunks):
     const first = commentReplies[0];
     const firstPara = first?.blocks.find((b) => b.type === "paragraph");
     const text =
-      firstPara && firstPara.type === "paragraph" ? firstPara.text.standard : t.anchor.quotedText;
+      firstPara && firstPara.type === "paragraph" ? firstPara.text : t.anchor.quotedText;
     threads.push({
       threadId: t.id,
       excerpt: excerpt(text, 160),
@@ -239,7 +263,7 @@ export function resolveSinceAnswers(
       if (!t) continue;
       const first = t.replies.find((x) => x.kind === "comment");
       const para = first?.blocks.find((b) => b.type === "paragraph");
-      const text = para && para.type === "paragraph" ? para.text.standard : t.anchor.quotedText;
+      const text = para && para.type === "paragraph" ? para.text : t.anchor.quotedText;
       out.push({ kind: "thread", label: `Thread ${t.id}`, excerpt: excerpt(text, 160), url: `#${t.id}` });
     } else if (r.kind === "conversation") {
       const m = (snapshot.prConversation ?? []).find((x) => String(x.id) === r.id);
@@ -266,7 +290,7 @@ export function resolveSinceAnswers(
 
 /**
  * True when the value looks like an agent-written feedback pointer.
- * Pure. Used by the update-pass parser before service-side resolution.
+ * Pure. Used by the explain-pass parser before service-side resolution.
  */
 export function isSinceFeedbackRef(v: unknown): v is SinceFeedbackRef {
   if (typeof v !== "object" || v === null) return false;
@@ -290,7 +314,7 @@ export function versionLabel(n: number, headSha: string, fetchedAt: number): str
 }
 
 /**
- * Render the `{{since_context}}` update-pass variable: baseline identity,
+ * Render the `{{x_context}}` explain-pass variable: the X identity,
  * the commits since B (why, from their messages), and the matched
  * feedback (review comments, threads, conversation remarks). Pure.
  */
@@ -309,8 +333,8 @@ export function baselineIdentity(snapshot: ReviewSnapshot, baseline: SinceBaseli
   return `${shortBaselineSha(baseline.sha)}${subject}`;
 }
 
-export function formatSinceContext(snapshot: ReviewSnapshot, since: SinceHunks): string {
-  const fb = matchSinceFeedback(snapshot, since);
+export function formatSinceContext(snapshot: ReviewSnapshot, since: SinceHunks, baselineArg?: SinceBaseline): string {
+  const fb = matchSinceFeedback(snapshot, since, baselineArg);
   const baseline = fb.baseline;
   const bRow = baseline.kind === "version" ? versionRow(snapshot, baseline.version) : null;
   const headRow = versionRow(snapshot, fb.headVersion);
@@ -508,15 +532,38 @@ export function normalizeAgentSinceCards(v: unknown): SinceCardDraftWithRefs[] |
         if (refs.length > 0) (card as { answerRefs?: SinceFeedbackRef[] }).answerRefs = refs;
         delete (c as unknown as Record<string, unknown>)["answers"];
       }
+      // Issue #413: a model may write the body as one Markdown string
+      // instead of a blocks array (the prompt names both shapes).
+      // Parse it with the shared reply parser — the same citation
+      // tokens guide cards get — so the pre-guide reader path and the
+      // explain pass share the rule. A string that parses to nothing
+      // stays bodyless and is dropped downstream like any bodyless
+      // model card (#411).
+      const blocksRaw = (c as unknown as Record<string, unknown>)["blocks"];
+      if (typeof blocksRaw === "string") {
+        const id = typeof card.id === "string" && card.id.length > 0 ? `${card.id}-` : "";
+        const parsed = parseBlocks(blocksRaw, { idPrefix: id });
+        if (parsed.length > 0) {
+          (card as unknown as Record<string, unknown>)["blocks"] = parsed;
+        } else {
+          delete (card as unknown as Record<string, unknown>)["blocks"];
+        }
+      }
       return card as SinceCardDraftWithRefs;
     });
 }
 
 /**
- * Issue #351 step 2: store the agent-written Since-B cards — fresh
+ * Issue #351 step 2: store the agent-written Changes-since-X cards — fresh
  * unique ids, resolved feedback links (unknown ids dropped at once),
  * canonical card shape. Shared by the update pass and the guide run so
  * both store the same shape. Pure over the snapshot (read-only).
+ *
+ * Issue #411: a card with no body blocks is a failed card — dropped on
+ * its own, like a blockless finding in `criticApplyAll` — never stored
+ * as a title-only card (the renderer would show its title and Answers
+ * line with no body). Callers store the section only when the returned
+ * list is non-empty.
  */
 export function buildSinceSectionCards(
   snapshot: ReviewSnapshot,
@@ -527,70 +574,30 @@ export function buildSinceSectionCards(
     for (const c of snapshot.sinceSection.cards) known.add(c.id);
   }
   const toVersion = snapshot.review.currentVersion;
-  return cards.map((c, i) => {
-    let id = typeof c.id === "string" && c.id.length > 0 ? c.id : `since-${toVersion}-${i + 1}`;
-    if (known.has(id)) id = `${id}-v${toVersion}`;
-    known.add(id);
-    const answers = resolveSinceAnswers(snapshot, c.answerRefs);
-    const cardOut: Card = {
-      ...(c as Card),
-      id,
-      pageId: typeof c.pageId === "string" && c.pageId.length > 0 ? c.pageId : "since",
-      level: c.level === "simple" || c.level === "standard" || c.level === "deep" ? c.level : "standard",
-      collapsed: c.collapsed === true,
-      revision: typeof c.revision === "number" ? c.revision : 1,
-      undoStack: Array.isArray(c.undoStack) ? c.undoStack : [],
-      blocks: Array.isArray(c.blocks) ? c.blocks : [],
-    };
-    const rec = cardOut as unknown as Record<string, unknown>;
-    delete rec["answerRefs"];
-    delete rec["answers"];
-    if (answers.length > 0) cardOut.answers = answers;
-    return cardOut;
-  });
-}
-
-/**
- * Issue #351 step 2: mark plotlines whose every assigned hunk changed
- * since B as `newSinceBaseline` (the guide run names plotlines for the
- * whole PR; the ones covering only post-B hunks are the new threads).
- * Callers pass the draft's plotlines + hunk states and the stored
- * since-hunk set. Returns the marked plotline ids. Pure.
- */
-export function markNewSincePlotlines(
-  plotlines: { id: string; newSinceBaseline?: boolean }[],
-  states: { contentHash: string; plotline?: string }[],
-  sinceHashes: Set<string>,
-): string[] {
-  if (sinceHashes.size === 0) return [];
-  const assigned = new Map<string, Set<string>>();
-  for (const s of states) {
-    if (s.plotline === undefined) continue;
-    let set = assigned.get(s.plotline);
-    if (!set) {
-      set = new Set();
-      assigned.set(s.plotline, set);
-    }
-    set.add(s.contentHash);
-  }
-  const marked: string[] = [];
-  for (const [plotline, hashes] of assigned) {
-    if (hashes.size === 0) continue;
-    let allSince = true;
-    for (const h of hashes) {
-      if (!sinceHashes.has(h)) {
-        allSince = false;
-        break;
-      }
-    }
-    if (!allSince) continue;
-    const row = plotlines.find((p) => p.id === plotline);
-    if (row && row.newSinceBaseline !== true) {
-      row.newSinceBaseline = true;
-      marked.push(plotline);
-    }
-  }
-  return marked;
+  // Issue #411: bodyless model cards fail here (see above) — before id
+  // assignment, so a dropped card consumes no id.
+  return cards
+    .filter((c) => Array.isArray(c.blocks) && c.blocks.length > 0)
+    .map((c, i) => {
+      let id = typeof c.id === "string" && c.id.length > 0 ? c.id : `since-${toVersion}-${i + 1}`;
+      if (known.has(id)) id = `${id}-v${toVersion}`;
+      known.add(id);
+      const answers = resolveSinceAnswers(snapshot, c.answerRefs);
+      const cardOut: Card = {
+        ...(c as Card),
+        id,
+        pageId: typeof c.pageId === "string" && c.pageId.length > 0 ? c.pageId : "since",
+        collapsed: c.collapsed === true,
+        revision: typeof c.revision === "number" ? c.revision : 1,
+        undoStack: Array.isArray(c.undoStack) ? c.undoStack : [],
+        blocks: Array.isArray(c.blocks) ? c.blocks : [],
+      };
+      const rec = cardOut as unknown as Record<string, unknown>;
+      delete rec["answerRefs"];
+      delete rec["answers"];
+      if (answers.length > 0) cardOut.answers = answers;
+      return cardOut;
+    });
 }
 
 /** Max since-hunk ids named in the reader's reviewed context. */
@@ -601,34 +608,34 @@ export const READER_SINCE_HUNK_CAP = 200;
  * When the reviewer already reviewed this PR on GitHub up to a commit B
  * (accepted before the guide run), the reader is told so, is shown the
  * since-hunk ids to cite and the feedback the delta may answer, and
- * writes the normal guide plus the Since-B section in the same run.
+ * writes the normal guide plus the Changes-since-X section in the same run.
  * Otherwise a one-liner sending it down the normal whole-PR path. Pure.
  */
 export function formatReaderReviewedContext(snapshot: ReviewSnapshot, since?: SinceHunks): string {
   const baseline = snapshot.sinceBaseline;
   if (!baseline || baseline.kind !== "commit" || !isCommitSha(baseline.sha)) {
-    return "(No prior-review baseline: explain the whole change; write no Since-B section.)";
+    return "(No prior-review baseline: explain the whole change; write no Changes-since-X section.)";
   }
   const lines: string[] = [];
   lines.push("## Reviewed up to B");
   lines.push(
     `The reviewer has already reviewed this PR on GitHub up to commit ${baselineIdentity(snapshot, baseline)} ` +
       `(their latest GitHub review). ` +
-      `Write the normal guide for the whole PR, then add the Since-B section below.`,
+      `Write the normal guide for the whole PR, then add the Changes-since-X section below.`,
   );
   lines.push("");
-  lines.push("## Since hunks (cite these in the Since-B cards)");
+  lines.push("## Since hunks (cite these in the Changes-since-X cards)");
   if (since === undefined) {
     lines.push(
       "(the since-hunk comparison is unavailable — B could not be diffed: " +
-        "write the normal guide and no Since-B section)",
+        "write the normal guide and no Changes-since-X section)",
     );
   } else {
     const ids = [...since.changed, ...since.added];
     const kept = ids.slice(0, READER_SINCE_HUNK_CAP);
     const omitted = ids.length - kept.length;
     if (kept.length === 0) {
-      lines.push("(no hunks changed since B — B is the head or its content matches the head: write no Since-B section)");
+      lines.push("(no hunks changed since B — B is the head or its content matches the head: write no Changes-since-X section)");
     } else {
       lines.push(kept.join(", "));
       if (omitted > 0) lines.push(`(+${omitted} more since hunks, all in the diff above)`);
@@ -636,7 +643,7 @@ export function formatReaderReviewedContext(snapshot: ReviewSnapshot, since?: Si
   }
   lines.push("");
   lines.push("## Feedback the delta since B may answer");
-  lines.push("Each item's bracketed id goes in the `answers` list of the Since-B card that answers it.");
+  lines.push("Each item's bracketed id goes in the `answers` list of the Changes-since-X card that answers it.");
   const fb = matchSinceFeedback(snapshot, since ?? { added: [], changed: [] });
   const remarks: string[] = [];
   for (const m of fb.comments) {

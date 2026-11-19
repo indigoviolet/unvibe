@@ -1,6 +1,6 @@
 /**
  * #217: go-deeper placeholders are written automatically after the guide
- * when `autoGoDeeper` is on (default), at background priority, through the
+ * when `autoGoDeeper` is on (off by default since #389), at background priority, through the
  * same fill path as Generate; an on-click Generate while the automatic
  * job is queued/running reuses that job. Fake runner only.
  */
@@ -51,8 +51,10 @@ const FILL = `Filled body.
 
 function makeSnapshot(id: string): ReviewSnapshot {
   return {
-    review: { id, repoId: "demo", branch: "main", versions: [], currentVersion: 1, createdAt: Date.now() },
+    review: { id, repoId: "demo", branch: "main", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: Date.now() },
     version: { n: 1, headSha: "abc1234def5678abc1234def5678abc1234def5", mergeBaseSha: "0000000", baseRef: "main", fetchedAt: Date.now(), idMapping: {} },
+    // Issue #421: the fixture guide describes this head.
+    guideHead: { version: 1, sha: "abc1234def5678abc1234def5678abc1234def5" },
     files: [{
       fileKey: "a-py", path: "a.py", category: "source",
       hunks: [{
@@ -217,7 +219,7 @@ describe("auto go-deeper (#217)", () => {
         draft.plotlines = [{ id: "main-thread", name: "Main thread", description: "d" }];
         const root = draft.pages.find((pg) => pg.id === "root")!;
         root.cards = [{
-          id: "g-seeded", pageId: "root", title: "Seeded direction", level: "standard", collapsed: false,
+          id: "g-seeded", pageId: "root", title: "Seeded direction", collapsed: false,
           revision: 1, blocks: [], undoStack: [], pending: { label: "Seeded direction", why: "seeded" },
         } as typeof root.cards[number]];
         const hunk = draft.files[0].hunks[0];

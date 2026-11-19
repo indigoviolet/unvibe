@@ -223,11 +223,12 @@ declare module "*live-pi-lib.mjs" {
   export function worstCaseTurnUsd(rates: CostRates, entry: CatalogEntry | null | undefined): number | null;
   export function preflightCap(args: { capUsd: number; worstCaseUsd: number | null; what?: string }): number | null;
   export function createSpendTracker(rates: CostRates, capUsd: number): SpendTracker;
-  export function liveModelPatch(pick: LivePick, roles?: string[]): Record<string, LivePick>;
+  export function liveModelPatch(pick: LivePick, roles?: string[], current?: { personas?: unknown[] }): Record<string, unknown>;
   export function selectLiveModel(
-    putSettings: (patch: Record<string, LivePick>) => Promise<{ ok: boolean; status: number; detail: string; body: unknown }>,
+    putSettings: (patch: Record<string, unknown>) => Promise<{ ok: boolean; status: number; detail: string; body: unknown }>,
     pick: LivePick,
     roles?: string[],
+    getSettings?: () => Promise<unknown>,
   ): Promise<unknown>;
   export function writeLiveReport(args: { dir: string; task: string } & Record<string, unknown>): string;
 }

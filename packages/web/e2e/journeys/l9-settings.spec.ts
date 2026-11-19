@@ -210,7 +210,8 @@ test.describe("L9 settings CRUD", () => {
     // add/remove fails on the name. Contract: PROMPT_TEMPLATE_NAMES in
     // packages/shared/src/prompts.ts. #349 removed the two
     // second-opinion templates and added persona_card (16 + 1 = 17);
-    // concept_stub was removed with the stub job (#216).
+    // concept_stub was removed with the stub job (#216); update_pass
+    // became explain_pass in #413.
     const expectedTemplates = [
       "instructions",
       "reader",
@@ -221,11 +222,11 @@ test.describe("L9 settings CRUD", () => {
       "concept_page",
       "ask",
       "ask_turn",
-      "depth",
+      "slower",
       "examples",
       "diagram",
       "go_deeper",
-      "update_pass",
+      "explain_pass",
       "consolidate",
       "persona_card",
     ];
@@ -267,16 +268,18 @@ test.describe("L9 settings CRUD", () => {
     await expect(page.getByTestId("doctor-path")).toContainText("effective");
     await expect(page.getByTestId("doctor-tool-claude")).toBeVisible();
     await expect(page.getByRole("button", { name: "Copy diagnostics" })).toBeVisible();
-    // #238: the Documents icon sits next to the Unvibe home link on the
-    // left, before the breadcrumb, badge, update and Settings controls.
+    // #422: Markdown docs is experimental and off by default, so the top
+    // bar has no Documents link: the breadcrumb follows the Unvibe home
+    // link, and Settings stays on the bar.
     const barOrder = await page.evaluate(() =>
       [...(document.querySelector("header.top")?.children ?? [])].map(
         (el) => el.getAttribute("aria-label") ?? el.textContent?.trim() ?? "",
       ),
     );
     expect(barOrder[0]).toBe("Unvibe");
-    expect(barOrder[1]).toBe("Documents");
-    expect(barOrder.indexOf("Documents")).toBeLessThan(barOrder.indexOf("Settings"));
+    expect(barOrder[1]).toBe("Breadcrumb");
+    expect(barOrder).not.toContain("Documents");
+    expect(barOrder).toContain("Settings");
 
     // Model pickers show display names on the real service (static
     // fallback carries names even with no agent). Models holds only the
@@ -344,6 +347,43 @@ test.describe("L9 settings CRUD", () => {
     await openPopup(page).getByRole("option", { name: "Default" }).click();
     await defaultSaved;
     await expect(page.locator("html")).toHaveAttribute("data-ui-theme", "default");
+  });
+
+  test("saving the Guide model leaves small on its live default (issue #404)", async ({ page }) => {
+    test.setTimeout(240_000);
+    const s = service();
+    await page.goto(`${s.origin}/settings?token=${s.token}`);
+    await expect(page.getByRole("tablist", { name: "Settings sections" })).toBeVisible({ timeout: 30_000 });
+    // Fresh-data-dir flow: change the Guide model in Personas, like the
+    // owner did. This PUTs only the personas list — small stays unsaved
+    // and keeps resolving live, so Models → Small must show no
+    // "no longer offered" error and an offered model.
+    await page.getByRole("tab", { name: "Personas" }).click();
+    await expect(page.getByTestId("personas-section")).toBeVisible({ timeout: 15_000 });
+    const row = page.getByTestId("persona-guide");
+    await expect(row).toBeVisible();
+    await row.getByTestId("persona-guide-edit").click();
+    await expect(page.getByTestId("persona-guide-model")).toBeVisible({ timeout: 15_000 });
+    await page.getByTestId("persona-guide-model").click();
+    const sonnet = openPopup(page).getByRole("option", { name: "Sonnet" });
+    await sonnet.scrollIntoViewIfNeeded();
+    const saved = page.waitForResponse(
+      (r) => r.url().includes("/api/settings") && r.request().method() !== "GET" && r.ok(),
+      { timeout: 15_000 },
+    );
+    await sonnet.click();
+    await page.getByTestId("persona-guide-save").click();
+    await saved;
+    await expect(row).toContainText("claude/claude-sonnet-5-5");
+    // Provenance: only the personas list counts as saved, never small.
+    const keys = (await apiJson(s, "GET", "/api/settings/saved-keys")).json as { savedKeys: string[] };
+    expect(keys.savedKeys).toContain("personas");
+    expect(keys.savedKeys).not.toContain("small");
+    // Models → Small: no false missing-model error, and an offered model.
+    await page.getByRole("tab", { name: "Models" }).click();
+    await expect(page.locator('[data-testid="model-small"]')).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator('[data-testid="model-small-missing"]')).toHaveCount(0);
+    await expect(page.locator("#model-small")).toContainText("claude-haiku-5-5", { timeout: 15_000 });
   });
 
   test("repos add/remove + invalid + has-reviews refusal; data reset last", async ({ page }) => {

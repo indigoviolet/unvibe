@@ -121,14 +121,13 @@ describe("#112 remapCitationTarget (content re-anchor)", () => {
       id: "c1",
       pageId: "root",
       title: "T",
-      level: "standard",
       collapsed: false,
       revision: 1,
       blocks: [
         {
           type: "paragraph",
           id: "b1",
-          text: { standard: "see helper" },
+          text: "see helper",
           citations: [{ target: "code:helper.py:2@aaaa1111", unverified: true }],
         },
       ],
@@ -163,7 +162,7 @@ describe("#178 reader with code citations outside the hunks (fake runner)", () =
         )
         .run(id, 1, "abc1234def5678abc1234def5678abc1234def5", "0000000", "main", Date.now(), JSON.stringify({}));
       const snap: ReviewSnapshot = {
-        review: { id, repoId: "demo", branch: "main", versions: [], currentVersion: 1, createdAt: Date.now() },
+        review: { id, repoId: "demo", branch: "main", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: Date.now() },
         version: {
           n: 1,
           headSha: "abc1234def5678abc1234def5678abc1234def5",
@@ -172,6 +171,8 @@ describe("#178 reader with code citations outside the hunks (fake runner)", () =
           fetchedAt: Date.now(),
           idMapping: {},
         },
+        // Issue #421: the fixture guide describes this head.
+        guideHead: { version: 1, sha: "abc1234def5678abc1234def5678abc1234def5" },
         files: [
           {
             fileKey: "a-py",

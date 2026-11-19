@@ -18,15 +18,14 @@ function seedSnapshot(): void {
     id: "c1",
     pageId: "root",
     title: "Card",
-    level: "standard",
     read: false,
     collapsed: false,
     revision: 1,
-    blocks: [{ type: "paragraph", id: "b1", text: { standard: "Some text." }, citations: [] }],
+    blocks: [{ type: "paragraph", id: "b1", text: "Some text.", citations: [] }],
     undoStack: [],
   } as unknown as Card;
   useReview.getState().setSnapshot({
-    review: { id: REVIEW_ID, repoId: "r", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
+    review: { id: REVIEW_ID, repoId: "r", branch: "b", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: 0 },
     version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
     files: [],
     pages: [{ id: "root", kind: "root", title: "Root", cards: [card] }],

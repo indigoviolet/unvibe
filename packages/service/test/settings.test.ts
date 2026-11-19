@@ -61,6 +61,28 @@ describe("SettingsStore", () => {
     expect(store.get()).toEqual(DEFAULT_SETTINGS);
   });
 
+  it("seeds both experimental gates off and validates them (issue #422)", () => {
+    const store = makeStore();
+    expect(store.get().experimental).toEqual({ explainTerms: false, markdownDocs: false });
+    // Full object update.
+    expect(store.update({ experimental: { explainTerms: true, markdownDocs: true } }).errors).toBeUndefined();
+    expect(store.get().experimental).toEqual({ explainTerms: true, markdownDocs: true });
+    // Partial update merges leaf-wise: toggling one gate keeps the other.
+    expect(store.update({ experimental: { explainTerms: false } } as never).errors).toBeUndefined();
+    expect(store.get().experimental).toEqual({ explainTerms: false, markdownDocs: true });
+    // Non-boolean leaves and unknown leaves are rejected; nothing persists.
+    expect(store.update({ experimental: { explainTerms: "yes" } } as never).errors).toMatchObject([
+      expect.stringContaining("experimental.explainTerms"),
+    ]);
+    expect(store.update({ experimental: { nope: true } } as never).errors).toMatchObject([
+      expect.stringContaining("unknown experimental setting"),
+    ]);
+    expect(store.update({ experimental: true } as never).errors).toMatchObject([
+      expect.stringContaining("experimental must be"),
+    ]);
+    expect(store.get().experimental).toEqual({ explainTerms: false, markdownDocs: true });
+  });
+
   it("persists the hunk summary limit and rejects out-of-range values (issue #376)", () => {
     const store = makeStore();
     expect(store.get().hunkSummaryLimit).toBe(50);

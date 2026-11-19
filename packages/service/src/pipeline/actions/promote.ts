@@ -63,7 +63,6 @@ export async function promoteAction(
       pageId,
       // First card carries the quoted text, later ones their questions.
       title: i === 0 ? ann.anchor.quotedText || null : (turn.question ?? null),
-      level: turn.level,
       collapsed: false,
       revision: turn.revision,
       blocks: JSON.parse(JSON.stringify(turn.blocks)) as Block[],

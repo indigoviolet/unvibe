@@ -4,8 +4,9 @@
  *
  * - Empty lens: main writing turns are byte-identical to today, and the
  *   base/system prompt never depends on the lens.
- * - Set lens: prefixed to every main writing turn (guide, cards, depth,
- *   Explain, Ask) as a subordinate style section; the task's own rules
+ * - Set lens: prefixed to every main writing turn (guide, cards, slower
+ *   rewrites, Explain, Ask) as a subordinate style section; the task's
+ *   own rules
  *   stay authoritative. Persona turns never carry it.
  *
  * Fake runner only; no live spend.
@@ -13,6 +14,7 @@
 import { describe, expect, it } from "vitest";
 import {
   GUIDE_PERSONA_ID,
+  PERSONA_COLORS,
   type Persona,
   type ReviewSnapshot,
 } from "@unvibe/shared";
@@ -26,7 +28,7 @@ import {
 } from "../src/prompts/personas.js";
 
 const LENS = "Write with short sentences. No jargon without a gloss.";
-const PROMPT = "# Depth rewrite\n\nRewrite the card below at the requested level.";
+const PROMPT = "# Help me understand\n\nRewrite the card below more slowly.";
 
 describe("withGuideWritingStyle", () => {
   it("leaves the prompt byte-identical when the lens is empty", () => {
@@ -46,12 +48,12 @@ describe("withGuideWritingStyle", () => {
 describe("withGuideStyleForTurn", () => {
   it("covers exactly the main writing tasks", () => {
     expect([...GUIDE_STYLE_TEMPLATES].sort()).toEqual(
-      ["ask", "ask_turn", "depth", "go_deeper", "reader"].sort(),
+      ["ask", "ask_turn", "slower", "go_deeper", "reader"].sort(),
     );
   });
 
   it("prefixes main tasks, passes persona and small tasks through", () => {
-    for (const template of ["reader", "go_deeper", "depth", "ask", "ask_turn"]) {
+    for (const template of ["reader", "go_deeper", "slower", "ask", "ask_turn"]) {
       expect(withGuideStyleForTurn(template, PROMPT, LENS).startsWith("# Writing style")).toBe(
         true,
       );
@@ -141,13 +143,12 @@ The central paragraph.
     id: string,
   ): Promise<string | undefined> {
     // A fresh placeholder card: generation always calls the agent (no
-    // stored reuse like depth levels).
+    // stored reuse).
     await ctx.reviews.mutate(id, (draft) => {
       const root = (draft.pages ?? []).find((p) => p.id === "root");
       root?.cards.push({
         id: "pending-1",
         title: "Pending card",
-        level: "standard",
         blocks: [],
         pending: { label: "Pending card", why: "covers the gap" },
       } as never);
@@ -167,7 +168,7 @@ The central paragraph.
   }
 
   it(
-    "set lens is prefixed to the depth turn with the task rules intact; the base never sees it",
+    "set lens is prefixed to the go deeper turn with the task rules intact; the base never sees it",
     { timeout: 180000 },
     async () => {
       process.env.UNVIBE_REPO_ROOTS = "";
@@ -197,6 +198,48 @@ The central paragraph.
         for (const start of agents.starts) {
           expect(start.systemPrompt).not.toContain(LENS);
         }
+      } finally {
+        await app.close();
+      }
+    },
+  );
+
+  it(
+    "set lens is prefixed to the slower turn with the task rules intact",
+    { timeout: 180000 },
+    async () => {
+      process.env.UNVIBE_REPO_ROOTS = "";
+      const agents = new FakeAgentRunner([
+        { match: "reply with exactly", events: textEvents("ready") },
+        { match: "# Reader task", events: textEvents(MINIMAL_READER) },
+        { match: "# Go deeper", events: textEvents("fresh card body") },
+        {
+          match: "# Help me understand",
+          events: textEvents(`A slower problem paragraph.\n\n\`\`\`json\n{}\n\`\`\`\n`),
+        },
+      ]);
+      const { app, ctx, id } = await openDemo(agents);
+      try {
+        await setGuideLens(app, ctx, LENS);
+        await runGenerate(agents, app, ctx, id);
+        const before = agents.prompts.length;
+        const res = await app.inject({
+          method: "POST",
+          url: `/api/reviews/${id}/actions`,
+          headers: { authorization: "Bearer tok" },
+          payload: { kind: "slower", cardId: "problem" },
+        } as never);
+        expect(res.statusCode).toBe(200);
+        const jobId = (res.json() as { jobId?: string }).jobId;
+        expect(jobId).toBeDefined();
+        await waitFor(() => agents.prompts.length > before, 120000);
+        const turn = agents.prompts[agents.prompts.length - 1];
+        expect(turn.text.startsWith(`# Writing style\n\n${LENS}\n\n`)).toBe(true);
+        // The task's own rules stay in the turn, below the style section.
+        expect(turn.text).toContain("# Help me understand");
+        expect(turn.text).toContain("## Rules");
+        // The prompt carries the card's current text.
+        expect(turn.text).toContain("The problem paragraph.");
       } finally {
         await app.close();
       }
@@ -239,24 +282,40 @@ The central paragraph.
         {
           match: "# Persona card",
           events: textEvents(
-            `The problem, rewritten for clarity. See the problem statement [[card:problem]].\n\n\`\`\`json\n{}\n\`\`\`\n`,
+            `The problem, restated plainly. See the problem statement [[card:problem]].\n\n\`\`\`json\n{}\n\`\`\`\n`,
           ),
         },
         {
-          match: "# Depth rewrite",
-          events: textEvents(`A simpler variant line.\n\n\`\`\`json\n{"depth": {"level": "simple"}}\n\`\`\`\n`),
+          match: "# Help me understand",
+          events: textEvents(`A slower variant line.\n\n\`\`\`json\n{"slower": {"cardId": "problem"}}\n\`\`\`\n`),
         },
       ]);
       const { app, ctx, id } = await openDemo(agents);
       try {
-        // Guide on a non-default effort with a lens set.
+        // Guide on a non-default effort with a lens set, plus a custom
+        // followMain persona (issue #423 removed the Clarity built-in,
+        // the previous only follower).
+        const FOLLOWER: Persona = {
+          id: "follower",
+          name: "Follower",
+          followMain: true,
+          provider: "claude",
+          model: "claude-opus-5-5",
+          lens: "You are a follower: you restate the card plainly.",
+          cardInstruction: "",
+          enabled: true,
+          color: PERSONA_COLORS[1],
+        };
         const seed = (ctx.settings.get().personas ?? []) as Persona[];
         const res = await app.inject({
           method: "PUT",
           url: "/api/settings",
           headers: { authorization: "Bearer tok" },
           payload: {
-            personas: seed.map((p) => (p.id === GUIDE_PERSONA_ID ? { ...p, lens: LENS2, effort: "high" } : p)),
+            personas: [
+              ...seed.map((p) => (p.id === GUIDE_PERSONA_ID ? { ...p, lens: LENS2, effort: "high" } : p)),
+              FOLLOWER,
+            ],
           },
         } as never);
         expect(res.statusCode).toBe(200);
@@ -270,28 +329,32 @@ The central paragraph.
           method: "POST",
           url: `/api/reviews/${id}/actions`,
           headers: { authorization: "Bearer tok" },
-          payload: { kind: "persona", cardId: "problem", personaId: "clarity" },
+          payload: { kind: "persona", cardId: "problem", personaId: "follower" },
         } as never);
         expect(run.statusCode).toBe(200);
         const personaJobId = (run.json() as { jobId?: string }).jobId;
         await waitFor(() => {
           const card = ctx.reviews.getSnapshot(id)?.pages.flatMap((p) => p.cards).find((c) => c.id === "problem");
-          const variant = card?.variants?.["clarity"];
+          const variant = card?.variants?.["follower"];
           return !!variant && variant.blocks.length > 0 && !variant.working;
         }, 120000);
-        const depth = await app.inject({
+        const slower = await app.inject({
           method: "POST",
           url: `/api/reviews/${id}/actions`,
           headers: { authorization: "Bearer tok" },
-          payload: { kind: "depth", cardId: "problem", direction: "simpler", personaId: "clarity" },
+          payload: { kind: "slower", cardId: "problem", personaId: "follower" },
         } as never);
-        expect(depth.statusCode).toBe(200);
-        const depthJobId = (depth.json() as { jobId?: string }).jobId;
+        expect(slower.statusCode).toBe(200);
+        const slowerJobId = (slower.json() as { jobId?: string }).jobId;
         await waitFor(() => {
           const card = ctx.reviews.getSnapshot(id)?.pages.flatMap((p) => p.cards).find((c) => c.id === "problem");
-          return (card?.variants?.["clarity"]?.level ?? "") === "simple";
+          const text = (card?.variants?.["follower"]?.blocks ?? [])
+            .filter((b) => b.type === "paragraph")
+            .map((b) => (b as { text: string }).text)
+            .join(" ");
+          return text.includes("A slower variant line.");
         }, 120000);
-        for (const marker of ["# Persona card", "# Depth rewrite"]) {
+        for (const marker of ["# Persona card", "# Help me understand"]) {
           const turns = agents.prompts.filter((p) => p.text.includes(marker));
           expect(turns.length).toBeGreaterThan(0);
           for (const turn of turns) {
@@ -301,8 +364,8 @@ The central paragraph.
         }
         expect(personaJobId).toBeDefined();
         expect(ctx.jobs.get(personaJobId!)?.effort).toBe("");
-        expect(depthJobId).toBeDefined();
-        expect(ctx.jobs.get(depthJobId!)?.effort).toBe("");
+        expect(slowerJobId).toBeDefined();
+        expect(ctx.jobs.get(slowerJobId!)?.effort).toBe("");
       } finally {
         await app.close();
       }

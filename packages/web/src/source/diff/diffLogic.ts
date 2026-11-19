@@ -154,12 +154,6 @@ export interface FileFilter {
    */
   plot?: DiffFilter;
   hunkStateOf?: (contentHash: string) => { score?: HunkScoreLevel; plotline?: string } | undefined;
-  /**
-   * Issue #351: new-side `h:` IDs changed or added since the baseline.
-   * Present only while the Since-B filter is on; a hunk passes only
-   * when it is in the set.
-   */
-  sinceIds?: ReadonlySet<string>;
 }
 
 /** Prototype `visibleFiles`: category chips + name filter + hide-reviewed. */
@@ -178,16 +172,12 @@ export function filterFiles(files: ReviewFile[], filter: FileFilter): ReviewFile
   );
 }
 
-/**
- * True when a hunk passes the plotline + Since-B filters (absent = all
- * pass). `fileKey` builds the `h:` id for the Since-B membership check.
- */
+/** True when a hunk passes the plotline filter (absent = all pass). */
 export function hunkPlotVisible(
   hunk: Hunk,
-  fileKey: string,
-  filter: Pick<FileFilter, "plot" | "hunkStateOf" | "sinceIds">,
+  _fileKey: string,
+  filter: Pick<FileFilter, "plot" | "hunkStateOf">,
 ): boolean {
-  if (filter.sinceIds && !filter.sinceIds.has(hunkVisibleId(fileKey, hunk.contentHash))) return false;
   if (!filter.plot || filter.plot.plotline === undefined) return true;
   const st = filter.hunkStateOf?.(hunk.contentHash);
   return hunkMatchesFilter(st?.plotline, filter.plot);

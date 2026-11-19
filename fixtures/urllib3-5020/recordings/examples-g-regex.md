@@ -56,5 +56,5 @@ All current cases use runs of a few blanks, so both versions return the same str
 :::
 
 ```json
-{"title": "The _OBSOLETE_FOLD_RE lookbehind", "depth": {"level": "deep", "cardId": "g-regex"}, "contribute": {"facts": []}}
+{"title": "The _OBSOLETE_FOLD_RE lookbehind", "contribute": {"facts": []}}
 ```

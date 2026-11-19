@@ -26,8 +26,22 @@
  *   `Settings` loses `main` (the Guide persona owns the provider +
  *   model) and gains the fixed Guide entry in `personas`; stored rows
  *   without it need a reset.
+ * - 8: one repeatable "Help me understand" rewrite replaces the depth
+ *   levels (#387): `level` fields and per-level paragraph text go away;
+ *   stored rows without the new shape need a reset.
+ * - 9: reviews record which Guide persona wrote them (#393):
+ *   `Review` gains required `guidePersonaId` (no fallback); stored
+ *   reviews without it need a reset.
+ * - 10: explain-since-X (#413): addenda are gone (`Card` loses
+ *   `stale`/`staleChangedHunks`/`staleHunks`/`addenda`, pages lose
+ *   `needsRecheck`/`recheckStatus`/`recheckNote`, `VersionStatus` loses
+ *   `stale`); stored reviews with since/addendum data need a reset.
+ * - 11: explain toolbar (#421): `SinceSection` gains required `headSha`
+ *   (the head the section was written at) and the snapshot gains
+ *   required `guideHead` (the head the guide was written at); stored
+ *   reviews without them need a reset.
  */
-export const DATA_FORMAT = 7;
+export const DATA_FORMAT = 11;
 
 /** Stored format of a data dir: `null` when no stamp is present. */
 export type DataFormatState = "none" | "match" | "mismatch";

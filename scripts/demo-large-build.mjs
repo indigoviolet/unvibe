@@ -198,16 +198,22 @@ const main = async () => {
     const r = await api(opts.port, "PUT", "/api/settings", patch, token);
     return { ok: r.code === 200, status: r.code, detail: (r.json?.errors ?? [r.raw.slice(0, 200)]).join("; "), body: r.json };
   };
+  const get = async () => (await api(opts.port, "GET", "/api/settings", undefined, token)).json;
   const failures = [];
   let reviewId = null;
   let headSha = null;
   try {
     // Every role on pi + muse-spark (issue #309).
     try {
-      await selectLiveModel(put, DEMO_LARGE_MODEL, ["main", "small"]);
+      await selectLiveModel(put, DEMO_LARGE_MODEL, ["main", "small"], get);
     } catch (e) {
       failures.push(e instanceof Error ? e.message : String(e));
     }
+    // #415: the service auto-summarizes at most `hunkSummaryLimit` hunks
+    // (the rest are on demand), so the build waits for that many, never
+    // for every hunk of a larger PR.
+    const settingsNow = failures.length === 0 ? await get() : null;
+    const summaryLimit = Number.isInteger(settingsNow?.hunkSummaryLimit) ? settingsNow.hunkSummaryLimit : Infinity;
     if (failures.length === 0) {
       const added = await api(opts.port, "POST", "/api/repos", { url: repoUrl }, token);
       const repos = added.json?.repos ?? [];
@@ -264,13 +270,13 @@ const main = async () => {
         const busyKinds = (jobs.json?.jobs ?? []).filter((j) => j.state === "running" || j.state === "backing-off" || j.state === "queued").map((j) => j.kind).join(",");
         const estimate = spend.usd() + costOf(jobsUsage(jobs.json?.jobs), piRates);
         console.log(
-          `  t=${Math.round((Date.now() - (deadline - opts.budgetMin * 60_000)) / 60000)}min rev=${snap.rev} files=${(snap.files ?? []).length} root=${root?.cards.length ?? 0} findings=${findings.length} hunksum=${hunksum}/${totalHunks} busy=[${busyKinds}] spend~${formatUsd(estimate)}/${formatUsd(opts.capUsd)}`,
+          `  t=${Math.round((Date.now() - (deadline - opts.budgetMin * 60_000)) / 60000)}min rev=${snap.rev} files=${(snap.files ?? []).length} root=${root?.cards.length ?? 0} findings=${findings.length} hunksum=${hunksum}/${totalHunks} (auto ${Math.min(totalHunks, summaryLimit)}) busy=[${busyKinds}] spend~${formatUsd(estimate)}/${formatUsd(opts.capUsd)}`,
         );
         if (estimate > opts.capUsd) {
           failures.push(`cap exceeded mid-run: priced spend ${formatUsd(estimate)} > cap ${formatUsd(opts.capUsd)} (failed jobs included); stopping before further spend`);
           break;
         }
-        const plausibleTotal = totalHunks > 0 ? hunksum >= totalHunks : true;
+        const plausibleTotal = totalHunks > 0 ? hunksum >= Math.min(totalHunks, summaryLimit) : true;
         if ((root?.cards.length ?? 0) >= 1 && plausibleTotal && !busy) break;
         if (Date.now() > deadline) {
           failures.push(`pipeline did not finish within ${opts.budgetMin} minutes (re-run with --budget-min N; no cache saved)`);

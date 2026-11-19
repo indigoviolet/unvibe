@@ -1,7 +1,9 @@
 /** Shared helpers for the #188 journeys (real built service only). */
+import { expect, type Page } from "@playwright/test";
 import { DATA_FORMAT } from "@unvibe/shared";
-import { execFile, execSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { execFile, execFileSync, execSync } from "node:child_process";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -9,6 +11,38 @@ import { fileURLToPath } from "node:url";
 import type { RunningService } from "../service-harness.js";
 
 const exec = promisify(execFile);
+
+/**
+ * Issue #417: a replay-run guide must render its recording, never the
+ * "[replay placeholder ...]" fallback. Call after the guide lands:
+ * it fails loudly instead of letting a broken guide hide behind
+ * banner-only asserts.
+ */
+export async function expectRecordedGuide(page: Page, opts: { problem?: RegExp } = {}): Promise<void> {
+  await expect(page.locator("#C-problem")).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator("#page")).not.toContainText("[replay placeholder");
+  if (opts.problem) await expect(page.locator("#C-problem")).toContainText(opts.problem, { timeout: 30_000 });
+}
+
+/**
+ * Issue #417 (follow-up): a replay-run hunk summary must be a one-line
+ * summary, never a card heading (a reader-shaped reply served as the
+ * summary) or the "[replay placeholder ...]" fallback. Call once the
+ * automatic hunk pass should have landed.
+ */
+export async function expectRealHunkSummaries(page: Page, fileKey: string, expected = 0): Promise<void> {
+  const sums = page.locator(`p[data-hunksum^="${fileKey}:"]`);
+  await expect(sums.first()).toBeVisible({ timeout: 60_000 });
+  if (expected > 0) await expect(sums).toHaveCount(expected, { timeout: 30_000 });
+  const n = await sums.count();
+  expect(n, "no hunk summaries landed").toBeGreaterThan(0);
+  for (let i = 0; i < n; i++) {
+    const text = ((await sums.nth(i).innerText()) ?? "").trim();
+    expect(text.length, `hunk summary ${i} is empty`).toBeGreaterThan(0);
+    expect(text, `hunk summary ${i} looks like a card heading: ${text}`).not.toMatch(/^##\s/);
+    expect(text, `hunk summary ${i} is a replay placeholder`).not.toContain("[replay placeholder");
+  }
+}
 
 /**
  * Stamp a directly-seeded data dir with the current data format (#311).
@@ -320,4 +354,44 @@ export async function createScratchReview(
   });
   if (created.status !== 201 && created.status !== 200 && created.status !== 202) throw new Error(`review create failed: ${created.status} ${JSON.stringify(created.json)}`);
   return (created.json as { review: { id: string } }).review.id;
+}
+
+const JOURNEYS_DIR = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.resolve(JOURNEYS_DIR, "..", "..", "..", "..");
+const REPO_PROMPTS_DIR = path.join(REPO_ROOT, "prompts");
+const FORK_SCRIPT = path.join(REPO_ROOT, "scripts", "persona-fork.mjs");
+
+/** Forked templates a fixture Tutor persona owns (issue #393). */
+export const TUTOR_FORK_TEMPLATES = ["reader", "slower", "instructions", "hunk_pass", "explain_pass"] as const;
+
+/** Sentinel appended to each fixture fork file (asserted in prompts, never a variable). */
+export const TUTOR_SENTINEL: Record<(typeof TUTOR_FORK_TEMPLATES)[number], string> = {
+  reader: "FORK-READER-SENTINEL",
+  slower: "FORK-SLOWER-SENTINEL",
+  instructions: "FORK-INSTRUCTIONS-SENTINEL",
+  hunk_pass: "FORK-HUNK-SENTINEL",
+  explain_pass: "FORK-EXPLAIN-SENTINEL",
+};
+
+export const TUTOR_LENS = "TUTOR-LENS-SENTINEL: explain like a patient tutor, one mechanism at a time.";
+
+/**
+ * Fixture prompt set for the #393 journey and tour (issue #393): a copy
+ * of the repo prompts plus a `tutor` fork (built by the real
+ * persona:fork helper, with sentinel lines the tests assert on) and its
+ * manifest. The caller removes the directory when done. Mutating a base
+ * file afterwards makes the fork drift (the drift warning test does
+ * exactly that).
+ */
+export function makeTutorForkPrompts(tag: string): { dir: string } {
+  const dir = mkdtempSync(path.join(os.tmpdir(), `unvibe-393-${tag}-`));
+  cpSync(REPO_PROMPTS_DIR, dir, { recursive: true });
+  execFileSync(process.execPath, [FORK_SCRIPT, "tutor", ...TUTOR_FORK_TEMPLATES, "--prompts-dir", dir], {
+    timeout: 30000,
+  });
+  for (const name of TUTOR_FORK_TEMPLATES) {
+    const file = path.join(dir, "personas", "tutor", `${name}.md`);
+    writeFileSync(file, `${readFileSync(file, "utf8")}\n\n${TUTOR_SENTINEL[name]}: written by the Tutor fork.\n`);
+  }
+  return { dir };
 }

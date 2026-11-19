@@ -10,7 +10,7 @@ import { api } from "../api/client.js";
 import * as ToastModule from "../floating/Toast.js";
 import { resetMockState } from "../mock/index.js";
 import { useReview } from "../state/store.js";
-import { performAction, performFollowUp, performUpdate } from "./actions.js";
+import { performAction, performExplain, performFollowUp } from "./actions.js";
 
 const REVIEW_ID = "demo";
 
@@ -29,16 +29,16 @@ beforeEach(async () => {
 });
 
 describe("performAction in-flight funnel", () => {
-  test("depth shows immediately and clears after the instant answer", async () => {
-    const before = pageCard("central").level;
-    const p = performAction(REVIEW_ID, { kind: "depth", cardId: "central", direction: "simpler" });
+  test("slower shows immediately and clears after the instant answer", async () => {
+    const before = JSON.stringify(pageCard("central").blocks);
+    const p = performAction(REVIEW_ID, { kind: "slower", cardId: "central" });
     // Set synchronously, before the request returns.
-    expect(useReview.getState().inflight["central"]).toMatchObject({ kind: "depth" });
+    expect(useReview.getState().inflight["central"]).toMatchObject({ kind: "slower" });
     const res = await p;
     expect(res.accepted).toBe(true);
     // The mock answers with no job: cleared, nothing stuck.
     expect(useReview.getState().inflight["central"]).toBeUndefined();
-    expect(pageCard("central").level).not.toBe(before);
+    expect(JSON.stringify(pageCard("central").blocks)).not.toBe(before);
   });
 
   test("examples shows immediately and clears on the instant answer", async () => {
@@ -94,14 +94,14 @@ describe("performAction in-flight funnel", () => {
         }),
     );
     try {
-      const first = performAction(REVIEW_ID, { kind: "depth", cardId: "central", direction: "deeper" });
-      const second = performAction(REVIEW_ID, { kind: "depth", cardId: "central", direction: "deeper" });
+      const first = performAction(REVIEW_ID, { kind: "slower", cardId: "central" });
+      const second = performAction(REVIEW_ID, { kind: "slower", cardId: "central" });
       expect(resolvers).toHaveLength(2);
       // The first answer arrives after the second click: it must not wipe
       // the second click's entry.
       resolvers[0]({ accepted: true });
       await first;
-      expect(useReview.getState().inflight["central"]).toMatchObject({ kind: "depth" });
+      expect(useReview.getState().inflight["central"]).toMatchObject({ kind: "slower" });
       resolvers[1]({ accepted: true });
       await second;
       expect(useReview.getState().inflight["central"]).toBeUndefined();
@@ -117,7 +117,6 @@ describe("performAction in-flight funnel", () => {
         id: "c1",
         pageId: "root",
         title: "Card",
-        level: "standard",
         read: false,
         collapsed: false,
         revision,
@@ -125,7 +124,7 @@ describe("performAction in-flight funnel", () => {
         undoStack: [],
       } as unknown as Card;
       useReview.getState().setSnapshot({
-        review: { id: REVIEW_ID, repoId: "r", branch: "b", versions: [], currentVersion: 1, createdAt: 0 },
+        review: { id: REVIEW_ID, repoId: "r", branch: "b", versions: [], currentVersion: 1, guidePersonaId: "guide", createdAt: 0 },
         version: { n: 1, headSha: "abc", mergeBaseSha: "def", baseRef: "main", fetchedAt: 0, idMapping: {} },
         files: [],
         pages: [{ id: "root", kind: "root", title: "Root", cards: [card] }],
@@ -215,21 +214,21 @@ describe("performAction in-flight funnel", () => {
   });
 
   test("a thrown request clears the entry", async () => {
-    const p = performAction(REVIEW_ID, { kind: "depth", cardId: "no-such-card", direction: "deeper" });
-    expect(useReview.getState().inflight["no-such-card"]).toMatchObject({ kind: "depth" });
+    const p = performAction(REVIEW_ID, { kind: "slower", cardId: "no-such-card" });
+    expect(useReview.getState().inflight["no-such-card"]).toMatchObject({ kind: "slower" });
     await expect(p).rejects.toThrow();
     expect(useReview.getState().inflight["no-such-card"]).toBeUndefined();
   });
 
-  test("update shows until the mock update job settles", async () => {
+  test("explain shows until the mock explain job settles", async () => {
     // Fake timers for the mock's 100 ms latency + 800 ms settle timer.
     vi.useFakeTimers();
     try {
-      const p = performUpdate(REVIEW_ID);
-      expect(useReview.getState().inflight["update:demo"]).toMatchObject({ kind: "update" });
+      const p = performExplain(REVIEW_ID);
+      expect(useReview.getState().inflight["explain-run:demo"]).toMatchObject({ kind: "update" });
       await vi.advanceTimersByTimeAsync(1000);
       await p;
-      expect(useReview.getState().inflight["update:demo"]).toBeUndefined();
+      expect(useReview.getState().inflight["explain-run:demo"]).toBeUndefined();
     } finally {
       vi.useRealTimers();
     }

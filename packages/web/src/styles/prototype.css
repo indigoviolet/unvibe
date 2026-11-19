@@ -220,7 +220,7 @@ button:disabled { cursor: default; opacity: .35; }
 button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: var(--focus-offset); }
 code { font-family: var(--mono); font-size: .86em; }
 .sp { flex: 1; }
-.ic { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; flex: none; vertical-align: -2px; }
+.ic { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; flex: none; vertical-align: -2px; }
 .ib { display: inline-grid; place-items: center; width: 26px; height: 24px; border: 1px solid transparent; background: none; border-radius: var(--radius-6); color: var(--muted); padding: 0; }
 .ib:hover:not(:disabled) { background: var(--sunk); color: var(--ink); }
 .ib[aria-pressed="true"] { color: var(--ok); }
@@ -350,12 +350,9 @@ code { font-family: var(--mono); font-size: .86em; }
 .rbar .seg { height: var(--control-sm); box-sizing: border-box; }
 .rbar .seg button { height: 100%; box-sizing: border-box; display: inline-flex; align-items: center; }
 .rbar .jcount { height: var(--control-sm); box-sizing: border-box; display: inline-flex; align-items: center; }
-/* Review bar (#120): the version selector sits next to the identity. It
-   never shrinks (the title gives way first); an older shown version flags
-   it with the warning border. */
-.rbar .rid .vs { display: inline-flex; gap: 6px; align-items: center; flex: none; min-width: 0; }
-.rbar .rid .vs .ui-select { font-size: var(--text-xs); height: var(--control-sm); padding: 0 var(--space-2); width: auto; max-width: 220px; }
-.rbar .rid .vs[data-ro] .ui-select { border-color: var(--warn); }
+/* Review bar (#427): the history icon carries the new-commits dot. */
+.rbar .ib.hist { position: relative; }
+.rbar .ib.hist .fdot { position: absolute; top: 4px; right: 4px; }
 .rbar .seg { flex: none; }
 .rbar .ra { display: flex; gap: 8px; align-items: center; flex: none; }
 /* Narrow screens (issue #341): the bar wraps instead of overflowing —
@@ -430,7 +427,10 @@ code { font-family: var(--mono); font-size: .86em; }
 .seg { display: inline-flex; border: var(--border-width) solid var(--line); border-radius: var(--radius-button); overflow: hidden; }
 .seg button { border: 0; background: var(--surface); font-size: var(--text-xs); padding: var(--space-1) var(--space-2); color: var(--text-secondary); }
 .seg button + button { border-left: var(--border-width) solid var(--line); }
-.seg button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+/* #407: a pressed segment reads selected, not primary — a light
+   ink-mixed tint with ink text and a slightly heavier weight. Submit
+   review stays the only solid dark button in the bar. */
+.seg button[aria-pressed="true"] { background: color-mix(in srgb, var(--ink) 12%, transparent); color: var(--ink); font-weight: 600; }
 .chip { border: var(--border-width) solid var(--line); background: var(--surface); border-radius: var(--radius-pill); padding: 0 8px; font-size: 11.5px; color: var(--muted); height: 22px; }
 .chip[aria-pressed="true"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
 .chip span { opacity: .7; margin-left: 3px; }
@@ -527,6 +527,14 @@ textarea { min-width: 120px; max-width: 100%; min-height: 40px; max-height: 320p
 /* Filter menu group headings (plotline/score radio rows): quiet labels
    between the checkbox rows and the radio rows. */
 .fmenu .fgroup { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding: 6px 8px 0; }
+/* Disabled menu rows (#421: the head commit in the Explain menu is
+   shown but not pickable — explaining from it is an empty range). The
+   quiet count doubles as the "latest" hint (no extra label). */
+.fmenu button:disabled { opacity: .55; cursor: default; }
+.fmenu button:disabled:hover, .fmenu button:disabled:focus-visible { background: none; }
+/* Long commit subjects ellipsise in place (the full text stays in the
+   row's tooltip); short rows like persona names never overflow. */
+.fmenu button .lbl { overflow: hidden; text-overflow: ellipsis; }
 /* Hunk score dots (issue #169): Okabe-Ito, colour-blind-safe — a small
    marker only, never a background wash, so the diff's red and green keep
    their meaning. Colour is never the only signal: every dot carries its
@@ -606,8 +614,15 @@ textarea { min-width: 120px; max-width: 100%; min-height: 40px; max-height: 320p
    (below the toolbar, above the file headers), so the first file
    header still sits at its slot at scroll 0 and reveal landings clear
    the whole stack. `top` tracks the live strip + bar heights
-   (`refreshDiffPinned`); the file/hunk slots move down by its height. */
-.dsumbar { position: sticky; top: var(--dsumbar-top, 81px); left: 0; z-index: 9; background: var(--surface); }
+   (`refreshDiffPinned`); the file/hunk slots move down by its height.
+   Issue #395: like every other sticky layer, its `top` sits 2px above
+   its slot so its box overlaps the actions bar above it — without the
+   overlap a 2px seam between the stuck bar and the header shows
+   scrolling content (card text) through it. */
+/* Issue #426: bottom padding (inside the sticky box, so its surface
+   covers the gap) keeps the row off the first file header, the same
+   space as the toolbar row's bottom padding above it. */
+.dsumbar { position: sticky; top: calc(var(--dsumbar-top, 81px) - 2px); left: 0; z-index: 9; background: var(--surface); padding-bottom: var(--space-2); }
 /* Issue #351: the banner stacks as coherent groups — the summary text
    with range-diff always on its own full-width line, then the picker
    with Update left-aligned below — so a narrow pane never strands one
@@ -620,6 +635,10 @@ textarea { min-width: 120px; max-width: 100%; min-height: 40px; max-height: 320p
    tone — it never runs inline after the offer text or beside the
    picker. */
 .since-error { display: block; flex: 1 1 100%; margin-top: 4px; color: var(--warn); }
+/* Issue #413: a failed Explain run reads under the control row (its own
+   full-width line, like the picker's `since-error`), in the warning
+   tone — never squeezed beside the picker and button. */
+.explain-error { flex: 1 1 100%; color: var(--warn); }
 .desc h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 18px 0 6px; padding: 2px 6px; }
 .desc p, .desc li { margin: 6px 0; }
 /* #263: one consistent content inset. Paragraphs, lists and headings share
@@ -833,6 +852,16 @@ table.diff tr.pr > td { padding: 0; white-space: normal; font-family: var(--sans
 .folded { border: 0; background: var(--bg); color: var(--muted); font: 12px var(--sans); padding: 3px 10px; text-align: left; width: 100%; }
 .folded:hover { color: var(--ink); }
 
+/* Changes section (#421): one grouped inset panel like the Contents
+   box (same padding and rhythm) — the old "never a box holding cards"
+   rule is gone. Header row mirrors the Contents header (chevron plus
+   title); cards keep the 14px guide rhythm inside the panel. */
+.ui-card.since-panel { padding: 8px 14px; }
+.since-h { display: flex; align-items: center; gap: 6px; margin-left: -6px; flex-wrap: wrap; }
+.since-title { font-size: 13px; font-weight: 600; }
+.since-panel .since-cards { display: flex; flex-direction: column; gap: 14px; margin-top: 8px; }
+/* ID-qualified to beat `#page .ui-card` (the gap above owns the rhythm). */
+#page .since-panel .since-cards .ui-card { margin-block: 0; }
 /* ---------- guided page ---------- */
 #page { padding: var(--pad-page); }
 /* #232: the preparing-state loading carries its own shared padding
@@ -881,7 +910,11 @@ h1.title { font-family: var(--serif); font-weight: 600; font-size: var(--text-pa
 .plotlines li { min-width: 0; }
 .plotlines .ui-row { border-top: 0; border-radius: var(--radius-6); padding: var(--space-2) var(--space-2); min-height: 0; }
 .plotlines .ui-row[role="button"] { cursor: pointer; }
-.plotlines .ui-row.sel { background: var(--sunk); }
+/* Issue #406: the picked plotline's row reads selected. The inset card
+   itself is sunk, so the sunk tint alone is invisible here: the row keeps
+   it and adds the app's accent rail (the same inset left rail the diff
+   uses for marked rows, sized by --rail-accent-width). */
+.plotlines .ui-row.sel { background: var(--sunk); box-shadow: inset var(--rail-accent-width) 0 0 var(--accent); }
 /* Titles show in full and all look the same (#242): no truncation,
    no ellipsis, no underline — long titles wrap, except the plotline
    name itself, which clamps to two lines (#353). This overrides the
@@ -1269,6 +1302,9 @@ mark.anc.on { outline: 2px solid var(--note); }
 .linkstub button { border: 0; background: none; padding: 0; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
 .gen-aside { margin: 6px 0 14px; padding: 2px 0 2px 14px; border-left: 2px dashed var(--accent); }
 .gen-aside .tag { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--accent); font-weight: var(--weight-label); margin-top: 4px; }
+/* Issue #402: background context sits in place on a quiet tint, not the accent dashes. */
+.gen-aside.bg-aside { padding: 6px 14px 8px; border-left: 0; border-radius: 6px; background: var(--sunk); }
+.gen-aside.bg-aside .tag { color: var(--muted); }
 .clink { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; border: 0; border-left: 3px solid var(--note); background: var(--note-soft); border-radius: var(--radius-8); padding: 8px 12px; margin: 10px 0; font-size: 14px; color: var(--ink); }
 .clink .ic { color: var(--note); }
 .clink:hover { color: var(--note); }
@@ -1545,6 +1581,13 @@ pre.code .a { color: var(--add-ink); } pre.code .d { color: var(--del-ink); }
 .submit .cw { font: 11px var(--mono); color: var(--accent); }
 .submit .submit-entry { white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--text-sm); margin-top: 2px; }
 #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--bg-selbar); color: var(--text-selbar); padding: 7px 14px; border-radius: var(--radius-8); font-size: 13px; z-index: 40; max-width: calc(100vw - 32px); }
+/* Explain terms (#418): picked-term marks and the in-card tray. Marks
+   read as a soft accent wash (anchors keep the note tone). The tray is
+   a small row inside the picking card only: the picked terms as the
+   app's existing remove chips (`.fchip` with ×) plus ui Buttons. */
+mark[data-explain-term] { background: var(--accent-soft); color: inherit; border-radius: var(--radius-2); padding: 0 1px; }
+.explain-tray { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; padding: var(--space-2) 0; }
+.explain-tray .fchip { max-width: 240px; }
 
 /* ---------- second opinion (PRD §4.10) ---------- */
 .so-ctl { display: inline-flex; align-items: center; gap: 4px; }

@@ -58,6 +58,7 @@ function snapshotFor(html: string, extra?: Partial<ReviewSnapshot["description"]
       prNumber: 7,
       versions: [],
       currentVersion: 1,
+      guidePersonaId: "guide",
       createdAt: 1,
     },
     version: {
@@ -68,6 +69,8 @@ function snapshotFor(html: string, extra?: Partial<ReviewSnapshot["description"]
       fetchedAt: 1,
       idMapping: {},
     },
+    // Issue #421: the fixture guide describes this head.
+    guideHead: { version: 1, sha: "a".repeat(40) },
     files: [],
     description: {
       html,
@@ -194,7 +197,6 @@ describe("issue #96: desc: IDs from the review tools", () => {
             id: "c-central",
             pageId: "root",
             title: "Central change",
-            level: "standard",
             collapsed: false,
             revision: 1,
             blocks: [],

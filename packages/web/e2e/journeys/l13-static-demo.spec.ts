@@ -132,6 +132,21 @@ test("citation hover previews real cited lines", async ({ page }) => {
   expect(violations).toEqual([]);
 });
 
+test("one version, only the head commit: no Explain row or menu (#413, #421)", async ({ page }) => {
+  const violations = await sameOriginOnly(page);
+  await gotoDemo(page);
+  await closeSeedCard(page);
+  // The demo has one version and its only commit is the head, so there
+  // is nothing earlier to explain from: the guide shows no Explain row
+  // (never a picker whose only choice is the head), and the static demo
+  // hides the toolbar Explain menu like the Pull button.
+  await expect(page.locator("#page .doc")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("explain-control")).toHaveCount(0);
+  await expect(page.getByTestId("explain-pick")).toHaveCount(0);
+  await expect(page.getByTestId("explain-menu-button")).toHaveCount(0);
+  expect(violations).toEqual([]);
+});
+
 test("Explain on a recorded passage replays the recording", async ({ page }) => {
   const violations = await sameOriginOnly(page);
   await gotoDemo(page);
@@ -402,6 +417,10 @@ test.describe("static-demo sync", () => {
   test.beforeAll(async () => {
     syncDataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-demo-sync-data-"));
     syncSvc = await startService(syncDataDir, { agent: "replay" });
+    // The static demo bakes the full recording, go-deeper cards written;
+    // the replay service writes them only with the setting on (off by
+    // default since #389).
+    await apiJson(syncSvc, "PUT", "/api/settings", { autoGoDeeper: true });
     if (!syncSvc) throw new Error("no service");
     const created = await apiJson(syncSvc, "POST", "/api/reviews", { repoId: "demo" });
     syncReviewId = (created.json as { review: { id: string } }).review.id;
@@ -471,7 +490,8 @@ test.describe("static-demo sync", () => {
           const snap = await apiJson(syncSvc!, "GET", `/api/reviews/${syncReviewId}`);
           const pages = (snap.json as { pages: { id: string; cards: { id: string; blocks: unknown[]; pending?: unknown }[] }[] }).pages;
           const root = pages.find((p) => p.id === "root");
-          return !!root && root.cards.length >= 8 && root.cards.every((c) => !c.pending && c.blocks.length > 0);
+          // Issue #405 drops the buildup card: 3 guide cards + 4 filled go-deeper cards.
+          return !!root && root.cards.length >= 7 && root.cards.every((c) => !c.pending && c.blocks.length > 0);
         },
         { timeout: 300_000 },
       )

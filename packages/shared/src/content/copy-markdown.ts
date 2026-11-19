@@ -2,7 +2,7 @@
  * Copy-as-Markdown converter (issue #377).
  *
  * Builds the Markdown a card's copy icon puts on the clipboard: the card
- * as shown — title heading, blocks at the current depth level, the active
+ * as shown — title heading, blocks as shown, the active
  * persona variant's blocks — with citations rewritten as portable text
  * (GitHub permalinks on PR reviews, plain `path:lines` elsewhere) and
  * internal `[[…]]` link tokens replaced by their visible labels.
@@ -10,10 +10,9 @@
  * Pure: no Node or DOM APIs. The web builds the context from the snapshot
  * (`contextFromSnapshot`); unit tests construct it by hand.
  */
-import type { Block, Citation, DepthLevel } from "../entities.js";
+import type { Block, Citation } from "../entities.js";
 import type { ReviewSnapshot } from "../api.js";
-import type { CardAddendum, SinceFeedbackLink } from "../versions.js";
-import { sinceBaselineLabel, stripAddendumPrefix } from "../versions.js";
+import type { SinceFeedbackLink } from "../versions.js";
 import { parseId } from "../ids.js";
 import { githubFileUrl } from "../repos.js";
 import { displayCardTitle } from "./titles.js";
@@ -210,16 +209,6 @@ function citeParenthetical(citations: Citation[], ctx: CopyMarkdownContext): str
   return ` (${rendered.join(", ")})`;
 }
 
-/** Per-depth text for a paragraph at the card's level (same rule as the renderer). */
-function depthHtmlText(
-  text: { simple?: string; standard: string; deep?: string },
-  level: DepthLevel,
-): string {
-  if (level === "simple") return text.simple ?? text.standard;
-  if (level === "deep") return text.deep ?? text.standard;
-  return text.standard;
-}
-
 /** Stored `<table>` HTML → a GitHub pipe table. */
 export function tableHtmlToMarkdown(html: string): string {
   const rows: string[][] = [];
@@ -247,11 +236,14 @@ export function tableHtmlToMarkdown(html: string): string {
  * and nested lists (which the parser embeds as HTML inside the item)
  * become their own lines; the item's own text stays on the first line.
  */
-function listItemToLines(html: string): string[] {
+function listItemToLines(html: string, guide = false): string[] {
   const chunks: string[] = [];
   let s = html;
   s = s.replace(/<pre><code(?: class="language-([^"]*)")?>([\s\S]*?)<\/code><\/pre>/gi,
     (_m, lang: string | undefined, code: string) => {
+      // Issue #384: no code blocks in guide copy — strip them even
+      // when embedded in a list item (card copy keeps them).
+      if (guide) return "";
       chunks.push(`\`\`\`${lang ?? ""}\n${decodeEntities(stripTags(code)).replace(/\n$/, "")}\n\`\`\``);
       return `\uFFFC${chunks.length - 1}\uFFFC`;
     });
@@ -273,26 +265,22 @@ function listItemToLines(html: string): string[] {
 }
 
 export interface BlockMarkdownOptions {
+  /**
+   * Issue #384: whole-guide copy. Skips non-prose blocks (code,
+   * finding/comment links, follow-ups), renders diagrams as
+   * placeholders, and strips code fences embedded in list items.
+   * Card copy (#377) never sets this.
+   */
+  guide?: boolean;
   /** Page lookup for finding-link blocks (title/confidence/summary). */
   findPage?: (pageId: string) => CopyMarkdownPage | null;
-  /**
-   * Addendum date rendering. Defaults to the card's own rule (`day Mon`,
-   * the same rule as the Since section header); tests pass a stub.
-   */
-  formatDate?: (at: number) => string;
-}
-
-/** The card header's date rule (`day Mon`, e.g. `4 Nov`). */
-export function formatAddendumDate(at: number): string {
-  const d = new Date(at);
-  return `${d.getDate()} ${d.toLocaleString("en-US", { month: "short" })}`;
 }
 
 /** One block → Markdown lines (without the blank-line joins). */
-function blockToLines(block: Block, level: DepthLevel, ctx: CopyMarkdownContext, opts: BlockMarkdownOptions): string[] {
+function blockToLines(block: Block, ctx: CopyMarkdownContext, opts: BlockMarkdownOptions): string[] {
   switch (block.type) {
     case "paragraph": {
-      const text = htmlInlineToMarkdown(depthHtmlText(block.text, level));
+      const text = htmlInlineToMarkdown(block.text);
       return [`${text}${citeParenthetical(block.citations, ctx)}`.trim()];
     }
     case "heading": {
@@ -303,7 +291,7 @@ function blockToLines(block: Block, level: DepthLevel, ctx: CopyMarkdownContext,
       const start = block.ordered ? (block.start ?? 1) : 1;
       const lines: string[] = [];
       block.items.forEach((item, i) => {
-        const itemLines = listItemToLines(item.html);
+        const itemLines = listItemToLines(item.html, opts.guide ?? false);
         const marker = block.ordered ? `${start + i}.` : "-";
         const cites = citeParenthetical(item.citations, ctx);
         lines.push(`${marker} ${itemLines[0]}${cites}`.trimEnd());
@@ -327,12 +315,21 @@ function blockToLines(block: Block, level: DepthLevel, ctx: CopyMarkdownContext,
       return out;
     }
     case "code": {
+      // Issue #384: no code blocks in guide copy (card copy keeps them).
+      if (opts.guide) return [];
       const out = [`\`\`\`${block.language ?? ""}\n${block.code}\n\`\`\``];
       const cites = citeParenthetical(block.citations, ctx).trim();
       if (cites) out.push("", cites);
       return out;
     }
     case "diagram": {
+      // Issue #384: a placeholder in place of each diagram (card copy
+      // keeps the fenced d2 source).
+      if (opts.guide) {
+        const label = block.caption ? htmlInlineToMarkdown(block.caption) : "";
+        const text = label ? `_[Diagram: ${label}]_` : `_[Diagram]_`;
+        return [`${text}${citeParenthetical(block.citations, ctx)}`.trim()];
+      }
       const out = [`\`\`\`d2\n${block.source}\n\`\`\``];
       if (block.caption) {
         const cap = htmlInlineToMarkdown(block.caption);
@@ -345,7 +342,7 @@ function blockToLines(block: Block, level: DepthLevel, ctx: CopyMarkdownContext,
       return out;
     }
     case "aside": {
-      const inner = blocksToMarkdown(block.inner, level, ctx, opts).replace(/\n$/, "");
+      const inner = blocksToMarkdown(block.inner, ctx, opts).replace(/\n$/, "");
       const lines = [`> **${block.kind}**`];
       // The aside's own citations are the union of the inner blocks'
       // (see the parser), which already render inline — never repeat them.
@@ -353,6 +350,8 @@ function blockToLines(block: Block, level: DepthLevel, ctx: CopyMarkdownContext,
       return lines;
     }
     case "finding-link": {
+      // Issue #384: no finding pages in guide copy.
+      if (opts.guide) return [];
       const page = opts.findPage?.(block.pageId);
       const confidence = page?.confidence ? ` · ${page.confidence} confidence` : "";
       const title = page?.title ?? block.pageId;
@@ -360,9 +359,13 @@ function blockToLines(block: Block, level: DepthLevel, ctx: CopyMarkdownContext,
       return [`**Agent finding${confidence}:** ${title}${summary}`];
     }
     case "comment-link": {
+      // Issue #384: no comments in guide copy.
+      if (opts.guide) return [];
       return [`Suggested review comment on ${citationToMarkdown(block.diffRef, ctx)}`];
     }
     case "follow-up": {
+      // Issue #384: no follow-ups in guide copy.
+      if (opts.guide) return [];
       if (block.items.length === 0) return [];
       const lines = ["**Follow up:**"];
       for (const item of block.items) {
@@ -378,18 +381,16 @@ function blockToLines(block: Block, level: DepthLevel, ctx: CopyMarkdownContext,
 /**
  * A block list → Markdown (blank line between blocks, single trailing
  * newline). The same converter serves guide cards, page cards and thread
- * answers: callers pass the blocks as shown (current depth level, active
- * persona variant).
+ * answers: callers pass the blocks as shown (active persona variant).
  */
 export function blocksToMarkdown(
   blocks: Block[],
-  level: DepthLevel,
   ctx: CopyMarkdownContext,
   opts: BlockMarkdownOptions = {},
 ): string {
   const parts: string[] = [];
   for (const block of blocks) {
-    const lines = blockToLines(block, level, ctx, opts);
+    const lines = blockToLines(block, ctx, opts);
     if (lines.length > 0 && !(lines.length === 1 && lines[0] === "")) parts.push(lines.join("\n"));
   }
   return parts.length > 0 ? `${parts.join("\n\n")}\n` : "";
@@ -397,44 +398,59 @@ export function blocksToMarkdown(
 
 /**
  * A card as shown → Markdown: the display title as a `##` heading plus
- * its blocks, then the card's Since answers line and each dated "Updated
- * since" addendum (issue #377: copy = what's shown). `title` is the
- * stored title (null when the reply carried none); the shared fallback
- * renders from `blocks` then, the same string the card header shows.
- * Addendum bodies render at standard level with the same echo-prefix
- * strip the card applies.
+ * its blocks, then the card's Since answers line (issue #377: copy =
+ * what's shown). `title` is the stored title (null when the reply
+ * carried none); the shared fallback renders from `blocks` then, the
+ * same string the card header shows.
  */
 export function cardToMarkdown(
   card: {
     title: string | null;
     blocks: Block[];
     answers?: SinceFeedbackLink[];
-    addenda?: CardAddendum[];
   },
-  level: DepthLevel,
   ctx: CopyMarkdownContext,
   opts: BlockMarkdownOptions = {},
 ): string {
   const title = displayCardTitle(card.title, card.blocks);
-  const formatDate = opts.formatDate ?? formatAddendumDate;
   const parts: string[] = [];
-  const body = blocksToMarkdown(card.blocks, level, ctx, opts);
+  const body = blocksToMarkdown(card.blocks, ctx, opts);
   if (body) parts.push(body.replace(/\n$/, ""));
   if (card.answers?.length) parts.push(answersToMarkdown(card.answers));
-  for (const addendum of card.addenda ?? []) {
-    const head = `### Updated since ${sinceBaselineLabel(addendum.baseline)} · ${formatDate(addendum.at)}`;
-    const shown = addendum.blocks.map((block, i) =>
-      i === 0 && block.type === "paragraph"
-        ? { ...block, text: { ...block.text, standard: stripAddendumPrefix(block.text.standard) } }
-        : block,
-    );
-    const abody = blocksToMarkdown(shown, "standard", ctx, opts);
-    const aparts = [head];
-    if (abody) aparts.push(abody.replace(/\n$/, ""));
-    if (addendum.answers?.length) aparts.push(answersToMarkdown(addendum.answers));
-    parts.push(aparts.join("\n\n"));
-  }
   return parts.length > 0 ? `## ${title}\n\n${parts.join("\n\n")}\n` : `## ${title}\n`;
+}
+
+/** One main guide card's Guide-version body for whole-guide copy. */
+export interface GuideCardInput {
+  title: string | null;
+  blocks: Block[];
+}
+
+/**
+ * The whole guide as shown → Markdown (issue #384): the review title as
+ * a `#` heading, then each main guide card in guide order with its
+ * heading as `##` and its Guide-version prose blocks as shown.
+ * Citations render exactly as #377's card copy does
+ * (permalinks on PR reviews, `path:lines` otherwise); diagrams become
+ * placeholders; code blocks, expansions, comments, threads, finding
+ * pages, the plotlines list and the Changes-since-X section are left out.
+ * Cards with no prose left after filtering render no heading. Callers
+ * pass only main cards (pending cards skipped, collapsed cards kept).
+ * Pure.
+ */
+export function guideToMarkdown(
+  title: string,
+  cards: GuideCardInput[],
+  ctx: CopyMarkdownContext,
+  opts: BlockMarkdownOptions = {},
+): string {
+  const parts = [`# ${title}`];
+  for (const card of cards) {
+    const body = blocksToMarkdown(card.blocks, ctx, { ...opts, guide: true });
+    if (!body) continue;
+    parts.push(`## ${displayCardTitle(card.title, card.blocks)}\n\n${body.replace(/\n$/, "")}`);
+  }
+  return `${parts.join("\n\n")}\n`;
 }
 
 /**
@@ -456,12 +472,11 @@ export function answersToMarkdown(answers: SinceFeedbackLink[]): string {
  */
 export function replyToMarkdown(
   reply: { question: string | null; kind: string; blocks: Block[] },
-  level: DepthLevel,
   ctx: CopyMarkdownContext,
   opts: BlockMarkdownOptions = {},
 ): string {
   const fallback = reply.kind === "explain" ? "Explain" : reply.kind === "ask" ? "Ask" : "Answer";
   const title = reply.question?.trim() ? reply.question.trim() : fallback;
-  const body = blocksToMarkdown(reply.blocks, level, ctx, opts);
+  const body = blocksToMarkdown(reply.blocks, ctx, opts);
   return body ? `## ${title}\n\n${body}` : `## ${title}\n`;
 }

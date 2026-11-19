@@ -1,6 +1,7 @@
 /**
  * Unvibe content script (#322 part 1, #333): adds a "Review in Unvibe"
- * button to every GitHub PR tab, including the Conversation header.
+ * button to every GitHub PR tab, including the Conversation header and
+ * the PageHeader of the new PR Overview layout (#410).
  * It never talks to the service and never sees the
  * token — it asks the background worker whether a review exists and asks
  * it to start (or open) the review; the worker calls the service itself
@@ -16,41 +17,65 @@
     return `https://github.com/${m[1]}/${m[2]}/pull/${m[3]}`;
   }
 
-  // Anchors for every PR tab. The code/files tabs keep the classic
-  // `.gh-header-*` hooks; the Conversation header (title with the Merge
-  // status / Code buttons beside it) doesn't use those, so it is found
-  // through stable hooks first (a data attribute, then an ARIA group)
-  // and through structure near the PR title as a last resort (the
-  // "Code" button's group, then the title's container). Returns null
-  // to fail quietly when nothing matches.
-  function findAnchor() {
-    const actions = document.querySelector(".gh-header-actions");
-    if (actions) return { el: actions, mode: "append" };
-    const meta = document.querySelector(".gh-header-meta");
-    if (meta) return { el: meta, mode: "append" };
-    const show = document.querySelector(".gh-header-show");
-    if (show) return { el: show, mode: "append" };
-    const header = document.querySelector(".gh-header");
-    if (header) return { el: header, mode: "append" };
-    // Current Conversation header (#333).
-    const byTestId = document.querySelector(
-      '[data-testid="pr-conversation-header-actions"], [data-testid="pr-header-actions"]',
-    );
-    if (byTestId) return { el: byTestId, mode: "append" };
-    const byAria = document.querySelector(
-      '[aria-label="Pull request header actions"], [aria-label="PR header actions"]',
-    );
-    if (byAria) return { el: byAria, mode: "append" };
-    const buttons = Array.from(document.querySelectorAll("button"));
-    const codeBtn = buttons.find((b) => (b.textContent || "").trim() === "Code");
-    if (codeBtn) {
-      const group = codeBtn.closest('[role="group"], div');
-      if (group) return { el: group, mode: "append" };
+  // Overlay subtrees the button must never land in (#392). A candidate
+  // with one of these ancestors is rejected, so dialogs, popovers and
+  // overlays (e.g. the "Finish your review" dialog) can never become
+  // the anchor when they open or re-render.
+  const OVERLAY_SELECTORS = [
+    '[role="dialog"]',
+    "dialog",
+    "[popover]",
+    ".Popover",
+    ".Overlay",
+    "[data-overlay]",
+    "details-dialog",
+  ];
+
+  function isInOverlay(el) {
+    if (!el || !el.closest) return false;
+    for (const sel of OVERLAY_SELECTORS) {
+      let hit = null;
+      try {
+        hit = el.closest(sel);
+      } catch {
+        hit = null;
+      }
+      if (hit) return true;
     }
-    const title = document.querySelector("h1");
-    if (title) {
-      const container = title.closest("header, div, section");
-      if (container) return { el: container, mode: "append" };
+    return false;
+  }
+
+  // Anchors ONLY in the PR page header (#392). The code/files tabs keep
+  // the classic `.gh-header-*` hooks; the Conversation header (title with
+  // the Merge status / Code buttons beside it) doesn't use those, so it
+  // is found through its actions container's `data-testid` — a stable
+  // React hook that survives button-text and class churn, unlike the
+  // removed structural fallbacks. These hooks ARE the rendered-PR-page
+  // recognition: they are specific to the PR page header, so other pages
+  // served under PR URLs (e.g. the SSO re-authentication screen, with
+  // headings but no header hook) match nothing. A URL match alone is
+  // never enough. Returns null to fail quietly when no header hook
+  // matches; the broad fallbacks (first "Code" button's group, first
+  // `h1`'s container) are gone, so dialogs and overlays with headings or
+  // matching buttons can never become the anchor.
+  function findAnchor() {
+    // Each hook is a specific sub-container of the PR page header —
+    // never the bare outer header alone. The Conversation header has no
+    // `.gh-header-*` hooks at all, hence the single `data-testid` hook.
+    const selectors = [
+      ".gh-header-actions",
+      ".gh-header-meta",
+      ".gh-header-show",
+      // Current Conversation header (#333).
+      '[data-testid="pr-conversation-header-actions"]',
+      // New PR Overview layout (#410): a Primer PageHeader whose
+      // right-hand action group is PH_Actions. Scoped to the PageHeader
+      // so it can only match the page header, never a dialog's.
+      '[data-component="PageHeader"] [data-component="PH_Actions"]',
+    ];
+    for (const sel of selectors) {
+      const el = document.querySelector(sel);
+      if (el && !isInOverlay(el)) return { el, mode: "append" };
     }
     return null;
   }
@@ -104,6 +129,12 @@
       const copies = document.querySelectorAll(`#${BUTTON_ID}`);
       for (let i = 1; i < copies.length; i++) copies[i].remove();
       let btn = document.getElementById(BUTTON_ID);
+      // A button inside an overlay was never valid there (#392): drop
+      // it instead of leaving it in the dialog.
+      if (btn && isInOverlay(btn)) {
+        btn.remove();
+        btn = null;
+      }
       const anchor = findAnchor();
       if (!btn) {
         if (!anchor) return;
@@ -147,7 +178,10 @@
         anchor.el.appendChild(btn);
       } else if (anchor && !anchor.el.contains(btn)) {
         // Client-side navigation swapped the header (Turbo/React):
-        // adopt the new anchor instead of duplicating.
+        // adopt the new anchor instead of duplicating. The anchor is
+        // never inside an overlay (findAnchor rejects those), and when
+        // there is no anchor the button is left where it is — the
+        // observer must never move it into a newly opened overlay (#392).
         anchor.el.appendChild(btn);
       }
       btn.dataset.prUrl = prUrl;

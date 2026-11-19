@@ -207,15 +207,23 @@ const main = async () => {
   const resume = await api(token, "POST", `/api/reviews/${id}/resume`, {});
   assert(resume.code === 200, `resume accepted (${resume.code})`);
   let done = false;
+  let last = "";
   for (let i = 0; i < 60 && !done; i++) {
     await sleep(1000);
     const got = json((await api(token, "GET", `/api/reviews/${id}`)).body);
     const root = (got?.pages ?? []).find((p) => p.id === "root");
+    // Issue #389: "Go deeper" cards are written on demand, so their
+    // placeholders stay `pending` after the pipeline ends; completion is
+    // every job finished without error plus the guide's cards and pages.
+    const jobsNow = got?.jobs ?? [];
     done =
       (root?.cards ?? []).length >= 6 &&
-      !(root?.cards ?? []).some((c) => c.pending) &&
-      (got?.pages ?? []).filter((p) => p.kind === "finding").length >= 2;
+      (got?.pages ?? []).filter((p) => p.kind === "finding").length >= 2 &&
+      jobsNow.length > 0 &&
+      jobsNow.every((j) => j.state === "done");
+    last = `root cards ${(root?.cards ?? []).length} (pending ${(root?.cards ?? []).filter((c) => c.pending).length}), pages ${(got?.pages ?? []).map((p) => p.kind).join("/")}, jobs ${(got?.jobs ?? []).map((j) => `${j.kind}:${j.state}`).join(" ")}`;
   }
+  if (!done) console.log(`  after resume: ${last}`);
   assert(done, "pipeline completes after resume (no work lost, no duplicates)");
 
   // 2b. Completed jobs survive a restart (issue #117): the Debug page's

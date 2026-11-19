@@ -1,268 +1,164 @@
 /**
- * Icon set copied from prototype.html (same names, same 16x16 stroke paths).
- * `gear` and `bug` are additions in the same stroke style (the prototype
- * has no settings/debug icons), as are `person` (author avatar for the
- * reviewer; the agent avatar reuses `spark`), `refresh`, `home`, `redo`
- * (#345) and the
- * gutter caret pairs. `fold`/`unfold` (mirrored chevrons-in/out),
- * `eyeOff`, and `doc` (a page with a folded corner for the documents
- * screen) are additions in the same stroke style. #224 adds the PR
- * state/decision set (`pr-open`, `pr-draft`, `pr-merged`, `pr-closed`,
- * `request-changes`, `eye`) in the same style; approved reuses `check`.
- * #301 adds `second` (second opinion) and `summary` in the same style.
+ * Icon set: Tabler Icons (outline, v3.51), per issue #407.
+ *
+ * Unvibe keeps its own icon names and the `<Icon name=…>` API — only the
+ * drawings come from Tabler (each icon imported individually so
+ * tree-shaking drops the rest of the set). Icons draw at 16px with
+ * stroke ~1.75 (`.ic` in `styles/prototype.css`); Tabler's 24-grid
+ * artwork scales down to it. The mapping (Unvibe name → Tabler):
+ * down → chevron-down, right → chevron-right, hide → chevron-up,
+ * upUp → chevrons-up, downDown → chevrons-down, fold → fold,
+ * unfold → arrows-move-vertical, home → home, open → external-link,
+ * refresh → refresh, pull → cloud-download (#420), history → history (#421),
+ * bug → bug, question → help-circle,
+ * redo → refresh-alert, undo → arrow-back-up, gear → settings,
+ * doc → file-text, gift → gift, filter → filter, eye → eye,
+ * eyeOff → eye-off, slower → sort-descending-small-big,
+ * summary → align-left, bulb → quote, diagram → hierarchy-2,
+ * copy → copy, second → robot-face, spark → sparkles, code → code,
+ * check → circle-check, comment → message, note → pencil,
+ * reply → corner-up-left, send → send, trash → trash, x → x,
+ * bookmark → bookmark, pin → pin, person → user,
+ * unified → layout-rows, split → layout-columns,
+ * pr-open → git-pull-request, pr-draft → git-pull-request-draft,
+ * pr-merged → git-merge, pr-closed → git-pull-request-closed,
+ * request-changes → file-diff.
  * Usage: `<Icon name="check" />`.
  */
 import type { JSX } from "react";
+import {
+  IconAlignLeft,
+  IconArrowBackUp,
+  IconArrowsMoveVertical,
+  IconBookmark,
+  IconBug,
+  IconChevronDown,
+  IconChevronRight,
+  IconChevronUp,
+  IconChevronsDown,
+  IconChevronsUp,
+  IconCircleCheck,
+  IconCode,
+  IconCopy,
+  IconCornerUpLeft,
+  IconExternalLink,
+  IconEye,
+  IconEyeOff,
+  IconFileDiff,
+  IconFileText,
+  IconFilter,
+  IconFold,
+  IconGift,
+  IconGitMerge,
+  IconGitPullRequest,
+  IconGitPullRequestClosed,
+  IconGitPullRequestDraft,
+  IconHelpCircle,
+  IconHierarchy2,
+  IconHistory,
+  IconHome,
+  IconLayoutColumns,
+  IconLayoutRows,
+  IconMessage,
+  IconPencil,
+  IconPin,
+  IconQuote,
+  IconRefresh,
+  IconCloudDownload,
+  IconRefreshAlert,
+  IconRobotFace,
+  IconSend,
+  IconSettings,
+  IconSortDescendingSmallBig,
+  IconSparkles,
+  IconTrash,
+  IconUser,
+  IconX,
+  type Icon as TablerIcon,
+} from "@tabler/icons-react";
 
-const PATHS: Record<string, JSX.Element> = {
-  down: (<path d="M4 6l4 4 4-4" />),
-  right: (<path d="M6 4l4 4-4 4" />),
-  check: (
-    <>
-      <circle cx="8" cy="8" r="6" />
-      <path d="M5.5 8.2l1.8 1.8 3.3-3.6" />
-    </>
-  ),
-  spark: (<path d="M8 2l1.4 4.6L14 8l-4.6 1.4L8 14l-1.4-4.6L2 8l4.6-1.4z" />),
-  note: (<path d="M3 13l.8-3L10.5 3.3l2.2 2.2L6 12.2z" />),
-  trash: (<path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.7 8.5h5.6l.7-8.5" />),
-  undo: (
-    <>
-      <path d="M5.5 3.5L2.5 6.5l3 3" />
-      <path d="M2.5 6.5H10a3.5 3.5 0 010 7H7.5" />
-    </>
-  ),
-  // #345: re-do is the horizontal mirror of undo (start the guide over
-  // from the same change), for the review bar's Re-do guide button.
-  redo: (
-    <>
-      <path d="M10.5 3.5l3 3-3 3" />
-      <path d="M13.5 6.5H6a3.5 3.5 0 000 7h2.5" />
-    </>
-  ),
-  bulb: (<path d="M6 13.5h4M6.3 11.2h3.4M8 2.2a4 4 0 00-2.5 7.1v1.9h5V9.3A4 4 0 008 2.2z" />),
-  diagram: (
-    <>
-      <rect x="2" y="2.5" width="5" height="4" rx="1" />
-      <rect x="9" y="9.5" width="5" height="4" rx="1" />
-      <path d="M4.5 6.5v3.5h4.5" />
-    </>
-  ),
-  comment: (<path d="M2.5 3h11v7.5h-6.2L4.5 13v-2.5h-2z" />),
-  code: (<path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5" />),
-  // Issue #377: copy-as-Markdown (two overlapping sheets, same 16x16
-  // stroke style as the rest of the set).
-  copy: (
-    <>
-      <rect x="5.5" y="5.5" width="8" height="8" rx="1" />
-      <path d="M10.5 5.5V4a1 1 0 00-1-1h-5a1 1 0 00-1 1v5a1 1 0 001 1h1" />
-    </>
-  ),
-  x: (<path d="M4.5 4.5l7 7M11.5 4.5l-7 7" />),
-  open: (<path d="M9 2.5h4.5V7M13.5 2.5L7.5 8.5M11.5 9.5v4h-9v-9h4" />),
-  send: (
-    <>
-      <path d="M2.5 7.5L13.5 2.5 9 13.5 7.5 9z" />
-      <path d="M7.5 9L13.5 2.5" />
-    </>
-  ),
-  bookmark: (<path d="M4.5 2.5h7v11L8 10.5l-3.5 3z" />),
-  pin: (
-    <>
-      <path d="M8 1.8a4.2 4.2 0 014.2 4.2c0 3-4.2 8.2-4.2 8.2S3.8 9 3.8 6A4.2 4.2 0 018 1.8z" />
-      <circle cx="8" cy="6" r="1.5" />
-    </>
-  ),
-  reply: (
-    <>
-      <path d="M6.5 4L3 7.5 6.5 11" />
-      <path d="M3 7.5h6.5a3.5 3.5 0 013.5 3.5v1" />
-    </>
-  ),
-  hide: (<path d="M4 10l4-4 4 4" />),
-  fold: (
-    <>
-      <path d="M4 3.5l4 3.5 4-3.5" />
-      <path d="M4 12.5l4-3.5 4 3.5" />
-    </>
-  ),
-  unfold: (
-    <>
-      <path d="M4 7l4-3.5L12 7" />
-      <path d="M4 9l4 3.5L12 9" />
-    </>
-  ),
-  eyeOff: (
-    <>
-      <path d="M2 8c1.6-3 3.6-4.5 6-4.5S12.4 5 14 8c-1.6 3-3.6 4.5-6 4.5S3.6 11 2 8z" />
-      <path d="M3 13.5L13 3" />
-    </>
-  ),
-  upUp: (
-    <>
-      <path d="M4 7.5l4-4 4 4" />
-      <path d="M4 12.5l4-4 4 4" />
-    </>
-  ),
-  downDown: (
-    <>
-      <path d="M4 3.5l4 4 4-4" />
-      <path d="M4 8.5l4 4 4-4" />
-    </>
-  ),
-  gear: (
-    <>
-      <circle cx="8" cy="8" r="2.2" />
-      <path d="M8 1.8v1.9M8 12.3v1.9M1.8 8h1.9M12.3 8h1.9M3.6 3.6l1.4 1.4M11 11l1.4 1.4M12.4 3.6L11 5M5 11l-1.4 1.4" />
-    </>
-  ),
-  bug: (
-    <>
-      <circle cx="8" cy="9" r="3.4" />
-      <path d="M8 5.6V3M5.2 6.6L3.2 5.2M10.8 6.6l2-1.4M4.6 9H2.2M13.8 9h-2.4M5.2 11.2l-2 2M10.8 11.2l2 2" />
-    </>
-  ),
-  person: (
-    <>
-      <circle cx="8" cy="5.4" r="2.5" />
-      <path d="M2.9 13.8a5.1 5.1 0 015.1-4.4 5.1 5.1 0 015.1 4.4" />
-    </>
-  ),
-  refresh: (
-    <>
-      <path d="M13.8 8a5.8 5.8 0 1 1-1.7-4.1" />
-      <path d="M13.8 1.7v3h-3" />
-    </>
-  ),
-  home: (
-    <>
-      <path d="M2.5 7L8 2.5 13.5 7" />
-      <path d="M4 6.5V13.5h8V6.5" />
-    </>
-  ),
-  filter: (<path d="M2.5 3h11l-4.3 4.9v4.8L6.8 13.8V7.9z" />),
-  unified: (
-    <>
-      <path d="M3 3.5h10" />
-      <path d="M3 8h10" />
-      <path d="M3 12.5h10" />
-    </>
-  ),
-  split: (
-    <>
-      <path d="M8 2.5v11" />
-      <path d="M2.5 5h3M2.5 8h3M2.5 11h3M10.5 5h3M10.5 8h3M10.5 11h3" />
-    </>
-  ),
-  /**
-   * #224 PR state/decision icons (same 16x16 stroke style). `pr-open` is
-   * the branch-and-merge shape; `pr-draft` the same shape dashed
-   * (incomplete); `pr-merged` two branches joining one node; `pr-closed`
-   * a circled X (mirroring `check`'s circled tick for approved);
-   * `request-changes` a circled `!`; `eye` the open counterpart of
-   * `eyeOff` for review required.
-   */
-  "pr-open": (
-    <>
-      <circle cx="4.5" cy="4" r="1.7" />
-      <circle cx="4.5" cy="12" r="1.7" />
-      <path d="M4.5 5.7v4.6" />
-      <path d="M4.5 8h4a2.5 2.5 0 012.5 2.5V12" />
-    </>
-  ),
-  "pr-draft": (
-    <>
-      <circle cx="4.5" cy="4" r="1.7" strokeDasharray="2.2 1.6" />
-      <circle cx="4.5" cy="12" r="1.7" strokeDasharray="2.2 1.6" />
-      <path d="M4.5 5.7v4.6" strokeDasharray="2.2 1.6" />
-      <path d="M4.5 8h4a2.5 2.5 0 012.5 2.5V12" strokeDasharray="2.2 1.6" />
-    </>
-  ),
-  "pr-merged": (
-    <>
-      <circle cx="4" cy="4" r="1.6" />
-      <circle cx="4" cy="12" r="1.6" />
-      <circle cx="12" cy="8" r="1.6" />
-      <path d="M5.5 4.6c2.2 0 2.2 1.8 4.7 2.6" />
-      <path d="M5.5 11.4c2.2 0 2.2-1.8 4.7-2.6" />
-    </>
-  ),
-  "pr-closed": (
-    <>
-      <circle cx="8" cy="8" r="6" />
-      <path d="M6.2 6.2l3.6 3.6M9.8 6.2l-3.6 3.6" />
-    </>
-  ),
-  "request-changes": (
-    <>
-      <circle cx="8" cy="8" r="6" />
-      <path d="M8 4.6v3.8M8 11.4v.2" />
-    </>
-  ),
-  eye: (
-    <>
-      <path d="M2 8c1.6-3 3.6-4.5 6-4.5S12.4 5 14 8c-1.6 3-3.6 4.5-6 4.5S3.6 11 2 8z" />
-      <circle cx="8" cy="8" r="1.5" />
-    </>
-  ),
-  /**
-   * Issue #301: Second opinion (a second voice on the same claim — two
-   * overlapping speech bubbles) and Summarize (tapering text lines, a
-   * condensing passage). Same 16x16 stroke style as the rest of the set.
-   */
-  second: (
-    <>
-      <path d="M2.5 3.5h7v5.5H6L3.8 11.2v-2H2.5z" />
-      <path d="M6.5 11.5h7V14H8.7l-2.2 1.5v-1.5" />
-    </>
-  ),
-  summary: (
-    <>
-      <path d="M2.5 3.5h11" />
-      <path d="M2.5 6.8h8" />
-      <path d="M2.5 10h11" />
-      <path d="M2.5 13.2h5.5" />
-    </>
-  ),
-  doc: (
-    <>
-      <path d="M4 2h5.5L12 4.5V14H4z" />
-      <path d="M9.5 2v2.5H12" />
-      <path d="M6 7.5h4M6 10h2.8" />
-    </>
-  ),
-  gift: (
-    <>
-      <rect x="3" y="7" width="10" height="7" rx="1" />
-      <path d="M2.5 4.5h11V7h-11z" />
-      <path d="M8 4.5V14" />
-      <path d="M8 4.5C6.5 4.5 4.8 4 4.8 2.8 4.8 1.9 5.6 1.6 6.3 2c.9.6 1.4 1.8 1.7 2.5z" />
-      <path d="M8 4.5c1.5 0 3.2-.5 3.2-1.7 0-.9-.8-1.2-1.5-.8-.9.6-1.4 1.8-1.7 2.5z" />
-    </>
-  ),
-};
+const COMPONENTS = {
+  down: IconChevronDown,
+  right: IconChevronRight,
+  check: IconCircleCheck,
+  spark: IconSparkles,
+  note: IconPencil,
+  trash: IconTrash,
+  undo: IconArrowBackUp,
+  // #345: re-do starts the guide over from the same change — refresh
+  // with an alert mark, for the review bar's Re-do guide button.
+  redo: IconRefreshAlert,
+  // Issue #388: the ?-mode toggle.
+  question: IconHelpCircle,
+  bulb: IconQuote,
+  diagram: IconHierarchy2,
+  comment: IconMessage,
+  code: IconCode,
+  // Issue #377: copy-as-Markdown.
+  copy: IconCopy,
+  x: IconX,
+  open: IconExternalLink,
+  send: IconSend,
+  bookmark: IconBookmark,
+  pin: IconPin,
+  reply: IconCornerUpLeft,
+  hide: IconChevronUp,
+  fold: IconFold,
+  unfold: IconArrowsMoveVertical,
+  eyeOff: IconEyeOff,
+  upUp: IconChevronsUp,
+  downDown: IconChevronsDown,
+  gear: IconSettings,
+  bug: IconBug,
+  person: IconUser,
+  refresh: IconRefresh,
+  // #420: the review bar pulls new commits from GitHub.
+  pull: IconCloudDownload,
+  // #421: the review bar explains changes since a picked commit.
+  history: IconHistory,
+  home: IconHome,
+  filter: IconFilter,
+  unified: IconLayoutRows,
+  split: IconLayoutColumns,
+  // #224 PR state/decision set; approved reuses `check`.
+  "pr-open": IconGitPullRequest,
+  "pr-draft": IconGitPullRequestDraft,
+  "pr-merged": IconGitMerge,
+  "pr-closed": IconGitPullRequestClosed,
+  "request-changes": IconFileDiff,
+  eye: IconEye,
+  // Issue #301: Second opinion (a robot face for the persona runner)
+  // and Summarize.
+  second: IconRobotFace,
+  summary: IconAlignLeft,
+  // Issue #387: Help me understand (sort-descending: the slower rewrite
+  // that starts small and grows).
+  slower: IconSortDescendingSmallBig,
+  doc: IconFileText,
+  gift: IconGift,
+} satisfies Record<string, TablerIcon>;
 
 /**
  * Raw inner-SVG markup for the author avatars in string-rendered contexts
- * (`floating/HoverPopover.tsx`). Same shapes as `person` / `spark` above —
- * keep them in sync. (String form trips the copy guard's milestone
- * pattern on path data; like the `d` attributes above it lives here under
- * the Icon.tsx allowlist entry, never rendered as text.)
+ * (`floating/HoverPopover.tsx`). Tabler 24-grid path data for `user` /
+ * `sparkles` (same mapping as `person` / `spark` above) — the wrapping
+ * `<svg class="ic">` there uses `viewBox="0 0 24 24"` to match. (String
+ * form trips the copy guard's milestone pattern on path data; like the
+ * `d` attributes it would have, it lives here under the Icon.tsx
+ * allowlist entry, never rendered as text.)
  */
 export const PERSON_SVG_INNER =
-  '<circle cx="8" cy="5.4" r="2.5"/><path d="M2.9 13.8a5.1 5.1 0 015.1-4.4 5.1 5.1 0 015.1 4.4"/>';
+  '<path d="M8 7a4 4 0 1 0 8 0a4 4 0 0 0 -8 0"/><path d="M6 21v-2a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v2"/>';
 export const SPARK_SVG_INNER =
-  '<path d="M8 2l1.4 4.6L14 8l-4.6 1.4L8 14l-1.4-4.6L2 8l4.6-1.4z"/>';
+  '<path d="M16 18a2 2 0 0 1 2 2a2 2 0 0 1 2 -2a2 2 0 0 1 -2 -2a2 2 0 0 1 -2 2m0 -12a2 2 0 0 1 2 2a2 2 0 0 1 2 -2a2 2 0 0 1 -2 -2a2 2 0 0 1 -2 2m-7 12a6 6 0 0 1 6 -6a6 6 0 0 1 -6 -6a6 6 0 0 1 -6 6a6 6 0 0 1 6 6"/>';
 /** Raw inner-SVG markup for the comment bubble (issue #302: the glyph on
- * collapsed-thread marks). Same shape as `comment` above. */
-export const COMMENT_SVG_INNER = '<path d="M2.5 3h11v7.5h-6.2L4.5 13v-2.5h-2z"/>';
+ * collapsed-thread marks). Tabler 24-grid path data for `message`. */
+export const COMMENT_SVG_INNER =
+  '<path d="M8 9h8"/><path d="M8 13h6"/><path d="M18 4a3 3 0 0 1 3 3v8a3 3 0 0 1 -3 3h-5l-5 3v-3h-2a3 3 0 0 1 -3 -3v-8a3 3 0 0 1 3 -3h12"/>';
 
-export type IconName = keyof typeof PATHS;
+export type IconName = keyof typeof COMPONENTS;
 
 export function Icon({ name }: { name: IconName }): JSX.Element {
-  return (
-    <svg className="ic" viewBox="0 0 16 16" aria-hidden="true">
-      {PATHS[name]}
-    </svg>
-  );
+  const Tabler = COMPONENTS[name];
+  return <Tabler size={16} stroke={1.75} className="ic" aria-hidden="true" />;
 }

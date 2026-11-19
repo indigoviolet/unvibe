@@ -23,6 +23,7 @@ const MOCK_GUIDE = { ...GUIDE_PERSONA, provider: "claude", model: "mock-main" };
 const SETTINGS: Settings = {
   small: { provider: "claude", model: "mock-small", effort: "" },
   personas: [MOCK_GUIDE],
+  defaultGuidePersonaId: "guide",
   sessionsPerProvider: 4,
   inlineBudgetTokens: 40000,
   rebuildSupersededRatio: 0.2,
@@ -34,7 +35,7 @@ const SETTINGS: Settings = {
   uiTheme: "default",
   versionPickerEnabled: true,
   fullAccess: false,
-  autoGoDeeper: true, recordTraces: false,
+  autoGoDeeper: true, recordTraces: false, experimental: { explainTerms: false, markdownDocs: false },
   extensionActiveRepoIds: null,
   extensionModel: { provider: "pi", model: "muse-spark-1.3-contributor", effort: "" },
   fullAccessAcknowledgedAt: null,
