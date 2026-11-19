@@ -476,17 +476,20 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
     test.setTimeout(180_000);
     await page.goto(`${svc!.origin}/review/${reviewId}?token=${svc!.token}`);
     await expect(page.locator("#page .doc")).toBeVisible({ timeout: 60_000 });
-    // No section yet and no new commits: the toolbar menu carries the
-    // reviewer's last GitHub review as its own row.
+    // No section yet and no new commits. The reviewer's last GitHub
+    // review is at a commit already in the Commits list, so (owner, #421)
+    // that commit's row is marked "your last review" and there is no
+    // separate row for it: the same commit never shows twice.
     const menuBtn = page.locator('#reviewbar [data-testid="explain-menu-button"]');
     await expect(menuBtn).toBeVisible({ timeout: 30_000 });
     await menuBtn.click();
     const menu = page.getByTestId("explain-menu");
-    const priorRow = menu.locator(`[data-explain-prior="${c1}"]`);
-    await expect(priorRow).toBeVisible({ timeout: 30_000 });
-    await expect(priorRow).toContainText("Your last GitHub review");
-    await expect(priorRow).toContainText(c1short);
-    await priorRow.click();
+    const markedRow = menu.locator(`[data-explain-commit="${c1}"]`);
+    await expect(markedRow).toBeVisible({ timeout: 30_000 });
+    await expect(markedRow).toContainText("your last review");
+    await expect(menu.locator("[data-explain-prior]")).toHaveCount(0);
+    await expect(menu.getByText(c1short)).toHaveCount(1);
+    await markedRow.click();
     await waitForExplainPass(svc!, reviewId);
     // The panel names the last-review commit as the range start.
     const head = ((await apiJson(svc!, "GET", `/api/reviews/${reviewId}`)).json as { version: { headSha: string } }).version.headSha;
