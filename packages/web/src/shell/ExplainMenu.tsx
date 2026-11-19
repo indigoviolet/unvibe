@@ -98,6 +98,12 @@ export function ExplainMenu({ reviewId }: { reviewId: string }): React.JSX.Eleme
   const priorPickable =
     prior !== undefined && prior !== null && !isHeadSha(head, prior.sha) ? prior : null;
   if (earlier.length === 0 && !priorPickable) return null;
+  // Owner (#421): when the last review's commit is already listed, mark
+  // that row instead of adding a second row for the same commit; the
+  // separate row stays only when the commit isn't in the list (e.g. it
+  // was rebased away).
+  const priorInList =
+    priorPickable !== null && commits.some((c) => isHeadSha(c.sha, priorPickable.sha));
 
   const busy = phase.name === "explaining";
   const label = "Explain changes since…";
@@ -155,6 +161,7 @@ export function ExplainMenu({ reviewId }: { reviewId: string }): React.JSX.Eleme
               </div>
               {commits.map((c) => {
                 const isHead = isHeadSha(head, c.sha);
+                const isPrior = priorInList && isHeadSha(c.sha, priorPickable.sha);
                 const short = c.sha.slice(0, 8);
                 const text = `${short} ${c.subject}`;
                 return (
@@ -165,7 +172,7 @@ export function ExplainMenu({ reviewId }: { reviewId: string }): React.JSX.Eleme
                     data-explain-commit={c.sha}
                     disabled={isHead}
                     aria-disabled={isHead || undefined}
-                    title={isHead ? `${text} (latest)` : text}
+                    title={isHead ? `${text} (latest)` : isPrior ? `${text} (your last review)` : text}
                     onClick={
                       isHead
                         ? undefined
@@ -177,10 +184,11 @@ export function ExplainMenu({ reviewId }: { reviewId: string }): React.JSX.Eleme
                   >
                     <span className="lbl">{text}</span>
                     {isHead ? <span className="cnt">latest</span> : null}
+                    {isPrior ? <span className="cnt">your last review</span> : null}
                   </button>
                 );
               })}
-              {priorPickable ? (
+              {priorPickable && !priorInList ? (
                 <button
                   key={`prior:${priorPickable.sha}`}
                   type="button"
