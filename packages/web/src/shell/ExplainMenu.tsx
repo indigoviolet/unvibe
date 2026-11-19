@@ -104,8 +104,9 @@ export function ExplainMenu({ reviewId }: { reviewId: string }): React.JSX.Eleme
   const commits = snapshot.commits ?? [];
   const head = snapshot.version.headSha;
   // The guide's commit: the range start for the dot, the first item and
-  // the hints. Empty before the reader lands (no guide yet).
-  const guideSha = snapshot.guideHead.sha;
+  // the hints. Empty before the reader lands (no guide yet) or on
+  // snapshots that predate the field.
+  const guideSha = snapshot.guideHead?.sha ?? "";
   const guideIdx = guideSha === "" ? -1 : commits.findIndex((c) => isSameSha(c.sha, guideSha));
   // A rewrite may have moved the guide's commit out of the list — then
   // the whole listed range counts (the old banner's fallback).
