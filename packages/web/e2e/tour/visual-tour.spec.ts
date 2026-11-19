@@ -4552,16 +4552,19 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       await offer.getByText(`You reviewed this at ${c1short}`).click();
       await expect(box).toHaveAttribute("aria-checked", "true", { timeout: 15_000 });
       // No banner anywhere: the history menu is the Explain entry on
-      // this page — no guide yet, so no dot and no guide item, with
-      // the listed commit marked as the last review.
+      // this page — one new commit past the ingest head the (unwritten)
+      // guide was stamped at, so the dot counts it and the listed
+      // commit carries both the guide and the last-review hints.
       await expect(page.getByTestId("stale-banner")).toHaveCount(0);
       const offerMenuBtn = page.locator('#reviewbar [data-testid="explain-menu-button"]');
       await expect(offerMenuBtn).toBeVisible({ timeout: 15_000 });
-      await expect(offerMenuBtn).toHaveAttribute("aria-label", "Explain changes since…");
+      await expect(offerMenuBtn).toHaveAttribute("aria-label", "1 new commit since the guide was written");
+      await expect(offerMenuBtn.locator("[data-new-commits]")).toBeVisible();
       await offerMenuBtn.click();
       const offerMenu = page.getByTestId("explain-menu");
       await expect(offerMenu.locator(`[data-explain-commit="${c1}"]`)).toContainText("your last review", { timeout: 15_000 });
-      await expect(offerMenu.locator("[data-explain-guide]")).toHaveCount(0);
+      await expect(offerMenu.locator(`[data-explain-commit="${c1}"]`)).toContainText("guide", { timeout: 15_000 });
+      await expect(offerMenu.locator("[data-explain-guide]")).toHaveCount(1);
       await page.keyboard.press("Escape");
       await stepChecks(page, "since-offer-checked");
       await page.mouse.move(20, 20);
@@ -4619,14 +4622,17 @@ echo "fake gh: unexpected call: $*" >&2; exit 1
       // would flag.
       const menuBtn = page.locator('#reviewbar [data-testid="explain-menu-button"]');
       await expect(menuBtn).toBeVisible();
-      // No guide on this review yet: no dot, no guide entry — commits
-      // plus the separate last-review row.
-      await expect(menuBtn).toHaveAttribute("aria-label", "Explain changes since…");
+      // The guide was stamped at the ingest head: one newer commit, so
+      // the dot counts it and the guide entry leads — plus the
+      // separate last-review row (that commit was rebased away).
+      await expect(menuBtn).toHaveAttribute("aria-label", "1 new commit since the guide was written");
+      await expect(menuBtn.locator("[data-new-commits]")).toBeVisible();
       await stepChecks(page, "since-menu-groups");
       await menuBtn.click();
       const menu = page.getByTestId("explain-menu");
       await expect(menu).toContainText("Commits", { timeout: 15_000 });
-      await expect(menu.locator("[data-explain-guide]")).toHaveCount(0);
+      await expect(menu.locator("[data-explain-guide]")).toHaveCount(1);
+      await expect(menu.locator(`[data-explain-commit="${c1}"]`)).toContainText("guide");
       const priorRow = menu.locator("[data-explain-prior]");
       await expect(priorRow).toContainText("Your last GitHub review");
       await expect(priorRow).toContainText(goneShort);
