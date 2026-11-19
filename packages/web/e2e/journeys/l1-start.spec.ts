@@ -213,6 +213,10 @@ test.describe("L1 start page shell (mock)", () => {
       const old = page.locator('[data-testid="session-r-old"]');
       await expect.soft(old).toContainText("Fix retry backoff on 429s");
       await expect.soft(old).toContainText("new commits");
+      // #424: the reviews list keeps its " · new commits" note, but PR
+      // rows linked to that review carry only the "review" tag.
+      await expect.soft(page.locator(".prtag", { hasText: /^review$/ }).first()).toBeVisible();
+      await expect.soft(page.locator(".prtag", { hasText: "new commits" })).toHaveCount(0);
       // A running guide shows the app's working indicator, not a state line (#225).
       await expect.soft(old.getByRole("status", { name: "Working" })).toBeVisible();
       await expect.soft(old).not.toContainText("Checking findings…");
