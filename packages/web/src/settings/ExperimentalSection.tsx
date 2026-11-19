@@ -52,14 +52,14 @@ export function ExperimentalSection({
       <Card variant="raised">
         <div className="ui-fields">
           <UiField
-            label="Explain terms menu"
+            label="Explain terms"
             htmlFor="experimental-explain-terms"
-            help="When on, Help me understand opens a menu with Simplify and Explain terms…; picking terms rewrites the card in plainer words. When off, the button runs Simplify at once."
+            help="When on, a card's Help me understand button offers Simplify or picking words in the card to explain. When off, it runs Simplify at once."
           >
             <Checkbox
               id="experimental-explain-terms"
               testId="experimental-explain-terms"
-              ariaLabel="Explain terms menu"
+              ariaLabel="Explain terms"
               checked={current.explainTerms === true}
               disabled={toggling !== null}
               onChange={() => void toggle("explainTerms")}
