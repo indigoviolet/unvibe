@@ -1641,7 +1641,18 @@ test.describe("L6 demo diff work", () => {
       // Backticks render as code; tooltips and chips read plain text.
       const nameEl = box.locator(".plname").first();
       await expect.soft(nameEl).toHaveText(J353_STRIPPED_NAME);
-      await expect.soft(nameEl).toHaveAttribute("data-tip", J353_STRIPPED_NAME);
+      // #406: the full-name tooltip shows only when the clamp actually
+      // cuts the name. A short name that fits has none (its row keeps
+      // the "Show only …" hint); the long name gains one once a narrower
+      // window clamps it (re-checked on resize).
+      const secondName = box.locator(".plname", { hasText: J353_SECOND_NAME.replace(/`/g, "") });
+      expect.soft(await secondName.evaluate((el) => el.scrollHeight > el.clientHeight + 1)).toBe(false);
+      await expect.soft(secondName).not.toHaveAttribute("data-tip");
+      await page.setViewportSize({ width: 900, height: 900 });
+      await expect
+        .poll(() => nameEl.evaluate((el) => el.scrollHeight > el.clientHeight + 1), { timeout: 10_000 })
+        .toBe(true);
+      await expect.soft(nameEl).toHaveAttribute("data-tip", J353_STRIPPED_NAME, { timeout: 10_000 });
       await expect.soft(nameEl.locator("code")).toHaveText("some_very_long_table_identifier_xyz");
       await expect.soft(box.locator("[data-plotpick]").first()).toHaveAttribute(
         "data-tip",
@@ -1669,6 +1680,8 @@ test.describe("L6 demo diff work", () => {
       await descEl.hover();
       await expect.soft(tip).toHaveText(`Show only ${J353_STRIPPED_NAME}`);
       expect.soft((await tip.textContent()) ?? "").not.toContain(J353_STRIPPED_DESC);
+      await page.mouse.move(5, 5);
+      await page.setViewportSize({ width: 1440, height: 900 });
 
       // The second row builds on the first: its chip names the long
       // name in plain text via its tooltip.
