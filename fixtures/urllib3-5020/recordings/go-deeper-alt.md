@@ -1,0 +1,19 @@
+## Mutating msg vs. only the dict
+
+The fix has to reach two copies of the headers. `getresponse` used to build `HTTPHeaderDict` from `httplib_response.msg.items()`. The `HTTPMessage` itself stayed on the response as `_original_response.msg` [[diff:src-urllib3-connection.py:647-651]]. The description says cookie consumers such as Requests read that message, not urllib3's dict. A fix that cleaned only `HTTPHeaderDict` would leave the raw CRLF in `msg`, and Requests could re-emit it [[desc:d-p2]]. So `_normalize_header_values` also writes the cleaned values back into the message [[diff:src-urllib3-connection.py:102-108]]. The socket test checks both copies. It asserts the dict's `set-cookie` list, then asserts the same list through `_original_response.msg.get_all("set-cookie")` [[diff:test-with_dummyserver-test_socketlevel.py:124-146]].
+
+The write-back is a delete and re-add of every header, on the same `HTTPMessage` object. The alternative is to build a fresh `HTTPMessage` and swap it onto the response. That would change object identity. The socket test asserts `_original_response.headers is _original_response.msg` [[diff:test-with_dummyserver-test_socketlevel.py:141]]. The unit test asserts that `defects` and `policy` are the same objects before and after [[diff:test-test_connection.py:248-249]]. Anything holding a reference to the old message, or relying on its parser state, would keep seeing the folded values after a swap. The code comment says the point is "preserving its identity and header ordering" [[diff:src-urllib3-connection.py:103-104]]. That the author chose delete and re-add over a swap for this reason is my inference.
+
+A third option is to fix the parse itself, by patching `http.client.parse_headers` or subclassing the response class. This would unfold the values before any copy exists. It would also mean patching a stdlib module-level function, which affects every user of `http.client` in the process. No code in this change tries it, and I have no stated reason for rejecting it, so that is my inference too. Normalizing after `begin()` inside `getresponse` keeps the change local to urllib3's own connection class.
+
+The costs are these. urllib3 now rewrites an object it does not own, and it depends on `HTTPMessage` semantics. `del message[name]` drops every occurrence of a name, and `message[name] = value` appends. The loop works because it deletes everything first and then re-adds in `header_items` order, so duplicate names keep their order [[diff:src-urllib3-connection.py:105-108]]. Because the rewrite runs only when `headers_changed` is true, responses without folds never touch the message [[diff:src-urllib3-connection.py:94-102]]. The function also returns the cleaned items, so `HTTPHeaderDict` is built from the same data that was written back, not from a second read of `msg` [[diff:src-urllib3-connection.py:110]] [[diff:src-urllib3-connection.py:650-651]].
+
+### Follow-ups
+
+- Does anything else read `_original_response.msg` or `.headers` besides Requests cookie extraction? | ask: Which consumers read `_original_response.msg` or `.headers`, and would any of them see different behavior from the delete-and-re-add rewrite?
+- What would break if `_normalize_header_values` replaced the message instead of mutating it? | ask: If `_normalize_header_values` returned a new `HTTPMessage` and `getresponse` swapped it onto the response, which tests and which consumers would break?
+- Is the order of duplicate headers really preserved when a fold sits in the middle? | ask: Walk through `_normalize_header_values` for a message with Set-Cookie, X-Second, Set-Cookie where only the first Set-Cookie is folded, and show the resulting order.
+
+```json
+{"title": "Mutating msg vs. only the dict"}
+```

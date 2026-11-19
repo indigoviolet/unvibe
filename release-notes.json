@@ -1,0 +1,256 @@
+{
+  "channel": "preview/main-rc",
+  "version": "0.0.21-preview.main-rc.7ca5c88",
+  "previousVersion": "0.0.20",
+  "commit": "7ca5c880bde7b835214abcdb68e78caf5429e984",
+  "previousCommit": "v0.0.20",
+  "dataFormat": 11,
+  "previousDataFormat": 7,
+  "dataResetNeeded": true,
+  "generatedAt": "2026-11-19T11:29:05.106Z",
+  "items": [
+    {
+      "number": 428,
+      "title": "Settings: removing a repo removes its reviews too",
+      "summary": "Removing a repo in Settings → Repos no longer refuses while it has reviews: it removes the repo's reviews too (with the worktrees Unvibe made for them; your folder is never touched). The confirm says what goes: \"Remove <repo> and its N reviews from Unvibe? <path> is not touched.\", and \"N unsent drafts will be lost\" when those reviews hold Outbox drafts.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/428",
+      "whatChanged": "Removing a repo in Settings → Repos no longer refuses while it has reviews: it removes the repo's reviews too (with the worktrees Unvibe made for them; your folder is never touched). The confirm says what goes: \"Remove <repo> and its N reviews from Unvibe? <path> is not touched.\", and \"N unsent drafts will be lost\" when those reviews hold Outbox drafts.",
+      "whatToTry": "Open Settings → Repos, click Remove on a repo that has a review: the confirm names the review. Confirm: the repo and the review are gone from Settings and the start page, and the folder is still there.",
+      "caveats": "Refused (nothing removed) while one of the repo's reviews is being submitted."
+    },
+    {
+      "number": 384,
+      "title": "Copy the whole guide as Markdown (prose cards only, no code or comments)",
+      "summary": "Copy the whole guide as Markdown (prose cards only, no code or comments)",
+      "url": "https://github.com/indigoviolet/unvibe/issues/384"
+    },
+    {
+      "number": 385,
+      "title": "Start page author search misses the author's open PRs that don't request your review",
+      "summary": "Start page author search misses the author's open PRs that don't request your review",
+      "url": "https://github.com/indigoviolet/unvibe/issues/385"
+    },
+    {
+      "number": 387,
+      "title": "Replace simpler/deeper with one repeatable 'Help me understand' (explain more slowly)",
+      "summary": "Replace simpler/deeper with one repeatable 'Help me understand' (explain more slowly)",
+      "url": "https://github.com/indigoviolet/unvibe/issues/387"
+    },
+    {
+      "number": 388,
+      "title": "Experimental: '?' mode, pick terms across the guide, then bulk-rewrite cards to explain them",
+      "summary": "Experimental: '?' mode, pick terms across the guide, then bulk-rewrite cards to explain them",
+      "url": "https://github.com/indigoviolet/unvibe/issues/388"
+    },
+    {
+      "number": 389,
+      "title": "Go-deeper card content: generate on demand only by default (autoGoDeeper off)",
+      "summary": "Go-deeper card content: generate on demand only by default (autoGoDeeper off)",
+      "url": "https://github.com/indigoviolet/unvibe/issues/389"
+    },
+    {
+      "number": 392,
+      "title": "Extension: 'Review in Unvibe' button lands in GitHub dialogs (e.g. Finish your review); anchor only in the PR header",
+      "summary": "Extension: 'Review in Unvibe' button lands in GitHub dialogs (e.g. Finish your review); anchor only in the PR header",
+      "url": "https://github.com/indigoviolet/unvibe/issues/392"
+    },
+    {
+      "number": 393,
+      "title": "Guide personas that own their prompts (whole-file forks) + Re-do with…",
+      "summary": "Guide personas that own their prompts (whole-file forks) + Re-do with…",
+      "url": "https://github.com/indigoviolet/unvibe/issues/393"
+    },
+    {
+      "number": 394,
+      "title": "Extension panel: a slow or interrupted ask is resent to the same service under its other host name and stored twice",
+      "summary": "Extension panel: a slow or interrupted ask is resent to the same service under its other host name and stored twice",
+      "url": "https://github.com/indigoviolet/unvibe/issues/394"
+    },
+    {
+      "number": 395,
+      "title": "Visual tour: gutter-E2 scenes and the diff pinned-band check fail on the release-candidate branch",
+      "summary": "Visual tour: gutter-E2 scenes and the diff pinned-band check fail on the release-candidate branch",
+      "url": "https://github.com/indigoviolet/unvibe/issues/395"
+    },
+    {
+      "number": 396,
+      "title": "Fresh install shows 'can't read your existing reviews' (unstamped) because update/ files count as data",
+      "summary": "Fresh install shows 'can't read your existing reviews' (unstamped) because update/ files count as data",
+      "url": "https://github.com/indigoviolet/unvibe/issues/396"
+    },
+    {
+      "number": 397,
+      "title": "Teach: a teaching-oriented Guide persona (prompt fork on #393)",
+      "summary": "Teach: a teaching-oriented Guide persona (prompt fork on #393)",
+      "url": "https://github.com/indigoviolet/unvibe/issues/397"
+    },
+    {
+      "number": 398,
+      "title": "'Help me understand' drops most of the rewrite and leaves citations on the wrong paragraphs (paragraph-slot merge)",
+      "summary": "'Help me understand' drops most of the rewrite and leaves citations on the wrong paragraphs (paragraph-slot merge)",
+      "url": "https://github.com/indigoviolet/unvibe/issues/398"
+    },
+    {
+      "number": 401,
+      "title": "Settings: choose the default Guide persona (used for new reviews and Re-do guide)",
+      "summary": "Settings: choose the default Guide persona (used for new reviews and Re-do guide)",
+      "url": "https://github.com/indigoviolet/unvibe/issues/401"
+    },
+    {
+      "number": 402,
+      "title": "Teach: scannable structure (sub-headings, bullets) + tinted background blocks",
+      "summary": "Teach: scannable structure (sub-headings, bullets) + tinted background blocks",
+      "url": "https://github.com/indigoviolet/unvibe/issues/402"
+    },
+    {
+      "number": 403,
+      "title": "Settings → Version: 'Show previews' shows ticked while the saved setting is off (no previews listed)",
+      "summary": "Settings → Version: 'Show previews' shows ticked while the saved setting is off (no previews listed)",
+      "url": "https://github.com/indigoviolet/unvibe/issues/403"
+    },
+    {
+      "number": 404,
+      "title": "Fresh install: Small model shows 'saved model claude-haiku-5-5 is no longer offered' (static default saved / live default not applied)",
+      "summary": "Fresh install: Small model shows 'saved model claude-haiku-5-5 is no longer offered' (static default saved / live default not applied)",
+      "url": "https://github.com/indigoviolet/unvibe/issues/404"
+    },
+    {
+      "number": 405,
+      "title": "Teach replaces Guide as the guide's prompts; drop the 'How it's built up' card",
+      "summary": "Teach replaces Guide as the guide's prompts; drop the 'How it's built up' card",
+      "url": "https://github.com/indigoviolet/unvibe/issues/405"
+    },
+    {
+      "number": 406,
+      "title": "Plotlines card: drop the row tooltip; highlight the selected plotline",
+      "summary": "Plotlines card: drop the row tooltip; highlight the selected plotline",
+      "url": "https://github.com/indigoviolet/unvibe/issues/406"
+    },
+    {
+      "number": 407,
+      "title": "Top bar visual pass: Tabler icons, borderless icon buttons, quieter pane toggles",
+      "summary": "Top bar visual pass: Tabler icons, borderless icon buttons, quieter pane toggles",
+      "url": "https://github.com/indigoviolet/unvibe/issues/407"
+    },
+    {
+      "number": 408,
+      "title": "Guide prompts: encourage ::: background blocks where they fit",
+      "summary": "Guide prompts: encourage ::: background blocks where they fit",
+      "url": "https://github.com/indigoviolet/unvibe/issues/408"
+    },
+    {
+      "number": 409,
+      "title": "Tour J228 author filter fails on main-rc: Bob's PR listed twice after picking bob",
+      "summary": "Tour J228 author filter fails on main-rc: Bob's PR listed twice after picking bob",
+      "url": "https://github.com/indigoviolet/unvibe/issues/409"
+    },
+    {
+      "number": 410,
+      "title": "Extension: Review in Unvibe button missing on GitHub's new PR Overview layout",
+      "summary": "Extension: Review in Unvibe button missing on GitHub's new PR Overview layout",
+      "url": "https://github.com/indigoviolet/unvibe/issues/410"
+    },
+    {
+      "number": 411,
+      "title": "Since section: cards show no body after an update pass; Answers excerpts cut mid-sentence",
+      "summary": "Since section: cards show no body after an update pass; Answers excerpts cut mid-sentence",
+      "url": "https://github.com/indigoviolet/unvibe/issues/411"
+    },
+    {
+      "number": 413,
+      "title": "Explain changes since X: replace Update/addenda with an on-demand range explanation",
+      "summary": "Explain changes since X: replace Update/addenda with an on-demand range explanation",
+      "url": "https://github.com/indigoviolet/unvibe/issues/413"
+    },
+    {
+      "number": 414,
+      "title": "Live harnesses still set settings.main (removed): every live task refuses to run",
+      "summary": "Live harnesses still set settings.main (removed): every live task refuses to run",
+      "url": "https://github.com/indigoviolet/unvibe/issues/414"
+    },
+    {
+      "number": 415,
+      "title": "demo:large:build waits for summaries beyond the auto-summary limit and never finishes",
+      "summary": "demo:large:build waits for summaries beyond the auto-summary limit and never finishes",
+      "url": "https://github.com/indigoviolet/unvibe/issues/415"
+    },
+    {
+      "number": 416,
+      "title": "theme-init.js returns 401 on a first visit: theme not applied before first paint",
+      "summary": "theme-init.js returns 401 on a first visit: theme not applied before first paint",
+      "url": "https://github.com/indigoviolet/unvibe/issues/416"
+    },
+    {
+      "number": 417,
+      "title": "Tour scene 367 renders a replay-placeholder guide (no recording matched)",
+      "summary": "Tour scene 367 renders a replay-placeholder guide (no recording matched)",
+      "url": "https://github.com/indigoviolet/unvibe/issues/417"
+    },
+    {
+      "number": 418,
+      "title": "Explain terms becomes a per-card action: Help me understand → Simplify / Explain terms",
+      "summary": "Explain terms becomes a per-card action: Help me understand → Simplify / Explain terms",
+      "url": "https://github.com/indigoviolet/unvibe/issues/418"
+    },
+    {
+      "number": 419,
+      "title": "Flaky temp-guard leak: l10 data-format test leaves its seeded data dir under load",
+      "summary": "Flaky temp-guard leak: l10 data-format test leaves its seeded data dir under load",
+      "url": "https://github.com/indigoviolet/unvibe/issues/419"
+    },
+    {
+      "number": 420,
+      "title": "Review bar: Refresh becomes 'Pull new commits from GitHub' with a cloud-download icon",
+      "summary": "Review bar: Refresh becomes 'Pull new commits from GitHub' with a cloud-download icon",
+      "url": "https://github.com/indigoviolet/unvibe/issues/420"
+    },
+    {
+      "number": 421,
+      "title": "Explain changes from a toolbar menu; the Changes section becomes one panel with a commit-range header",
+      "summary": "Explain changes from a toolbar menu; the Changes section becomes one panel with a commit-range header",
+      "url": "https://github.com/indigoviolet/unvibe/issues/421"
+    },
+    {
+      "number": 422,
+      "title": "Experimental settings section gating Explain terms and Markdown docs",
+      "summary": "Experimental settings section gating Explain terms and Markdown docs",
+      "url": "https://github.com/indigoviolet/unvibe/issues/422"
+    },
+    {
+      "number": 423,
+      "title": "Remove the Clarity persona",
+      "summary": "Remove the Clarity persona",
+      "url": "https://github.com/indigoviolet/unvibe/issues/423"
+    },
+    {
+      "number": 424,
+      "title": "Start page: drop the 'new commits' tags",
+      "summary": "Start page: drop the 'new commits' tags",
+      "url": "https://github.com/indigoviolet/unvibe/issues/424"
+    },
+    {
+      "number": 425,
+      "title": "Tour theme keeps (studio, console) fail the font-width check on main-rc",
+      "summary": "Tour theme keeps (studio, console) fail the font-width check on main-rc",
+      "url": "https://github.com/indigoviolet/unvibe/issues/425"
+    },
+    {
+      "number": 426,
+      "title": "Source pane: summaries row sits flush against the first file header",
+      "summary": "Source pane: summaries row sits flush against the first file header",
+      "url": "https://github.com/indigoviolet/unvibe/issues/426"
+    },
+    {
+      "number": 427,
+      "title": "One timeline menu: remove the version switcher and Source-pane banner, dot on the history icon",
+      "summary": "One timeline menu: remove the version switcher and Source-pane banner, dot on the history icon",
+      "url": "https://github.com/indigoviolet/unvibe/issues/427"
+    },
+    {
+      "number": 429,
+      "title": "Side panel cites ../../private/… paths when a repo is reached through a symlink (macOS CI)",
+      "summary": "Side panel cites ../../private/… paths when a repo is reached through a symlink (macOS CI)",
+      "url": "https://github.com/indigoviolet/unvibe/issues/429"
+    }
+  ]
+}
