@@ -44,7 +44,6 @@ import { cpuThrottleFromEnv } from "../cpu-throttle.js";
 import { checkLayout } from "../layout-check.js";
 import { measureWithinRow } from "../geometry.js";
 import { fileKeyForPath } from "@unvibe/shared";
-import { openPopup } from "../select.js";
 import { SERVICE_ENTRY, startService, type RunningService } from "../service-harness.js";
 import {
   apiJson,
@@ -591,26 +590,20 @@ test.describe("L2 refresh that empties the diff", () => {
         await page.locator("#reviewbar").getByRole("button", { name: "Pull new commits from GitHub", exact: true }).click();
       });
 
-      await test.step("the emptied diff names v1 and keeps Submit available", async () => {
-        // Diff pane: the empty message appears once (the banner), not twice.
-        await expect.soft(page.getByTestId("empty-diff-message")).toContainText("No changes to review", { timeout: 60_000 });
-        await expect.soft(page.getByTestId("diff-empty")).toHaveCount(0);
-        await expect.soft(page.getByTestId("stale-banner").getByRole("button", { name: "Update" })).toHaveCount(0);
-        // Guide pane: says this version is empty, not "diff is ready", and
-        // points at the earlier version (which still has its guide).
+      await test.step("the emptied diff says so and keeps Submit available", async () => {
+        // Diff pane: the empty message appears once, in the diff itself —
+        // no banner, no switcher anywhere.
+        await expect.soft(page.getByTestId("diff-empty")).toContainText("No changes to review", { timeout: 60_000 });
+        await expect.soft(page.getByTestId("empty-diff-message")).toHaveCount(0);
+        await expect.soft(page.getByTestId("stale-banner")).toHaveCount(0);
+        await expect.soft(page.getByTestId("version-switcher")).toHaveCount(0);
+        await expect.soft(page.locator("#version-pick")).toHaveCount(0);
+        // Guide pane: says the review's diff is empty, not "diff is
+        // ready". Earlier versions stay stored but have no UI anymore.
         await expect.soft(page.getByTestId("guide-empty-version")).toBeVisible({ timeout: 30_000 });
-        await expect.soft(page.getByTestId("guide-empty-version-message")).toContainText("This version's diff is empty");
-        await expect.soft(page.getByTestId("guide-empty-version")).toContainText("Earlier versions are still available");
-        // Submit stays available: work from earlier versions is not stranded.
+        await expect.soft(page.getByTestId("guide-empty-version-message")).toContainText("This review's diff is empty");
+        // Submit stays available: existing work is not stranded.
         await expect.soft(page.getByRole("button", { name: /Submit review/ })).toBeVisible();
-      });
-
-      await test.step("picking v1 brings its guide and diff back", async () => {
-        await page.locator("#version-pick").click();
-        await openPopup(page).getByRole("option", { name: /^v1 / }).click();
-        await expect.soft(page).toHaveURL(/version=1/);
-        await expect.soft(page.getByText("Seed guide text for v1.")).toBeVisible({ timeout: 30_000 });
-        await expect.soft(page.getByText("y = 2")).toBeVisible({ timeout: 30_000 });
       });
     } finally {
       await svc2?.stop().catch(() => {});
