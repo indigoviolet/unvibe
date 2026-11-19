@@ -26,6 +26,10 @@
     "fetchedAt": 1760000000000,
     "idMapping": {}
   },
+  "guideHead": {
+    "version": 1,
+    "sha": "00162b2030837429af8f2de8ef07b602d910cbbd"
+  },
   "glossary": [
     {
       "name": "obs-fold",

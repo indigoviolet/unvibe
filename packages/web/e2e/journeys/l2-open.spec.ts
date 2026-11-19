@@ -510,7 +510,7 @@ test.describe("L2 snapshot, hunk state and WS patch across reload + restart", ()
 });
 
 test.describe("L2 refresh that empties the diff", () => {
-  test("refresh-emptied diff says so in the banner and diff, guide points at v1", async ({ page }) => {
+  test("refresh-emptied diff says so in the diff and guide, no banner or versions", async ({ page }) => {
     test.setTimeout(240_000);
     const dir2 = mkdtempSync(path.join(os.tmpdir(), "unvibe-l2empty-repo2-"));
     const data2 = mkdtempSync(path.join(os.tmpdir(), "unvibe-l2empty-data2-"));

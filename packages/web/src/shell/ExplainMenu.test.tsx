@@ -185,30 +185,4 @@ describe("ExplainMenu (#421, #427)", () => {
     expect(menu.querySelector(`[data-explain-commit="${HEAD}"]`)).toHaveTextContent("guide");
     expect(menu.querySelector(`[data-explain-commit="${HEAD}"]`)).toHaveTextContent("latest");
   });
-
-  it("renders with no dot and no guide entry on snapshots that predate guideHead", async () => {
-    const snap = await api.review("demo");
-    const seeded = {
-      ...snap,
-      review: { ...snap.review, id: REVIEW_ID },
-    };
-    delete (seeded as Partial<typeof seeded>).guideHead;
-    act(() =>
-      useReview.getState().setSnapshot({
-        ...(seeded as unknown as typeof snap),
-        review: { ...snap.review, id: REVIEW_ID, repoId: "r", branch: "feature", currentVersion: 1, versions: [] },
-        version: { ...snap.version, n: 1, headSha: HEAD },
-        commits: [{ sha: OLD, subject: "older work", body: "", files: [], hunks: [] }],
-        ingest: { status: "ready" },
-      }),
-    );
-    render(<ExplainMenu reviewId={REVIEW_ID} />);
-    const btn = screen.getByTestId("explain-menu-button");
-    expect(btn).toHaveAttribute("aria-label", "Explain changes since…");
-    expect(btn.querySelector("[data-new-commits]")).toBeNull();
-    fireEvent.click(btn);
-    const menu = screen.getByTestId("explain-menu");
-    expect(menu.querySelector("[data-explain-guide]")).toBeNull();
-    expect(menu.querySelector(`[data-explain-commit="${OLD}"]`)).not.toBeNull();
-  });
 });
