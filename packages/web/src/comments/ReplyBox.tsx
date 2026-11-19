@@ -30,7 +30,6 @@ interface Props {
   sendLabel: string;
   discardLabel: string;
   rows?: number;
-  readOnly?: boolean;
   /** Send the text; the box clears on success. */
   onSend: (text: string) => Promise<unknown>;
   /** Discard action (clear the draft, or delete a new thread); the box clears on success. */
@@ -68,7 +67,6 @@ export function ReplyBox({
   sendLabel,
   discardLabel,
   rows,
-  readOnly,
   onSend,
   onDiscard,
   onSendingChange,
@@ -207,9 +205,6 @@ export function ReplyBox({
       .finally(() => setSendingBoth(false));
   };
 
-  if (readOnly) {
-    return <div className="hint">Viewing an older version · read-only</div>;
-  }
   return (
     <div className="composer">
       {quoteChip ? (

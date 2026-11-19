@@ -3,9 +3,8 @@
  * comparison, anchor remapping, and the manual update pass.
  *
  * - `compare.ts` / `anchors.ts` / `citations.ts` are pure (no git/store).
- * - `rangeDiff.ts` wraps `git range-diff` for display (best effort).
- * - `files.ts` persists per-version diffs (migration 003) so older versions
- *   stay viewable via `GET /api/reviews/:id?version=n`.
+ * - `files.ts` persists per-version diffs (migration 003) for carry-over
+ *   and changed-hunk detection (the explain-since-X `{ version }` baseline).
  * - `refresh.ts` orchestrates fetch + compare + one-mutate state updates.
  * - `explain.ts` enqueues the agent explain-since-X pass on the job queue
  *   behind the narrow `ExplainBaseRunner` / `ExplainReplyParser`
@@ -19,7 +18,6 @@
 export * from "./compare.js";
 export * from "./anchors.js";
 export * from "./citations.js";
-export * from "./rangeDiff.js";
 export * from "./files.js";
 export * from "./refresh.js";
 export * from "./explain.js";

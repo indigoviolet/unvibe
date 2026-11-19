@@ -1347,12 +1347,6 @@ function isStaleReview(reviewId: string): boolean {
   return reviewId === "r-old" || reviewId === "stale-demo";
 }
 
-const STALE_RANGE_DIFF = [
-  "1:  a1b2c3d ! unfold folded response headers",
-  "    +++ e4f5a6b ! unfold folded response headers (amended)",
-  "-:  ------- > 2:  c7d8e9f ! add socket-level test for obs-fold",
-].join("\n");
-
 function staleVersionStatus(): VersionStatus {
   const tconn = MOCK_FILES.find((f) => f.path === "test/test_connection.py");
   const changed = tconn?.hunks[2];
@@ -1367,7 +1361,6 @@ function staleVersionStatus(): VersionStatus {
     renamedFiles: [],
     changedOldIds: [oldId],
     changedNewIds: [`${oldId}:new`],
-    rangeDiff: STALE_RANGE_DIFF,
     fetchedAt: NOW,
   };
 }
@@ -1386,9 +1379,9 @@ function staleHunkStates(): HunkState[] {
 
 const MOCK_VERSION_2: Version = { ...MOCK_VERSION, n: 2, headSha: "e4f5a6b7c8d", fetchedAt: NOW };
 
-function currentSnapshot(reviewId = "demo", version?: number): ReviewSnapshot {
+function currentSnapshot(reviewId = "demo"): ReviewSnapshot {
   const stale = isStaleReview(reviewId);
-  const viewing = version ?? (stale ? 2 : 1);
+  const viewing = stale ? 2 : 1;
   const base: ReviewSnapshot = {
     review: {
       ...MOCK_REVIEW,
@@ -2807,7 +2800,7 @@ export const mockApi = {
     return mockDiagramSvg(hash, theme);
   },
 
-  review: async (id: string, version?: number): Promise<ReviewSnapshot> => {
+  review: async (id: string): Promise<ReviewSnapshot> => {
     await wait(50);
     // #92: mock loading/failed reviews — stateless by id prefix + hooks so
     // the status survives SPA navigation even if the list entry is gone.
@@ -2843,7 +2836,7 @@ export const mockApi = {
           entry.currentVersion = 1;
           entry.guideStatus = "ready";
         }
-        return currentSnapshot(id, version);
+        return currentSnapshot(id);
       }
       if (id.startsWith("mock-failed-")) {
         const fail = localStorage.getItem("unvibe.mock.createReviewFail");
@@ -2876,7 +2869,7 @@ export const mockApi = {
           entry.currentVersion = 1;
           entry.guideStatus = "ready";
         }
-        return currentSnapshot(id, version);
+        return currentSnapshot(id);
       }
     } catch {
       // Fall through to the list lookup below.
@@ -2897,7 +2890,7 @@ export const mockApi = {
       entry.versionCount = 1;
       entry.currentVersion = 1;
       entry.guideStatus = "ready";
-      return currentSnapshot(id, version);
+      return currentSnapshot(id);
     }
     if (entry?.ingestStatus === "failed") {
       let fail: string | null = null;
@@ -2910,10 +2903,7 @@ export const mockApi = {
       const error = fail ?? entry.ingestError ?? "mock ingest failed";
       return mockFailedSnapshot(entry, error);
     }
-    if (isStaleReview(id) && version !== undefined && version !== 1 && version !== 2) {
-      throw new Error(`GET /api/reviews/${id}?version=${version}: 404 {"error":"unknown version ${version}"}`);
-    }
-    return currentSnapshot(id, version);
+    return currentSnapshot(id);
   },
 
   refresh: async (id: string): Promise<RefreshResponse> => {
@@ -2929,7 +2919,6 @@ export const mockApi = {
           oldHeadSha: MOCK_VERSION.headSha,
           newHeadSha: "e4f5a6b7c8",
           renames: [],
-          rangeDiff: status.rangeDiff,
           unchangedHunks: status.unchangedHunks,
           changedHunks: status.changedHunks,
           newHunks: status.newHunks,

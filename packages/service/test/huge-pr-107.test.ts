@@ -760,7 +760,6 @@ describe("explain-pass X hunks cap (#107)", () => {
             const n = Number(h.slice(2));
             return `h:f${Math.floor(n / 25)}:${h}`;
           }),
-          rangeDiff: "",
           fetchedAt: Date.now(),
         };
       });

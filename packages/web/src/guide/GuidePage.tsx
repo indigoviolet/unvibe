@@ -17,7 +17,6 @@ import { api, friendlyError } from "../api/client.js";
 import { ErrorBoundary, InlineFallback } from "../components/ErrorBoundary.js";
 import { toast } from "../floating/Toast.js";
 import { useReview } from "../state/store.js";
-import { useReviewVersion } from "../versions/useReviewVersion.js";
 import { GUIDE_BLOCK_EVENT, performAction, scrollToBlock, type GuideBlockRequest } from "./actions.js";
 import { emptyGuideState } from "./guideUtils.js";
 import { DocumentView } from "./DocumentView.js";
@@ -54,12 +53,11 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
   const splat = useParams()["*"];
   const navigate = useNavigate();
   const location = useLocation();
-  const versionParam = useReviewVersion();
 
   useEffect(() => {
     let cancelled = false;
     api
-      .review(reviewId, versionParam)
+      .review(reviewId)
       .then((snap) => {
         if (!cancelled) setSnapshot(snap);
       })
@@ -69,7 +67,7 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [reviewId, versionParam, setSnapshot]);
+  }, [reviewId, setSnapshot]);
 
   const pageId = pageIdFromSplat(splat);
   const pageKey = pageId ?? "root";
@@ -305,13 +303,7 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
     snapshot.files.every((f) => f.hunks.length === 0 && !f.isBinary) &&
     (snapshot.versionStatus?.empty === true || snapshot.review.versions.length > 1 || snapshot.version.n > 1);
   if (isEmptyVersion) {
-    return (
-      <EmptyVersionGuide
-        versionN={snapshot.version.n}
-        versionCount={snapshot.review.versions.length}
-        hasGuide={pages.some((p) => p.cards.length > 0)}
-      />
-    );
+    return <EmptyVersionGuide />;
   }
 
   const current = pageId === null ? pages.find((p) => p.kind === "root") ?? pages[0] : lookupPage(pageId);
@@ -393,28 +385,14 @@ export function GuidePage({ reviewId }: { reviewId: string }) {
   );
 }
 
-/** #179: the viewed version's diff is empty (a refresh emptied it). */
-export function EmptyVersionGuide({
-  versionN,
-  versionCount,
-  hasGuide,
-}: {
-  versionN: number;
-  versionCount: number;
-  hasGuide: boolean;
-}) {
+/** #179: the review's diff is empty (a refresh emptied it). */
+export function EmptyVersionGuide() {
   return (
     <div className="doc" data-testid="guide-empty-version">
       <h1 className="title">No changes to review</h1>
       <p className="hint" data-testid="guide-empty-version-message">
-        This version&apos;s diff is empty — the branch is the same as its base, so there is nothing to read in v{versionN}.
+        This review&apos;s diff is empty — the branch is the same as its base, so there is nothing to read.
       </p>
-      {versionCount > 1 ? (
-        <p className="hint">
-          Earlier versions are still available in the version picker above
-          {hasGuide ? " — pick one to read its guide and diff" : " — pick one to read its diff"}.
-        </p>
-      ) : null}
     </div>
   );
 }

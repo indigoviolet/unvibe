@@ -119,7 +119,7 @@ export interface HunkComparison {
   renames: FileRename[];
 }
 
-/** Core hunk matching (no SHAs / range-diff; see `compareVersions`). */
+/** Core hunk matching (no SHAs; see `compareVersions`). */
 export function compareHunks(oldFiles: ReviewFile[], newFiles: ReviewFile[]): HunkComparison {
   const renames = detectRenames(oldFiles, newFiles);
   const oldEntries = entries(oldFiles);
@@ -251,8 +251,7 @@ export function compareHunks(oldFiles: ReviewFile[], newFiles: ReviewFile[]): Hu
 }
 
 /**
- * Full comparison wrapper that attaches version/SHA metadata and the
- * display-only `git range-diff` text.
+ * Full comparison wrapper that attaches version/SHA metadata.
  */
 export function compareVersions(opts: {
   oldFiles: ReviewFile[];
@@ -261,7 +260,6 @@ export function compareVersions(opts: {
   newVersion: number;
   oldHeadSha: string;
   newHeadSha: string;
-  rangeDiff?: string;
 }): VersionComparison {
   const c = compareHunks(opts.oldFiles, opts.newFiles);
   return {
@@ -274,6 +272,5 @@ export function compareVersions(opts: {
     removed: c.removed,
     added: c.added,
     renames: c.renames,
-    rangeDiff: opts.rangeDiff ?? "",
   };
 }

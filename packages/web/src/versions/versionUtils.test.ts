@@ -15,8 +15,6 @@ import {
   pooledTokens,
   reduceJobs,
   splitLayers,
-  newCommitsHeadline,
-  versionCountsText,
 } from "./versionUtils.js";
 
 function job(over: Partial<Job> = {}): Job {
@@ -139,29 +137,6 @@ describe("splitLayers", () => {
     expect(sections[0]).toMatchObject({ layer: "", text: "lead-in" });
     expect(sections[sections.length - 1]).toMatchObject({ layer: "", text: "trail-out" });
     expect(splitLayers("")).toEqual([]);
-  });
-});
-
-describe("version copy", () => {
-  it("counts and headlines", () => {
-    expect(versionCountsText({ changedHunks: 1, newHunks: 2, removedHunks: 0 })).toBe(
-      "1 changed · 2 new · 0 removed",
-    );
-    expect(
-      newCommitsHeadline({
-        fromVersion: 1,
-        toVersion: 2,
-        unchangedHunks: 7,
-        changedHunks: 1,
-        newHunks: 2,
-        removedHunks: 0,
-        renamedFiles: [],
-        changedOldIds: [],
-        changedNewIds: [],
-        rangeDiff: "",
-        fetchedAt: 0,
-      }),
-    ).toBe("New commits on this branch: v1 → v2 (1 changed · 2 new · 0 removed hunks)");
   });
 });
 

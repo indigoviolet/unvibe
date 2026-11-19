@@ -149,16 +149,14 @@ describe("EmptyOpen (#179 empty diff)", () => {
     expect(screen.queryByText(/Couldn't open/)).not.toBeInTheDocument();
   });
 
-  test("empty version guide says so and points at earlier versions", () => {
+  test("empty review guide says so", () => {
     render(
       <MemoryRouter>
-        <EmptyVersionGuide versionN={2} versionCount={2} hasGuide />
+        <EmptyVersionGuide />
       </MemoryRouter>,
     );
     expect(screen.getByTestId("guide-empty-version")).toBeInTheDocument();
-    expect(screen.getByTestId("guide-empty-version-message")).toHaveTextContent("This version's diff is empty");
-    expect(screen.getByText(/Earlier versions are still available in the version picker/)).toBeInTheDocument();
-    expect(screen.getByText(/pick one to read its guide and diff/)).toBeInTheDocument();
+    expect(screen.getByTestId("guide-empty-version-message")).toHaveTextContent("This review's diff is empty");
   });
 
   test("empty row shows the message and no-changes tag", () => {

@@ -350,12 +350,9 @@ code { font-family: var(--mono); font-size: .86em; }
 .rbar .seg { height: var(--control-sm); box-sizing: border-box; }
 .rbar .seg button { height: 100%; box-sizing: border-box; display: inline-flex; align-items: center; }
 .rbar .jcount { height: var(--control-sm); box-sizing: border-box; display: inline-flex; align-items: center; }
-/* Review bar (#120): the version selector sits next to the identity. It
-   never shrinks (the title gives way first); an older shown version flags
-   it with the warning border. */
-.rbar .rid .vs { display: inline-flex; gap: 6px; align-items: center; flex: none; min-width: 0; }
-.rbar .rid .vs .ui-select { font-size: var(--text-xs); height: var(--control-sm); padding: 0 var(--space-2); width: auto; max-width: 220px; }
-.rbar .rid .vs[data-ro] .ui-select { border-color: var(--warn); }
+/* Review bar (#427): the history icon carries the new-commits dot. */
+.rbar .ib.hist { position: relative; }
+.rbar .ib.hist .fdot { position: absolute; top: 4px; right: 4px; }
 .rbar .seg { flex: none; }
 .rbar .ra { display: flex; gap: 8px; align-items: center; flex: none; }
 /* Narrow screens (issue #341): the bar wraps instead of overflowing —

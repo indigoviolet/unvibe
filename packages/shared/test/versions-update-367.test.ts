@@ -17,7 +17,6 @@ function status(changedHunks: number, newHunks: number, removedHunks: number): V
     renamedFiles: [],
     changedOldIds: [],
     changedNewIds: [],
-    rangeDiff: "",
     fetchedAt: 0,
   };
 }

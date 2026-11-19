@@ -67,13 +67,11 @@ export interface VersionComparison {
   removed: SoloHunk[];
   added: SoloHunk[];
   renames: FileRename[];
-  /** Raw `git range-diff` output for display (may be empty when git fails). */
-  rangeDiff: string;
 }
 
 export type VersionComparisonSummary = Pick<
   VersionComparison,
-  "oldVersion" | "newVersion" | "oldHeadSha" | "newHeadSha" | "renames" | "rangeDiff"
+  "oldVersion" | "newVersion" | "oldHeadSha" | "newHeadSha" | "renames"
 > & {
   unchangedHunks: number;
   changedHunks: number;
@@ -92,7 +90,6 @@ export function summarizeComparison(c: VersionComparison): VersionComparisonSumm
     oldHeadSha: c.oldHeadSha,
     newHeadSha: c.newHeadSha,
     renames: c.renames,
-    rangeDiff: c.rangeDiff,
     unchangedHunks: c.unchanged.length,
     changedHunks: c.changed.length,
     newHunks: c.added.length,
@@ -118,8 +115,6 @@ export interface VersionStatus {
   changedOldIds: string[];
   /** New-side `h:` IDs (for the update-pass prompt). */
   changedNewIds: string[];
-  /** `git range-diff` output for display. */
-  rangeDiff: string;
   /** Epoch ms when the new version was fetched. */
   fetchedAt: number;
   /** #179: the new version's diff is empty (no hunks to review). */
