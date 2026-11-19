@@ -85,6 +85,33 @@ function PlotlineReviewedBox({
  * between Contents and the cards. Each row jumps to its first hunk in
  * the diff; hunks no plotline claimed read as "Other".
  */
+/**
+ * A plotline name clamped to two lines (CSS). Issue #406: it carries the
+ * full plain name as a tooltip only while the clamp actually cuts it
+ * (measured, re-checked on resize); a name that fits has no tooltip, so
+ * hovering it shows the row's own "Show only …" hint.
+ */
+function PlotName({ name }: { name: string }): ReactNode {
+  const ref = useRef<HTMLSpanElement | null>(null);
+  const [cut, setCut] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const check = (): void =>
+      setCut(el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1);
+    check();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [name]);
+  return (
+    <span ref={ref} className="plname" {...(cut ? { "data-tip": stripCodeSpans(name) } : {})}>
+      <InlineCode text={name} />
+    </span>
+  );
+}
+
 function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
   const snapshot = useReview((s) => s.snapshot);
   // Issue #343: older versions are view-only — the checkbox disables
@@ -267,16 +294,17 @@ function Plotlines({ reviewId }: { reviewId: string }): ReactNode {
                   : {})}
                 primary={
                   // Issue #353: names are stored whole; the row clamps to
-                  // two lines (CSS), code spans render as code, and the
-                  // plain full name is in the tooltip.
-                  <span className="plname" data-tip={stripCodeSpans(r.name)}><InlineCode text={r.name} /></span>
+                  // two lines (CSS) and code spans render as code. #406:
+                  // the plain full name is a tooltip only when the clamp
+                  // actually cuts it.
+                  <PlotName name={r.name} />
                 }
                 meta={
                   <>
                     {/* Issue #406: the summary below carries no tooltip — it
                       would repeat the row's own text verbatim. The row keeps
-                      its action hint ("Show only …") and the name keeps
-                      its full-name tooltip (#353). */}
+                      its action hint ("Show only …"); the name shows its
+                      full-name tooltip only when it is truncated. */}
                     {r.desc ? (
                       <span className="pldesc">
                         <InlineCode text={r.desc} />

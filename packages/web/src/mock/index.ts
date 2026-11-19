@@ -66,7 +66,7 @@ import type {
 } from "@unvibe/shared";
 import type { ApiClient } from "../api/client.js";
 import { UpdateJobsBlockedError } from "../api/updateBlocked.js";
-import { DEFAULT_REVIEW_VIEW_PREFS, CLARITY_PERSONA, GUIDE_PERSONA, SECOND_OPINION_PERSONA, blockPlainText, buildOutboxExportMarkdown, freshBlockId, outboxThreads, parseDocumentMarkdown, parseGitHubRepoInput, renderUntrustedMarkdown } from "@unvibe/shared";
+import { DEFAULT_REVIEW_VIEW_PREFS, GUIDE_PERSONA, SECOND_OPINION_PERSONA, blockPlainText, buildOutboxExportMarkdown, freshBlockId, outboxThreads, parseDocumentMarkdown, parseGitHubRepoInput, renderUntrustedMarkdown } from "@unvibe/shared";
 import { useReview } from "../state/store.js";
 import { HUNK_SUMMARIES, MOCK_FILES } from "./diff.js";
 import { mockFileSlice, mockOutline } from "./fileContents.js";
@@ -922,13 +922,10 @@ const MOCK_GUIDE_PERSONA = { ...GUIDE_PERSONA, provider: "claude", model: "mock-
 /** Built-in Second opinion persona with the mock model (issue #349). */
 const MOCK_BUILT_IN_PERSONA = { ...SECOND_OPINION_PERSONA, provider: "codex", model: "mock-second" };
 
-/** Built-in Clarity persona with the mock model (issue #359). */
-const MOCK_CLARITY_PERSONA = { ...CLARITY_PERSONA, provider: "claude", model: "mock-clarity" };
-
 const DEFAULT_MOCK_SETTINGS: Settings = {
   uiTheme: "default",
   small: { provider: "claude", model: "mock-small", effort: "" },
-  personas: [MOCK_GUIDE_PERSONA, MOCK_BUILT_IN_PERSONA, MOCK_CLARITY_PERSONA],
+  personas: [MOCK_GUIDE_PERSONA, MOCK_BUILT_IN_PERSONA],
   defaultGuidePersonaId: "guide",
   sessionsPerProvider: 16,
   inlineBudgetTokens: 40000,
@@ -957,7 +954,7 @@ function getMockSettings(): Settings {
     return {
       ...DEFAULT_MOCK_SETTINGS,
       small: { ...DEMO_ROLE_PICKS.small },
-      personas: [{ ...GUIDE_PERSONA }, { ...SECOND_OPINION_PERSONA }, { ...CLARITY_PERSONA }],
+      personas: [{ ...GUIDE_PERSONA }, { ...SECOND_OPINION_PERSONA }],
     };
   }
   return { ...DEFAULT_MOCK_SETTINGS, ...readJson<Partial<Settings>>(SETTINGS_KEY, {}) };
@@ -2755,7 +2752,6 @@ export const mockApi = {
       forks: [
         { personaId: "guide", name: "Guide", enabled: true, guideCapable: false, drifted: [] },
         { personaId: "second-opinion", name: "Second opinion", enabled: true, guideCapable: false, drifted: [] },
-        { personaId: "clarity", name: "Clarity", enabled: true, guideCapable: false, drifted: [] },
       ],
     };
   },

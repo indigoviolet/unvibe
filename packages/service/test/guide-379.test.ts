@@ -14,6 +14,7 @@
 import { describe, expect, it } from "vitest";
 import {
   GUIDE_PERSONA_ID,
+  PERSONA_COLORS,
   type Persona,
   type ReviewSnapshot,
 } from "@unvibe/shared";
@@ -281,7 +282,7 @@ The central paragraph.
         {
           match: "# Persona card",
           events: textEvents(
-            `The problem, rewritten for clarity. See the problem statement [[card:problem]].\n\n\`\`\`json\n{}\n\`\`\`\n`,
+            `The problem, restated plainly. See the problem statement [[card:problem]].\n\n\`\`\`json\n{}\n\`\`\`\n`,
           ),
         },
         {
@@ -291,14 +292,30 @@ The central paragraph.
       ]);
       const { app, ctx, id } = await openDemo(agents);
       try {
-        // Guide on a non-default effort with a lens set.
+        // Guide on a non-default effort with a lens set, plus a custom
+        // followMain persona (issue #423 removed the Clarity built-in,
+        // the previous only follower).
+        const FOLLOWER: Persona = {
+          id: "follower",
+          name: "Follower",
+          followMain: true,
+          provider: "claude",
+          model: "claude-opus-5-5",
+          lens: "You are a follower: you restate the card plainly.",
+          cardInstruction: "",
+          enabled: true,
+          color: PERSONA_COLORS[1],
+        };
         const seed = (ctx.settings.get().personas ?? []) as Persona[];
         const res = await app.inject({
           method: "PUT",
           url: "/api/settings",
           headers: { authorization: "Bearer tok" },
           payload: {
-            personas: seed.map((p) => (p.id === GUIDE_PERSONA_ID ? { ...p, lens: LENS2, effort: "high" } : p)),
+            personas: [
+              ...seed.map((p) => (p.id === GUIDE_PERSONA_ID ? { ...p, lens: LENS2, effort: "high" } : p)),
+              FOLLOWER,
+            ],
           },
         } as never);
         expect(res.statusCode).toBe(200);
@@ -312,26 +329,26 @@ The central paragraph.
           method: "POST",
           url: `/api/reviews/${id}/actions`,
           headers: { authorization: "Bearer tok" },
-          payload: { kind: "persona", cardId: "problem", personaId: "clarity" },
+          payload: { kind: "persona", cardId: "problem", personaId: "follower" },
         } as never);
         expect(run.statusCode).toBe(200);
         const personaJobId = (run.json() as { jobId?: string }).jobId;
         await waitFor(() => {
           const card = ctx.reviews.getSnapshot(id)?.pages.flatMap((p) => p.cards).find((c) => c.id === "problem");
-          const variant = card?.variants?.["clarity"];
+          const variant = card?.variants?.["follower"];
           return !!variant && variant.blocks.length > 0 && !variant.working;
         }, 120000);
         const slower = await app.inject({
           method: "POST",
           url: `/api/reviews/${id}/actions`,
           headers: { authorization: "Bearer tok" },
-          payload: { kind: "slower", cardId: "problem", personaId: "clarity" },
+          payload: { kind: "slower", cardId: "problem", personaId: "follower" },
         } as never);
         expect(slower.statusCode).toBe(200);
         const slowerJobId = (slower.json() as { jobId?: string }).jobId;
         await waitFor(() => {
           const card = ctx.reviews.getSnapshot(id)?.pages.flatMap((p) => p.cards).find((c) => c.id === "problem");
-          const text = (card?.variants?.["clarity"]?.blocks ?? [])
+          const text = (card?.variants?.["follower"]?.blocks ?? [])
             .filter((b) => b.type === "paragraph")
             .map((b) => (b as { text: string }).text)
             .join(" ");

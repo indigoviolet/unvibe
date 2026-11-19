@@ -4,7 +4,7 @@
  *
  * On-demand only (`mise run visual-tour`): the persona states the owner
  * reviews as frames — the personas list, the add/edit/delete forms and
- * confirm, and the persona dropdown/version/clarity states. Behaviour
+ * confirm, and the persona dropdown/version states. Behaviour
  * for all of these lives in `e2e/journeys/l8-personas.spec.ts`; this
  * file keeps just enough asserts to prove each framed state.
  *
@@ -87,8 +87,9 @@ test.describe("J349 personas settings", () => {
   test("built-ins are seeded and listed", async ({ page }) => {
     if (!svc) throw new Error("service not running");
     const list = await personas(svc);
-    // Issue #405 removes the Teach built-in: three seeds remain.
-    expect(list).toHaveLength(3);
+    // Issue #423 removes the Clarity built-in (issue #405 removed Teach):
+    // two seeds remain.
+    expect(list).toHaveLength(2);
     expect(list[0]).toMatchObject({
       id: "guide",
       name: "Guide",
@@ -107,16 +108,8 @@ test.describe("J349 personas settings", () => {
     });
     expect(list[1].lens).toContain("second reader");
     expect(list[1].cardInstruction).toContain("check its claims against the code");
-    // Issue #359: Clarity follows the Guide's model at run time.
-    expect(list[2]).toMatchObject({
-      id: "clarity",
-      name: "Clarity",
-      followMain: true,
-      enabled: true,
-    });
-    expect(list[2].lens).toContain("You are Clarity");
-    // Issue #405: no Teach seed remains.
-    expect(list.map((p) => p.id)).toEqual(["guide", "second-opinion", "clarity"]);
+    // Issue #405: no Teach seed remains; issue #423: no Clarity seed.
+    expect(list.map((p) => p.id)).toEqual(["guide", "second-opinion"]);
 
     await page.setViewportSize({ width: 1440, height: 900 });
     await gotoPersonas(page, svc);
@@ -125,10 +118,7 @@ test.describe("J349 personas settings", () => {
     await expect(row).toContainText("Second opinion");
     await expect(row).toContainText("codex/gpt-6.1-sol");
     await expect(row.getByTestId("persona-second-opinion-swatch")).toBeVisible();
-    const clarityRow = page.getByTestId("persona-clarity");
-    await expect(clarityRow).toBeVisible();
-    await expect(clarityRow).toContainText("Clarity");
-    await expect(clarityRow).toContainText("Guide's model (claude/claude-opus-5-5)");
+    await expect(page.getByTestId("persona-clarity")).toHaveCount(0);
     await expect(page.getByTestId("persona-teach")).toHaveCount(0);
     await checkLayout(page, "personas-1440-light");
     await page.screenshot({ path: path.join(SHOTS, "personas-1440-light.png") });
@@ -205,34 +195,6 @@ test.describe("J349 personas settings", () => {
     expect(restored.status).toBe(200);
   });
 
-  test("Clarity follows the main model until pinned", async ({ page }) => {
-    if (!svc) throw new Error("service not running");
-    test.setTimeout(120_000);
-    await page.setViewportSize({ width: 1440, height: 900 });
-    await gotoPersonas(page, svc);
-    const row = page.getByTestId("persona-clarity");
-    await expect(row).toBeVisible();
-    await row.getByTestId("persona-clarity-edit").click();
-    await expect(page.getByTestId("persona-clarity-lens")).toBeVisible();
-    // Seeded following main: the box is checked, the pin fields hide.
-    await expect(page.getByTestId("persona-clarity-follow-main")).toBeChecked();
-    await expect(page.getByTestId("persona-clarity-provider")).toHaveCount(0);
-    await expect(page.getByTestId("persona-clarity-model")).toHaveCount(0);
-    // Uncheck: the provider/model pickers come back (no CLIs on PATH,
-    // so the model list shows the adapter error — the saved pick below
-    // still applies). Re-check and save: still following main.
-    await page.getByTestId("persona-clarity-follow-main").click();
-    await expect(page.getByTestId("persona-clarity-provider")).toBeVisible();
-    await page.getByTestId("persona-clarity-follow-main").click();
-    await expect(page.getByTestId("persona-clarity-provider")).toHaveCount(0);
-    await page.getByTestId("persona-clarity-save").click();
-    await expect(page.getByTestId("persona-clarity-lens")).toHaveCount(0);
-    const list = await personas(svc);
-    const clarity = list.find((p) => p.id === "clarity");
-    expect(clarity?.followMain).toBe(true);
-    await expect(row).toContainText("Guide's model (claude/claude-opus-5-5)");
-  });
-
   test("edit form frame", async ({ page }) => {
     if (!svc) throw new Error("service not running");
     test.setTimeout(120_000);
@@ -305,8 +267,9 @@ test.describe("J349 personas settings", () => {
     const seed = await personas(svc);
     const added = await apiJson(svc, "PUT", "/api/settings", { personas: [...seed, custom] });
     expect(added.status).toBe(200);
-    // Issue #405 removes the Teach built-in: three seeds plus the custom one.
-    expect((added.json as { personas: PersonaBody[] }).personas).toHaveLength(4);
+    // Issue #423 removes the Clarity built-in (issue #405 removed Teach):
+    // two seeds plus the custom one.
+    expect((added.json as { personas: PersonaBody[] }).personas).toHaveLength(3);
 
     await gotoPersonas(page, svc);
     const row = page.getByTestId("persona-perf-sceptic");
@@ -345,15 +308,13 @@ test.describe("J349 personas settings", () => {
     await row.getByRole("button", { name: "Delete Perf sceptic" }).click();
     await row.getByRole("button", { name: "Confirm delete the “Perf sceptic” persona" }).click();
     await expect(row).toHaveCount(0);
-    expect((await personas(svc)).map((p) => p.id)).toEqual(["guide", "second-opinion", "clarity"]);
+    expect((await personas(svc)).map((p) => p.id)).toEqual(["guide", "second-opinion"]);
   });
 });
 
 // ---- j349b-personas-variants.spec.ts (frames re-added) ----
 const PERSONA_ID = "second-opinion";
 const PERSONA_RGB = "14, 124, 134";
-const CLARITY_ID = "clarity";
-const CLARITY_RGB = "194, 65, 12";
 
 interface VariantBody {
   personaId: string;
@@ -514,51 +475,4 @@ test.describe("J349b persona versions", () => {
     await checkLayout(page, "persona-version-1440-light");
     await page.screenshot({ path: path.join(SHOTS, "persona-version-1440-light.png") });
   });
-
-  test("Clarity run on a card: tab with citations intact", async ({ page }) => {
-    test.setTimeout(300_000);
-    if (!svc) throw new Error("no service");
-    await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
-    await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
-
-    // The persona menu lists Clarity beside Second opinion.
-    const menuButton = page.locator('#C-central [data-persona-menu="central"]');
-    await expect(menuButton).toBeVisible({ timeout: 15_000 });
-    await menuButton.click();
-    const menu = page.locator('[data-persona-menu-list="central"]');
-    await expect(menu).toBeVisible();
-    await expect(menu.locator(`[data-persona-option="${CLARITY_ID}"]`)).toContainText("Clarity");
-    await menu.locator(`[data-persona-option="${CLARITY_ID}"]`).click();
-
-    // Guide + Second opinion + Clarity tabs; Clarity stores revision 1
-    // with no error.
-    const tabs = page.locator('[data-testid="versions-central"]');
-    await expect(tabs).toBeVisible({ timeout: 60_000 });
-    {
-      const deadline = Date.now() + 90_000;
-      for (;;) {
-        const variants = await centralVariants(svc, reviewId);
-        if (variants[CLARITY_ID]?.blocks.length) break;
-        if (Date.now() > deadline) throw new Error("clarity variant never stored");
-        await new Promise((r) => setTimeout(r, 500));
-      }
-    }
-    const stored = (await centralVariants(svc, reviewId))[CLARITY_ID];
-    expect(stored.revision).toBe(1);
-    expect(stored.error ?? null).toBeNull();
-    expect(JSON.stringify(stored.blocks)).toContain("src-urllib3-connection");
-
-    // The Clarity tab shows the rewrite under its own colour border.
-    await tabs.locator(`[data-version-tab="${CLARITY_ID}"]`).click();
-    await expect(tabs.locator(`[data-version-tab="${CLARITY_ID}"]`)).toContainText("Clarity");
-    const card = page.locator("#C-central");
-    await expect(card).toContainText("reads more directly", { timeout: 15_000 });
-    const ring = await card.evaluate((el) => getComputedStyle(el).boxShadow);
-    expect(ring).toContain(CLARITY_RGB);
-    await page.mouse.move(720, 20);
-    await checkLayout(page, "persona-clarity-1440-light");
-    await page.screenshot({ path: path.join(SHOTS, "persona-clarity-1440-light.png") });
-  });
-
 });

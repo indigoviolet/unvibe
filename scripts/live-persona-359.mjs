@@ -4,7 +4,8 @@
 //
 // One persona card turn through the real pipeline on the owner's pi
 // login: main's shared base, with the lens at the start of the turn
-// (option B). The test persona follows the main model like Clarity and
+// (option B). The test persona follows the main model (like the former
+// Clarity built-in did) and
 // carries an unmistakable lens instruction ("End every paragraph ...
 // CLARITY-OK"); the check passes when every stored paragraph ends with
 // the marker. Bundled demo review only (urllib3#5020, public fixture);
@@ -198,7 +199,8 @@ const main = async () => {
   }
   const token = fs.readFileSync(path.join(DATA, "token"), "utf8").trim();
   try {
-    // Main on the live model; the test persona follows it (like Clarity).
+    // Main on the live model; the test persona follows it (as the former
+    // Clarity built-in did).
     const put = async (patch) => {
       const r = await api("PUT", "/api/settings", patch, token);
       return { ok: r.code === 200, status: r.code, detail: (r.json?.errors ?? [r.raw.slice(0, 200)]).join("; "), body: r.json };

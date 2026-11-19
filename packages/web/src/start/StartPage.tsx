@@ -2342,7 +2342,6 @@ function ChangeRow({
             <StackBadge info={stackInfo} currentNumber={c.prNumber} onOpenPr={onOpenStackPr} />
           ) : null}
           {c.reviewId ? <span className="prtag">review</span> : null}
-          {c.reviewId && c.stale ? <span className="prtag">new commits</span> : null}
         </div>
       ) : null}
     </div>

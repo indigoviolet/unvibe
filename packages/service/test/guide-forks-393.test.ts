@@ -276,10 +276,10 @@ function pipelineAgents(): FakeAgentRunner {
       events: textEvents(`${HUNK_SUMMARY}\n`),
     },
     {
-      // Clarity carries its own card instruction (not the default), so
+      // Second opinion carries its own card instruction (not the default), so
       // match the lens the turn is prefixed with.
-      match: "You are Clarity",
-      events: textEvents(`## Central\n\nRewritten for clarity.\n\n\`\`\`json\n{}\n\`\`\`\n`),
+      match: "second reader",
+      events: textEvents(`## Central\n\nChecked against the code.\n\n\`\`\`json\n{}\n\`\`\`\n`),
     },
   ]);
 }
@@ -434,7 +434,7 @@ describe("fork guide through the pipeline (fake runner)", () => {
     const { dir } = makePipelinePrompts();
     const { app, ctx } = await pipelineApp(agents, dir);
     try {
-      const reviewId = "rv_393clarity";
+      const reviewId = "rv_393second";
       seedBranchReview(ctx, reviewId, "tutor");
       await ctx.reviews.mutate(reviewId, (draft) => {
         const root = (draft.pages ?? []).find((p) => p.id === "root");
@@ -454,14 +454,14 @@ describe("fork guide through the pipeline (fake runner)", () => {
         method: "POST",
         url: `/api/reviews/${reviewId}/actions`,
         headers: { authorization: "Bearer tok" },
-        payload: { kind: "persona", cardId: "central", personaId: "clarity" },
+        payload: { kind: "persona", cardId: "central", personaId: "second-opinion" },
       } as never);
       expect(res.statusCode).toBe(200);
       await waitFor(() => {
         const snap = ctx.reviews.getSnapshot(reviewId);
         const card = (snap?.pages ?? []).flatMap((p) => p.cards).find((c) => c.id === "central");
-        return (card?.variants?.["clarity"] as { blocks?: unknown[] } | undefined)?.blocks?.length !== undefined &&
-          (card?.variants?.["clarity"] as { blocks: unknown[] }).blocks.length > 0;
+        return (card?.variants?.["second-opinion"] as { blocks?: unknown[] } | undefined)?.blocks?.length !== undefined &&
+          (card?.variants?.["second-opinion"] as { blocks: unknown[] }).blocks.length > 0;
       });
       // The persona turn carries its own lens (never the guide lens)...
       // (`listByReview` strips snapshots for size; `get` keeps the full job.)
@@ -469,11 +469,12 @@ describe("fork guide through the pipeline (fake runner)", () => {
       expect(jobs.length).toBeGreaterThan(0);
       const full = jobs.map((j) => ctx.jobs.get(j.id)!);
       const turn = full.map((j) => j.promptSnapshot ?? "").find((t) => t.includes("# Persona lens"));
-      expect(turn).toContain("You are Clarity");
+      expect(turn).toContain("second reader");
       expect(turn).not.toContain(TUTOR_LENS);
       // ...on the base the fork guide built (shared base, fork L0).
       expect(agents.starts.some((s) => s.systemPrompt.includes("FORK-INSTRUCTIONS-SENTINEL"))).toBe(true);
-      // Clarity still follows the main model at run time — here the Tutor fork's.
+      // Second opinion runs on its own explicit model (codex here — the
+      // same as the Tutor fork's, but resolved from the persona, not the fork).
       expect(jobs[0].provider).toBe("codex");
       expect(jobs[0].model).toBe("gpt-6.1-sol");
     } finally {
@@ -545,7 +546,6 @@ describe("re-do with persona + prompt-forks endpoint (fake runner)", () => {
       const forks = (res.json() as { forks: { personaId: string; name: string; enabled: boolean; guideCapable: boolean; drifted: string[] }[] }).forks;
       const byId = new Map(forks.map((f) => [f.personaId, f]));
       expect(byId.get("tutor")).toMatchObject({ name: "Tutor", enabled: true, guideCapable: true, drifted: [] });
-      expect(byId.get("clarity")).toMatchObject({ guideCapable: false, drifted: [] });
       expect(byId.get("second-opinion")).toMatchObject({ guideCapable: false, drifted: [] });
       // A changed base file shows as drift naming the file.
       writeFileSync(path.join(dir, "reader.md"), `${readFileSync(path.join(dir, "reader.md"), "utf8")}\nNew base rule.\n`);

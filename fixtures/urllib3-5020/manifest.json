@@ -267,11 +267,6 @@
       "file": "persona-central-second-opinion.md"
     },
     {
-      "kind": "persona",
-      "key": "central:clarity",
-      "file": "persona-central-clarity.md"
-    },
-    {
       "kind": "slower",
       "key": "central:1",
       "file": "slower-central-press1.md"
