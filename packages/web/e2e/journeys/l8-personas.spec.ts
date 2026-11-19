@@ -342,6 +342,11 @@ test.describe("L8 persona runs on cards", () => {
     dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-l8run-data-"));
     reviewId = createSeededDemoReview(dataDir, "l8run-seed");
     svc = await startService(dataDir, { agent: "replay", label: "l8run" });
+    // Issue #422: the #418 menu needs the Explain-terms gate on.
+    const gate = await apiJson(svc, "PUT", "/api/settings", {
+      experimental: { explainTerms: true, markdownDocs: false },
+    });
+    expect(gate.status).toBe(200);
   });
 
   test.afterAll(async () => {

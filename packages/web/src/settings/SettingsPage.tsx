@@ -21,6 +21,7 @@ import { TabPanel, Tabs, tabIdFromHash, useQueryTab } from "../tabs/Tabs.js";
 import { ScreenTopBar } from "../shell/ScreenTopBar.js";
 import { DataSection } from "./DataSection.js";
 import { DebugSection } from "./DebugSection.js";
+import { ExperimentalSection } from "./ExperimentalSection.js";
 import { AccessSection } from "./AccessSection.js";
 import { EnvironmentSection } from "./EnvironmentSection.js";
 import { LimitsSection } from "./LimitsSection.js";
@@ -46,6 +47,7 @@ const SETTING_TABS = [
   { id: "limits", label: "Limits" },
   { id: "version", label: "Version" },
   { id: "debug", label: "Debug" },
+  { id: "experimental", label: "Experimental" },
   { id: "data", label: "Data" },
 ] as const;
 
@@ -158,6 +160,9 @@ export function SettingsPage(): React.JSX.Element {
           <DebugSection settings={loaded} onSaved={setSettings} />
         </TabPanel>
       )}
+      <TabPanel idPrefix="settings" id="experimental" active={tab === "experimental"}>
+        <ExperimentalSection settings={loaded} onSaved={setSettings} />
+      </TabPanel>
       <TabPanel idPrefix="settings" id="data" active={tab === "data"}>
         <DataSection />
       </TabPanel>

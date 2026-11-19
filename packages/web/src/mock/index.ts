@@ -940,6 +940,8 @@ const DEFAULT_MOCK_SETTINGS: Settings = {
   fullAccessAcknowledgedAt: null,
   autoGoDeeper: false,
   recordTraces: false,
+  // Issue #422: experimental gates, both off by default.
+  experimental: { explainTerms: false, markdownDocs: false },
   extensionActiveRepoIds: null,
   extensionModel: { provider: "pi", model: "muse-spark-1.3-contributor", effort: "" },
 };

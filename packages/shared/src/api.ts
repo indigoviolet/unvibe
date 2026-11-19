@@ -1601,6 +1601,27 @@ export interface Settings {
   extensionActiveRepoIds: string[] | null;
   /** Issue #322: model for panel turns. Default muse-spark. */
   extensionModel: ModelPick;
+  /**
+   * Issue #422: experimental feature gates. Both off by default; the
+   * Settings → Experimental section flips them without a restart.
+   */
+  experimental: ExperimentalSettings;
+}
+
+/** Issue #422: gates for unfinished features. */
+export interface ExperimentalSettings {
+  /**
+   * The card's Help-me-understand menu (#418: Simplify / Explain
+   * terms…). Off: the button is a plain Simplify press and term picking
+   * is unreachable. On: the menu with both items.
+   */
+  explainTerms: boolean;
+  /**
+   * Markdown document reviews. Off: every document entry point hides
+   * (the top-bar link, the document form and list, doc creation) while
+   * existing doc reviews stay in storage. On: document reviews work.
+   */
+  markdownDocs: boolean;
 }
 
 /** PUT /api/settings accepts a partial update; GET returns full Settings. */

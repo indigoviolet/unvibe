@@ -129,6 +129,11 @@ test.describe("L11 document review", () => {
     repo3Dir = mkdtempSync(path.join(os.tmpdir(), "unvibe-l11-repo3-"));
     await makeContextRepo(repo3Dir, "hello from the third repo");
     svc = await startService(dataDir, { agent: "replay", label: "l11doc" });
+    // Issue #422: the document flow needs the Markdown-docs gate on.
+    const gate = await apiJson(svc, "PUT", "/api/settings", {
+      experimental: { explainTerms: false, markdownDocs: true },
+    });
+    expect(gate.status).toBe(200);
     const added = await apiJson(svc, "POST", "/api/repos", { path: repoDir });
     expect(added.status).toBe(200);
     repoId = (added.json as { repos: { id: string; localPath: string }[] }).repos.find(

@@ -275,8 +275,12 @@ test.describe("L4 threads on the demo (fast replay)", () => {
     createSeededDemoReview(dataDir, "l4-nesting");
     svc = await startService(dataDir, { agent: "replay", label: "l4demo" });
     // These journeys assert auto-written go-deeper cards, which need the
-    // setting on (off by default since #389).
-    await apiJson(svc, "PUT", "/api/settings", { autoGoDeeper: true });
+    // setting on (off by default since #389); the Simplify press needs
+    // the Explain-terms gate on (issue #422).
+    await apiJson(svc, "PUT", "/api/settings", {
+      autoGoDeeper: true,
+      experimental: { explainTerms: true, markdownDocs: false },
+    });
   });
   test.afterAll(async () => {
     await svc?.stop().catch(() => {});

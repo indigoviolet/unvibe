@@ -112,6 +112,10 @@ test.beforeAll(async () => {
       UNVIBE_UPDATER_BACKEND: "fake",
     },
   });
+  // Issue #422: the documents tour scenes need the Markdown-docs gate on.
+  await apiJson(svc.origin, svc.token, "PUT", "/api/settings", {
+    experimental: { explainTerms: false, markdownDocs: true },
+  });
   reviewId = await createTourReview();
 });
 
@@ -1381,6 +1385,9 @@ test.describe("visual tour passes", () => {
       { id: "version", name: "Version", marker: "Channels" },
       { id: "appearance", name: "Appearance", marker: "Theme" },
       { id: "extension", name: "Extension", marker: "Show extension folder" },
+      // Issue #422: the Experimental gates frame at 1440 light like the
+      // other Settings tabs.
+      { id: "experimental", name: "Experimental", marker: "Explain terms" },
     ] as const) {
       if (tab.id === "extension") {
         // #322: seed 4 repos so the frame shows Active-repo checkboxes

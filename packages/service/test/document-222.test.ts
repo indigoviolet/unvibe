@@ -41,6 +41,15 @@ async function setup(): Promise<{ app: Awaited<ReturnType<typeof createApp>>["ap
   fs.mkdirSync(dir);
   await makeGitRepo(dir);
   const { app } = await createApp("tok", { autoPipeline: false });
+  // Issue #422: document creation is experimental — the suite turns the
+  // gate on (one test below asserts the off state refuses).
+  const gate = await app.inject({
+    method: "PUT",
+    url: "/api/settings",
+    headers: AUTH,
+    payload: { experimental: { explainTerms: false, markdownDocs: true } },
+  });
+  if (gate.statusCode !== 200) throw new Error(`gate on failed: ${gate.statusCode} ${gate.body}`);
   const added = await app.inject({ method: "POST", url: "/api/repos", headers: AUTH, payload: { path: dir } });
   const addedBody = added.json() as { repos?: { id: string }[]; error?: string };
   if (!addedBody.repos) throw new Error(`add repo failed: ${added.statusCode} ${JSON.stringify(addedBody)}`);
@@ -110,6 +119,33 @@ describe("document reviews (#222)", () => {
     });
     if (res.statusCode !== 201) throw new Error(`create failed: ${res.statusCode} ${res.body}`);
     expect((res.json() as { contextRepos: { source: string }[] }).contextRepos.map((c) => c.source)).toEqual(["worktree"]);
+  });
+
+  it("refuses document creation while the Markdown-docs gate is off (issue #422)", async () => {
+    const { app, repoId } = await setup();
+    const payload = {
+      kind: "document",
+      markdown: "# T\n\nHello world.\n",
+      contextRepos: [{ repoId, source: "local" }],
+    };
+    // On (from setup): creates fine.
+    const on = await app.inject({ method: "POST", url: "/api/reviews", headers: AUTH, payload });
+    expect(on.statusCode).toBe(201);
+    // Off: the same create is refused with a clear message.
+    const gate = await app.inject({
+      method: "PUT",
+      url: "/api/settings",
+      headers: AUTH,
+      payload: { experimental: { explainTerms: false, markdownDocs: false } },
+    });
+    expect(gate.statusCode).toBe(200);
+    const off = await app.inject({ method: "POST", url: "/api/reviews", headers: AUTH, payload });
+    expect(off.statusCode).toBe(403);
+    expect(JSON.stringify(off.json())).toContain("Settings → Experimental");
+    // Existing doc reviews stay in storage: the created one still reads.
+    const id = (on.json() as { review: { id: string } }).review.id;
+    const reread = await app.inject({ method: "GET", url: `/api/reviews/${id}`, headers: AUTH });
+    expect(reread.statusCode).toBe(200);
   });
 
   it("refuses bad creates and refresh on a document", async () => {

@@ -32,6 +32,11 @@ test.beforeAll(async () => {
   mkdirSync(SHOTS, { recursive: true });
   dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-glossary-tour-data-"));
   svc = await startService(dataDir, { agent: "replay" });
+  // Issue #422: the Help-me-understand tour scenes need the Explain-terms gate on.
+  const gate = await apiJson(svc, "PUT", "/api/settings", {
+    experimental: { explainTerms: true, markdownDocs: false },
+  });
+  expect(gate.status).toBe(200);
   const created = await apiJson(svc, "POST", "/api/reviews", { repoId: "demo" });
   reviewId = (created.json as { review: { id: string } }).review.id;
   const deadline = Date.now() + 90_000;

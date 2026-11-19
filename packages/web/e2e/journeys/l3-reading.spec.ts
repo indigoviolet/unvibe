@@ -1127,8 +1127,15 @@ test.describe("L3 demo guide reading", () => {
     }
     svc = await startService(dataDir, { agent: "replay", label: "l3demo" });
     // These journeys assert auto-written go-deeper cards, which need the
-    // setting on (off by default since #389).
-    await apiJson(svc, "PUT", "/api/settings", { autoGoDeeper: true });
+    // setting on (off by default since #389); the #418 Help-me-understand
+    // steps need the Explain-terms gate on (issue #422).
+    await apiJson(svc, "PUT", "/api/settings", {
+      autoGoDeeper: true,
+      // Issue #422: the #418 steps need the Explain-terms gate on, and
+      // the #255 code-comment step creates a document review, so the
+      // Markdown-docs gate goes on too.
+      experimental: { explainTerms: true, markdownDocs: true },
+    });
     readReview = await createDemoReview(svc);
     askReview = await createDemoReview(svc);
     explainReview = await createDemoReview(svc);

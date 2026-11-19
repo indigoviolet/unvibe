@@ -9,7 +9,9 @@
  * button in the same place on every screen. The Settings screen itself
  * renders no Settings button.
  */
+import { useEffect, useState } from "react";
 import { Link } from "react-router";
+import { api } from "../api/client.js";
 import { Icon } from "../components/Icon.js";
 import { FullAccessMarker } from "./FullAccessMarker.js";
 import { PreviewBuildBadge } from "./PreviewBuildBadge.js";
@@ -46,14 +48,34 @@ export function ScreenTopBar({
         onClick: (e: React.MouseEvent) => e.preventDefault(),
       }
     : {};
+  // Issue #422: the Documents entry point hides while Markdown docs is
+  // off. Read on mount — a remount (any navigation) picks up a flipped
+  // toggle without a reload.
+  const [docsOn, setDocsOn] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .settings()
+      .then((s) => {
+        if (!cancelled) setDocsOn(s.experimental?.markdownDocs === true);
+      })
+      .catch(() => {
+        if (!cancelled) setDocsOn(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   return (
     <header className="top" style={disabled ? { opacity: 0.55 } : undefined}>
       <Link className="brand" to="/" title="Back to the start page" aria-label="Unvibe" {...off}>
         <Wordmark />
       </Link>
-      <Link className="ib" to="/documents" aria-label="Documents" title="Documents" {...off}>
-        <Icon name="doc" />
-      </Link>
+      {docsOn ? (
+        <Link className="ib" to="/documents" aria-label="Documents" title="Documents" {...off}>
+          <Icon name="doc" />
+        </Link>
+      ) : null}
       {crumbs && crumbs.length > 0 ? (
         <nav aria-label="Breadcrumb" className="tcrumbs">
           {crumbs.map((c, i) => (
