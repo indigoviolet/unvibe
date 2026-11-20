@@ -1,9 +1,10 @@
 /**
  * Data format (#311): one integer bumped by hand in any change that
  * makes existing stored data unreadable (the no-backward-compatibility
- * rule in the working agreement — record the bump there when this value
- * changes). The service stores it in the data dir (SQLite
- * `user_version`) when it creates data. Data with no stored value, or a
+ * rule in the working agreement). This constant is the source of truth
+ * for the current format; record each bump in the history below. The
+ * service stores it in the data dir (SQLite `user_version`) when it
+ * creates data. Data with no stored value, or a
  * different value, needs a reset: it is moved aside, never converted
  * and never deleted.
  *
