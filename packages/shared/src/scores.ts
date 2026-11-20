@@ -81,6 +81,8 @@ export interface ReviewCommit {
   sha: string;
   subject: string;
   body: string;
+  /** Committer date as ms epoch (issue #431: the history menu's relative time). */
+  committedAt: number;
   /** Changed paths (new-side), in diff order. */
   files: string[];
   /** Canonical `h:<fileKey>:<hash>` PR hunk IDs this commit touches. */

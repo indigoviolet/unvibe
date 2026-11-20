@@ -41,8 +41,11 @@
  *   (the head the section was written at) and the snapshot gains
  *   required `guideHead` (the head the guide was written at); stored
  *   reviews without them need a reset.
+ * - 12: history menu commit dates (#431): `ReviewCommit` gains required
+ *   `committedAt` (the commit's date, for the row's relative time);
+ *   stored reviews without it need a reset.
  */
-export const DATA_FORMAT = 11;
+export const DATA_FORMAT = 12;
 
 /** Stored format of a data dir: `null` when no stamp is present. */
 export type DataFormatState = "none" | "match" | "mismatch";
