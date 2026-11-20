@@ -17,6 +17,30 @@
       "file": "reader-scratch-app.md"
     },
     {
+      "kind": "reader",
+      "key": "shape-onecard-a",
+      "pattern": "shape-alpha-marker-one",
+      "file": "reader-shape-onecard-a.md"
+    },
+    {
+      "kind": "reader",
+      "key": "shape-onecard-b",
+      "pattern": "shape-beta-marker-two",
+      "file": "reader-shape-onecard-b.md"
+    },
+    {
+      "kind": "reader",
+      "key": "shape-repair-a",
+      "pattern": "shape_alpha\\.py:999",
+      "file": "reader-shape-full-a.md"
+    },
+    {
+      "kind": "reader",
+      "key": "shape-repair-b",
+      "pattern": "You stopped early",
+      "file": "reader-shape-still-short-b.md"
+    },
+    {
       "kind": "critic",
       "file": "critic.md"
     },
