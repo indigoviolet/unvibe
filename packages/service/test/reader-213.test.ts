@@ -39,12 +39,12 @@ The central paragraph.
 
 const BROKEN_READER = `${CARDS}
 \`\`\`json
-{"cardIds": ["problem",, "central"], "pendingCards": [{"id": "g-flow", "label": "Flow", "why": "why"}], "plotlines": [{"id": "unfold", "name": "Unfold", "description": "d", "hunks": []}]}
+{"cardIds": ["problem",, "central"], "pendingCards": [{"id": "g-flow", "label": "Flow", "why": "why"}, {"id": "g-flow-2", "label": "Flow two", "why": "why two"}, {"id": "g-flow-3", "label": "Flow three", "why": "why three"}], "plotlines": [{"id": "unfold", "name": "Unfold", "description": "d", "hunks": []}]}
 \`\`\`
 `;
 
 const GOOD_DATA_REPAIR = `\`\`\`json
-{"cardIds": ["problem", "central"], "pendingCards": [{"id": "g-flow", "label": "Flow", "why": "why"}], "plotlines": [{"id": "unfold", "name": "Unfold", "description": "d", "hunks": []}]}
+{"cardIds": ["problem", "central"], "pendingCards": [{"id": "g-flow", "label": "Flow", "why": "why"}, {"id": "g-flow-2", "label": "Flow two", "why": "why two"}, {"id": "g-flow-3", "label": "Flow three", "why": "why three"}], "plotlines": [{"id": "unfold", "name": "Unfold", "description": "d", "hunks": []}]}
 \`\`\`
 `;
 
@@ -55,7 +55,7 @@ const BROKEN_REPAIR = `\`\`\`json
 
 const GOOD_READER = `${CARDS}
 \`\`\`json
-{"cardIds": ["problem", "central"]}
+{"cardIds": ["problem", "central"], "pendingCards": [{"id": "g-flow", "label": "Flow", "why": "why"}, {"id": "g-flow-2", "label": "Flow two", "why": "why two"}, {"id": "g-flow-3", "label": "Flow three", "why": "why three"}]}
 \`\`\`
 `;
 
@@ -140,7 +140,9 @@ describe("reader trailing data block (#213)", () => {
       await waitReaderDone(ctx, job.id);
       expect(ctx.jobs.get(job.id)?.state).toBe("done");
       expect(agents.prompts.filter((p) => p.text.includes("Resend just the data block"))).toHaveLength(0);
-      expect(ctx.reviews.getSnapshot(id)?.pages.find((p) => p.id === "root")?.cards.map((c) => c.id).sort()).toEqual(["central", "problem"]);
+      // #430: the good reply already carries its 3 directions, so no shape repair either.
+      expect(agents.prompts.filter((p) => p.text.includes("You stopped early"))).toHaveLength(0);
+      expect(ctx.reviews.getSnapshot(id)?.pages.find((p) => p.id === "root")?.cards.map((c) => c.id).sort()).toEqual(["central", "g-flow", "g-flow-2", "g-flow-3", "problem"]);
     } finally {
       await app.close();
     }

@@ -356,7 +356,26 @@ needed (that deviation is closed, not added).
    that names only the card gets one repair turn carrying the reason
    (`validate.test.ts`). The reader's citation-repair prompt (naming the
    failed citations) is kept on the job's stored prompt, so the Debug
-   page shows what failed (#124). The instructions and reader prompts
+   page shows what failed (#124). A reader turn that stops after its
+   first card is caught by the required-shape check (#430): the reply
+   must carry a "The problem" card and a "The central idea" card,
+   each with a non-empty body, plus at least 3 Go-deeper directions
+   (`checkReaderShape` in `packages/shared`, unit-tested). When anything
+   is missing the run's single repair turn names exactly what is
+   missing ("You stopped early. Write the missing cards: …") — combined
+   with the citation half when citations also failed, never a second
+   turn; the missing cards append in prompt order and the directions come
+   from the repair's data block. A repair that is still incomplete stores
+   the guide but marks the reader job degraded with the plain message
+   "The guide stopped early; Re-do to write the rest." The guide page
+   shows that line under the title in the existing hint style with the
+   existing Re-do control (same confirm path), detected from the shared
+   constant, so the partial guide is never presented as done; the
+   Debug-page degraded line carries the same reason
+   (`reader-shape-430.test.ts`, the `j430` journey, the `stopped-early`
+   tour frame).
+   The instructions example now shows more than one card (problem plus
+   central idea) before the trailing block. The instructions and reader prompts
    now state the exact `diff:<fileKey>:<start>[-<end>]` grammar with
    bundled-demo examples, so malformed `diff:` IDs (the 6 failures in
    the #124 re-measure) are less likely to need a repair turn
