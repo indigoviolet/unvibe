@@ -5,7 +5,7 @@
  * The explain lifecycle in usage order: an existing review gains
  * commits and Explain writes the Changes panel (the old guide
  * byte-for-byte, no addenda); the timeline menu leads with Explain
- * from the guide's commit and lists every commit oldest first with
+ * from the guide's commit and lists every commit newest first with
  * guide/new/latest hints and the head disabled, and picking one runs
  * Explain at once (re-run replaces the panel; a later Pull notes newer
  * commits in the header); the history icon dots and counts new commits
@@ -260,14 +260,16 @@ test.describe("L7 explain-since (was j351 step 1)", () => {
     await menuBtn.click();
     const menu = page.getByTestId("explain-menu");
     await expect(menu).toHaveClass(/fmenu/);
-    // The guide entry leads; every commit oldest first with its hints;
-    // the head row is disabled with a quiet "latest" hint.
+    // The guide entry leads; every commit newest first with its hints;
+    // the head row leads, disabled with a quiet "latest" hint.
     await expect(menu.getByRole("menuitem", { name: "Explain changes since the guide" })).toBeVisible();
     const rows = menu.locator("[data-explain-commit]");
     await expect(rows).toHaveCount(3);
-    await expect(rows.first()).toContainText(v1Short);
-    await expect(rows.first()).toContainText("guide");
+    await expect(rows.first()).toContainText(h3Short);
+    await expect(rows.first()).toContainText("latest");
     await expect(rows.nth(1)).toContainText("new");
+    await expect(rows.last()).toContainText(v1Short);
+    await expect(rows.last()).toContainText("guide");
     const headRow = menu.locator(`[data-explain-commit="${head3}"]`);
     await expect(headRow).toBeDisabled();
     await expect(headRow).toContainText("latest");
@@ -298,7 +300,7 @@ test.describe("L7 explain-since (was j351 step 1)", () => {
     await expect(since.getByTestId("since-newer")).toContainText("1 newer commit since this was written", { timeout: 30_000 });
   });
 
-  test("the toolbar menu lists every commit oldest first with the head disabled; picking runs Explain at once", async ({ page }) => {
+  test("the toolbar menu lists every commit newest first with the head disabled; picking runs Explain at once", async ({ page }) => {
     test.setTimeout(240_000);
     if (!svc) throw new Error("no service");
     const before = (await apiJson(svc, "GET", `/api/reviews/${reviewId}`)).json as {
@@ -306,8 +308,8 @@ test.describe("L7 explain-since (was j351 step 1)", () => {
       version: { headSha: string };
     };
     expect(before.commits.length).toBeGreaterThanOrEqual(2);
-    // Commits are oldest-first: the oldest is strictly before the head,
-    // so explaining from it is non-empty.
+    // The oldest commit is strictly before the head, so explaining
+    // from it is non-empty.
     const older = before.commits[0];
     const short = older.sha.slice(0, 8);
     const headShort = before.commits[before.commits.length - 1].sha.slice(0, 8);
@@ -329,14 +331,15 @@ test.describe("L7 explain-since (was j351 step 1)", () => {
     const menu = page.getByTestId("explain-menu");
     await expect(menu).toHaveClass(/fmenu/);
     await expect(menu).toHaveAttribute("role", "menu");
-    // The guide entry leads; one row per commit, oldest first, as
+    // The guide entry leads; one row per commit, newest first, as
     // `<sha8> <subject>` — no versions anywhere, and no prior-review
     // row on a review without one.
     await expect(menu.getByRole("menuitem", { name: "Explain changes since the guide" })).toBeVisible();
     const rows = menu.locator("[data-explain-commit]");
     await expect(rows).toHaveCount(before.commits.length);
-    await expect(rows.first()).toContainText(`${short} ${older.subject}`);
-    await expect(rows.first()).toContainText("guide");
+    await expect(rows.first()).toContainText(headShort);
+    await expect(rows.last()).toContainText(`${short} ${older.subject}`);
+    await expect(rows.last()).toContainText("guide");
     await expect(menu).not.toContainText("Versions");
     await expect(menu.locator("[data-explain-prior]")).toHaveCount(0);
     // The head is shown disabled with a quiet "latest" hint (an empty
@@ -347,7 +350,7 @@ test.describe("L7 explain-since (was j351 step 1)", () => {
     await expect(headRow).toContainText("latest");
     // Picking a commit runs Explain at once (no arming step): the menu
     // closes and the panel is replaced with the new range.
-    await rows.first().click();
+    await rows.last().click();
     await expect(menu).toBeHidden();
     await waitForExplainPass(svc, reviewId);
     const headNow = ((await apiJson(svc, "GET", `/api/reviews/${reviewId}`)).json as { version: { headSha: string } }).version.headSha;

@@ -118,7 +118,7 @@ describe("since-B step 2: pure context builders", () => {
       sinceBaseline: { kind: "commit", sha },
       review: { currentVersion: 1, versions: [{ n: 1, headSha: sha, mergeBaseSha: "0".repeat(40), baseRef: "main", fetchedAt: 1, idMapping: {} }] },
       version: { n: 1, headSha: sha, mergeBaseSha: "0".repeat(40), baseRef: "main", fetchedAt: 2, idMapping: {} },
-      commits: [{ sha, subject: "rework alpha", body: "", files: [], hunks: [] }],
+      commits: [{ sha, subject: "rework alpha", body: "", committedAt: 1000, files: [], hunks: [] }],
     } as unknown as ReviewSnapshot;
     const withHunks = formatReaderReviewedContext(snap, { added: ["h:k:a"], changed: ["h:k:b"] });
     expect(withHunks).toContain("Reviewed up to B");

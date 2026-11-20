@@ -537,9 +537,10 @@ export interface RemovableRepos {
 }
 
 /**
- * Forget a repo. Refuses (409) while reviews reference it — for managed
- * clones AND user checkouts alike, since orphaned reviews would 404 on
- * refresh/submit. Deletes the clone directory only for managed repos,
+ * Forget a repo. The route removes its reviews first (#428); this still
+ * refuses (409) while any review references it — one opened during the
+ * removal — for managed clones AND user checkouts alike, since orphaned
+ * reviews would 404 on refresh/submit. Deletes the clone directory only for managed repos,
  * guarded to inside `<dataDir>/repos`, and only forgets the row once the
  * directory is gone.
  */
@@ -566,7 +567,7 @@ export function removeRepo(
   }
   if (reviewCount > 0) {
     throw new CloneError(
-      `repo ${label} still has ${reviewCount} review${reviewCount === 1 ? "" : "s"} — remove ${reviewCount === 1 ? "it" : "them"} on the start page first, then remove the repo`,
+      `repo ${label} still has ${reviewCount} review${reviewCount === 1 ? "" : "s"} (opened while it was being removed), so it was kept — try again`,
       409,
     );
   }

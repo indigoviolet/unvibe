@@ -1508,6 +1508,27 @@ test.describe("visual tour passes", () => {
       }
       await checkLayout(page, `settings-${tab.id}`);
       await shot(page, `settings-${tab.id}`, suffix, tab.marker);
+      if (tab.id === "repositories") {
+        // Issue #428: removing a repo takes its reviews. Frame the
+        // confirm naming the review count on a scratch repo with one
+        // review, then confirm, so later frames (start page reviews)
+        // are unchanged and the repo and review are both gone.
+        const dir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour-rm428-"));
+        extDirs.push(dir);
+        await makeScratchRepo(dir);
+        const rmReview = await createJourneyReview(svc!, dir);
+        await page.goto(`${svc!.origin}/settings?tab=repositories&token=${svc!.token}`);
+        const name = `local/${path.basename(dir)}`;
+        const row = page.locator('[data-testid^="repo-"]', { hasText: path.basename(dir) }).first();
+        await row.getByRole("button", { name: `Remove ${name}` }).click();
+        await expect(row).toContainText(`Remove ${name} and its 1 review from Unvibe? ${dir} is not touched.`);
+        await checkLayout(page, "settings-repo-remove-reviews");
+        await shot(page, "settings-repo-remove-reviews", suffix, "and its 1 review");
+        await row.getByRole("button", { name: "Confirm remove repo" }).click();
+        await expect(row).toHaveCount(0, { timeout: 15_000 });
+        const left = (await apiJson(svc!.origin, svc!.token, "GET", "/api/reviews")) as { reviews: { id: string }[] };
+        expect(left.reviews.map((r) => r.id)).not.toContain(rmReview);
+      }
     }
     for (const d of extDirs) rmSync(d, { recursive: true, force: true });
 
@@ -4165,7 +4186,7 @@ test.describe("since-commit tour (#351 step 2)", () => {
       snap.review.versions = [v1, v2];
       snap.review.currentVersion = 2;
       snap.version = v2;
-      snap.commits = [{ sha: commit352, subject: "Rework beta and add gamma", body: "", files: [], hunks: [] }];
+      snap.commits = [{ sha: commit352, subject: "Rework beta and add gamma", body: "", committedAt: now - 3600_000, files: [], hunks: [] }];
       snap.sinceBaseline = { kind: "commit", sha: commit352 };
       snap.sinceHunks = { added: [addedId], changed: [changedId] };
       const para = (id: string, text: string, citations: string[]): unknown => ({

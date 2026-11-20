@@ -991,3 +991,76 @@ test.describe("J81 code citations outside the diff", () => {
     await expect(page.locator('.codefile [data-code-line="2"]')).toHaveClass(/cited/);
   });
 });
+
+// ---- stopped-early guide notice (#430) ----
+/**
+ * The reader stopped after one card and the repair stayed short: the
+ * guide page shows the one-line stopped-early notice with Re-do under
+ * the title. Seeded like the j430 journey (scratch repo matching the
+ * `shape-*` replay recordings), never the demo.
+ */
+test.describe("stopped-early guide notice", () => {
+  let repoDir = "", dataDir = "", fakeBin = "";
+  let svc: RunningService | null = null;
+  let reviewId = "";
+
+  test.beforeAll(async () => {
+    repoDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-se-tour-repo-"));
+    mkdirSync(path.join(repoDir, "src"), { recursive: true });
+    await git(repoDir, "init", "-b", "main");
+    await git(repoDir, "config", "user.email", "t@example.com");
+    await git(repoDir, "config", "user.name", "T");
+    writeFileSync(path.join(repoDir, "src", "shape_beta.py"), "def partial_two():\n    return 2\n");
+    await git(repoDir, "add", ".");
+    await git(repoDir, "commit", "-m", "base");
+    await git(repoDir, "checkout", "-b", "feature");
+    writeFileSync(
+      path.join(repoDir, "src", "shape_beta.py"),
+      "# shape-beta-marker-two\ndef partial_two():\n    return 22\n",
+    );
+    await git(repoDir, "add", ".");
+    await git(repoDir, "commit", "-m", "feature work");
+    fakeBin = mkdtempSync(path.join(os.tmpdir(), "unvibe-se-tour-bin-"));
+    writeFakeGitOffline(fakeBin, realGitPath());
+    const fakeShell = writeFakeShell(fakeBin);
+    dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-se-tour-data-"));
+    svc = await startService(dataDir, {
+      agent: "replay",
+      label: "stopped-early",
+      extraEnv: { SHELL: fakeShell, PATH: fakeServicePath(fakeBin) },
+    });
+    reviewId = await createScratchReview(svc, repoDir);
+    // Wait for the reader to settle degraded (the replay stays short).
+    const deadline = Date.now() + 180_000;
+    for (;;) {
+      const res = await apiJson(svc, "GET", `/api/jobs?review=${encodeURIComponent(reviewId)}`);
+      const jobs = (res.json as { jobs: { kind: string; state: string; degradedReason?: string }[] }).jobs;
+      const reader = jobs.filter((j) => j.kind === "reader").at(-1);
+      if (reader && ["done", "error", "cancelled"].includes(reader.state)) {
+        expect(reader.degradedReason).toContain("stopped early");
+        break;
+      }
+      if (Date.now() > deadline) throw new Error("stopped-early reader did not settle");
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+  });
+
+  test.afterAll(async () => {
+    await svc?.stop().catch(() => {});
+    svc = null;
+    for (const d of [repoDir, dataDir, fakeBin]) rmSync(d, { recursive: true, force: true });
+  });
+
+  test("guide with the stopped-early notice (1440-light)", async ({ page }) => {
+    if (!svc) throw new Error("no service");
+    test.setTimeout(240_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    await expect(page.locator("#C-problem")).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByTestId("reader-stopped-early")).toContainText("The guide stopped early", {
+      timeout: 30_000,
+    });
+    await checkLayout(page, "stopped-early");
+    await page.screenshot({ path: path.join(SHOTS, "stopped-early-1440-light.png") });
+  });
+});

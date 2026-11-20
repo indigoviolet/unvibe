@@ -311,14 +311,18 @@ words instead. IDs belong only in link tokens and the trailing JSON.
   - `plotlines`: the reader's threads — `id`, `name`, a one-line
     `description`, and the `h:` `hunks` each covers (a hunk in exactly
     one; hunks left out read as "other").
-- Example shape:
+- Example shape (more than one card: the problem, then the central idea):
 
   ```markdown
   ## The problem
   Old servers split one header across lines. [[desc:d-p1]]
   ...
+
+  ## The central idea
+  Unfold every fold right after parsing, before anything reads the headers. [[diff:conn:80-88]]
+  ...
   ```json
-  {"title": "The problem", "contribute": {"facts": []}}
+  {"pendingCards": [{"id": "g-flow", "label": "Data flow", "why": "..."}], "plotlines": [{"id": "unfold", "name": "Unfold obsolete folded headers", "description": "...", "hunks": []}]}
   ```
 
 <!-- REPLY-FORMAT-END -->

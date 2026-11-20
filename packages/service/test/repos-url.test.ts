@@ -722,7 +722,7 @@ describe("DELETE /api/repos/:id", () => {
 
       const del = await app.inject({ method: "DELETE", url: `/api/repos/${repo.id}`, headers: authed() });
       expect(del.statusCode).toBe(200);
-      expect(del.json()).toEqual({ ok: true, removedClone: true });
+      expect(del.json()).toEqual({ ok: true, reviewsRemoved: 0, removedClone: true });
       expect(fs.existsSync(repo.localPath)).toBe(false);
       const list = await app.inject({ method: "GET", url: "/api/repos", headers: authed() });
       expect(reposOf(list.json()).some((r) => r.id === repo.id)).toBe(false);
@@ -750,14 +750,14 @@ describe("DELETE /api/repos/:id", () => {
       const repo = reposOf(added.json()).find((r) => r.id !== "demo")!;
       const del = await app.inject({ method: "DELETE", url: `/api/repos/${repo.id}`, headers: authed() });
       expect(del.statusCode).toBe(200);
-      expect(del.json()).toEqual({ ok: true, removedClone: false });
+      expect(del.json()).toEqual({ ok: true, reviewsRemoved: 0, removedClone: false });
       expect(fs.existsSync(path.join(dir, ".git"))).toBe(true);
     } finally {
       await app.close();
     }
   });
 
-  it("refuses while reviews exist (never orphans them)", async () => {
+  it("removes the repo's reviews with it (#428)", async () => {
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-managed-"));
     const { runner } = makeRunner();
     const { app } = await createApp("tok", { runner, dataDir, autoPipeline: false });
@@ -776,19 +776,17 @@ describe("DELETE /api/repos/:id", () => {
         payload: { repoId: repo.id, branch: "main" },
       });
       expect([201, 202]).toContain(created.statusCode);
+      const reviewId = (created.json() as { review: { id: string } }).review.id;
+
+      const preview = await app.inject({ method: "GET", url: `/api/repos/${repo.id}/removal`, headers: authed() });
+      expect(preview.json()).toEqual({ reviews: 1, unsentDrafts: 0 });
 
       const del = await app.inject({ method: "DELETE", url: `/api/repos/${repo.id}`, headers: authed() });
-      expect(del.statusCode).toBe(409);
-      expect((del.json() as { error: string }).error).toMatch(/still has 1 review/);
-      expect(fs.existsSync(repo.localPath)).toBe(true);
-
-      // After deleting the review, removing the repo works.
-      const reviewId = (created.json() as { review: { id: string } }).review.id;
-      const delReview = await app.inject({ method: "DELETE", url: `/api/reviews/${reviewId}`, headers: authed() });
-      expect(delReview.statusCode).toBe(200);
-      const del2 = await app.inject({ method: "DELETE", url: `/api/repos/${repo.id}`, headers: authed() });
-      expect(del2.statusCode).toBe(200);
+      expect(del.statusCode).toBe(200);
+      expect(del.json()).toEqual({ ok: true, reviewsRemoved: 1, removedClone: true });
       expect(fs.existsSync(repo.localPath)).toBe(false);
+      const gone = await app.inject({ method: "GET", url: `/api/reviews/${reviewId}`, headers: authed() });
+      expect(gone.statusCode).toBe(404);
     } finally {
       await app.close();
     }

@@ -12,15 +12,16 @@
  *   runs synchronously with a busy state naming the repo.
  * - Managed clones ("Cloned by Unvibe") are Unvibe's own checkouts:
  *   Remove deletes the clone directory. Path checkouts are only
- *   forgotten — the folder is untouched. Remove is refused (409) while
- *   the repo has reviews, and refused/failed removes stay visible as an
- *   inline error on that repo's row (not just a transient toast), until
- *   the user keeps the repo or retries. A failed clone likewise shows
+ *   forgotten — the folder is untouched. Removing a repo removes its
+ *   reviews too (#428): the confirm names how many, and any unsent
+ *   Outbox drafts they hold, counted when Remove is clicked. Failed
+ *   removes stay visible as an inline error on that repo's row (not
+ *   just a transient toast), until the user keeps the repo or retries. A failed clone likewise shows
  *   the service's message inline under the URL row, since it names the
  *   fix (e.g. `gh auth login`).
  */
 import { useCallback, useEffect, useState } from "react";
-import type { Repo } from "@unvibe/shared";
+import type { Repo, RepoRemovalPreview } from "@unvibe/shared";
 import { parseGitHubRepoInput } from "@unvibe/shared";
 import { api, friendlyError } from "../api/client.js";
 import { toast } from "../floating/Toast.js";
@@ -39,6 +40,9 @@ export function RepositoriesSection(): React.JSX.Element {
   const [cloningName, setCloningName] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
+  // #428: what Remove takes with it, counted when the confirm opens (the
+  // confirm opens once the count is back, so its text is never silent).
+  const [removal, setRemoval] = useState<{ id: string; preview: RepoRemovalPreview | null; error?: string } | null>(null);
   // Inline errors that must outlive a toast: a failed clone stays under
   // the URL row; a refused/failed remove stays inline in its row's
   // confirm pill (retry or cancel) until the user acts.
@@ -129,6 +133,16 @@ export function RepositoriesSection(): React.JSX.Element {
     setRemoving(null);
   }, []);
 
+  const openRemove = useCallback(async (repo: Repo) => {
+    try {
+      const preview = await api.repoRemoval(repo.id);
+      setRemoval({ id: repo.id, preview });
+    } catch (err) {
+      setRemoval({ id: repo.id, preview: null, error: friendlyError(err) });
+    }
+    setConfirmRemove(repo.id);
+  }, []);
+
   const remembered = (repos ?? []).filter((r) => !r.detected);
 
   return (
@@ -170,20 +184,19 @@ export function RepositoriesSection(): React.JSX.Element {
                     placement="stack"
                     disabled={removing !== null}
                     open={confirmRemove === r.id}
-                    onOpenChange={(v) => setConfirmRemove(v ? r.id : null)}
+                    onOpenChange={(v) => {
+                      if (v) void openRemove(r);
+                      else setConfirmRemove(null);
+                    }}
                     onConfirm={() => remove(r)}
                     onDone={() => repoRemoved(r)}
                     formatError={(err) => `Couldn't remove ${r.owner}/${r.name}: ${friendlyError(err)}`}
-                    detail={
-                      r.managed
-                        ? `Delete the clone at ${r.localPath} from this machine?`
-                        : `Remove this repo from the list? ${r.localPath} is not touched.`
-                    }
+                    detail={removeDetail(r, removal?.id === r.id ? removal : null)}
                     idleAriaLabel={`Remove ${r.owner}/${r.name}`}
                     title={
                       r.managed
-                        ? "Remove this repo and delete Unvibe's clone of it"
-                        : "Remove this repo from the list (your folder is not touched)"
+                        ? "Remove this repo and its reviews, and delete Unvibe's clone of it"
+                        : "Remove this repo and its reviews (your folder is not touched)"
                     }
                   />
                 </div>
@@ -258,4 +271,28 @@ export function RepositoriesSection(): React.JSX.Element {
       </Card>
     </section>
   );
+}
+
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? "" : "s"}`;
+}
+
+/**
+ * #428: the Remove confirm names what goes with the repo: its reviews
+ * (dropped when there are none) and any unsent drafts, and what happens
+ * on disk (a managed clone is deleted; the user's folder is not touched).
+ */
+export function removeDetail(
+  repo: Repo,
+  removal: { preview: RepoRemovalPreview | null; error?: string } | null,
+): string {
+  const label = `${repo.owner}/${repo.name}`;
+  const disk = repo.managed ? `Unvibe's clone at ${repo.localPath} is deleted.` : `${repo.localPath} is not touched.`;
+  if (removal && removal.preview === null) {
+    return `Remove ${label} and all its reviews from Unvibe? (Couldn't count them: ${removal.error ?? "unknown error"}.) ${disk}`;
+  }
+  const preview = removal?.preview ?? { reviews: 0, unsentDrafts: 0 };
+  const what = preview.reviews > 0 ? `${label} and its ${plural(preview.reviews, "review")}` : label;
+  const drafts = preview.unsentDrafts > 0 ? ` ${plural(preview.unsentDrafts, "unsent draft")} will be lost.` : "";
+  return `Remove ${what} from Unvibe? ${disk}${drafts}`;
 }

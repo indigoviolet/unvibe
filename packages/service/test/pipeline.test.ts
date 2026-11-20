@@ -322,7 +322,7 @@ describe("pipeline failure paths (scripted fakes)", () => {
   // #28: a real agent sends no `cardIds`, narrates before its first card,
   // and streams cards before the reply ends.
   it("reader cards are stored once, without the agent's preamble", async () => {
-    const trailer = `\`\`\`json\n{"pendingCards": [{"id": "g-flow", "label": "Data flow", "why": "w"}]}\n\`\`\`\n`;
+    const trailer = `\`\`\`json\n{"pendingCards": [{"id": "g-flow", "label": "Data flow", "why": "w"}, {"id": "g-flow-2", "label": "Flow two", "why": "w2"}, {"id": "g-flow-3", "label": "Flow three", "why": "w3"}]}\n\`\`\`\n`;
     const agents = new FakeAgentRunner([
       {
         match: "Reader",
@@ -348,6 +348,8 @@ describe("pipeline failure paths (scripted fakes)", () => {
         ["problem", "The problem"],
         ["central", "The central change"],
         ["g-flow", "Data flow"],
+        ["g-flow-2", "Flow two"],
+        ["g-flow-3", "Flow three"],
       ]);
       expect(JSON.stringify(root.cards)).not.toMatch(/I'll start|Two notes/);
     } finally {

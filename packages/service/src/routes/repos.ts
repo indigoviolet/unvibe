@@ -28,6 +28,7 @@ import {
   type ChangesFilter,
   type PickFolderResponse,
   type RemoveRepoResponse,
+  type RepoRemovalPreview,
   type Repo,
   type RepoRefreshResponse,
   type ReposResponse,
@@ -55,6 +56,8 @@ import {
 } from "../repos/index.js";
 import type { ServiceContext } from "./context.js";
 import type { RouteDeps } from "./deps.js";
+import { countUnsentDrafts, createReviewRemover } from "./review-remover.js";
+import { readSubmitLease } from "../submit/lease.js";
 
 /** Stable id for a detected (not yet remembered) checkout. */
 export function detectedRepoId(localPath: string): string {
@@ -102,7 +105,7 @@ export const DEMO_REPO = {
   detected: true,
 } as const;
 
-/** GET /api/repos · POST /api/repos · POST /api/repos/pick-folder · DELETE /api/repos/:id · GET /api/repos/:id/changes */
+/** GET /api/repos · POST /api/repos · POST /api/repos/pick-folder · GET /api/repos/:id/removal · DELETE /api/repos/:id · GET /api/repos/:id/changes */
 export async function registerRepos(
   app: FastifyInstance,
   ctx: ServiceContext,
@@ -111,6 +114,7 @@ export async function registerRepos(
   // One dialog at a time per app: the pick awaits the user's action, so a
   // second request while one is open gets 409 instead of stacking dialogs.
   let pickInFlight = false;
+  const removeReview = createReviewRemover(ctx, deps);
   app.get("/api/repos", async () => {
     const repos = await listAllRepos(ctx);
     // Demo first so the start page shows it without tokens (M3).
@@ -158,12 +162,50 @@ export async function registerRepos(
     return { repos: [{ ...DEMO_REPO }, ...repos] } satisfies AddRepoResponse;
   });
 
+  // #428: what removing a repo takes with it, for the confirm text.
+  app.get("/api/repos/:id/removal", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (id === "demo" || !ctx.repos.get(id)) return reply.code(404).send({ error: "unknown repo" });
+    const reviewIds = ctx.repos.reviewIds(id);
+    return { reviews: reviewIds.length, unsentDrafts: countUnsentDrafts(ctx, reviewIds) } satisfies RepoRemovalPreview;
+  });
+
+  // #428: removing a repo removes its reviews first (the start page's
+  // Remove for each, so their worktrees and data go the same way), then
+  // the repo. The user's folder is never touched. Each review's delete is
+  // its own transaction: a failure partway keeps the repo and says how
+  // many reviews were removed and how many remain, so retrying finishes
+  // the job.
   app.delete("/api/repos/:id", async (req, reply) => {
     const { id } = req.params as { id: string };
     if (id === "demo") return reply.code(404).send({ error: "unknown repo" });
+    const repo = ctx.repos.get(id);
+    if (!repo) return reply.code(404).send({ error: "unknown repo" });
+    const label = `${repo.owner}/${repo.name}`;
+    let reviewIds: string[];
+    try {
+      reviewIds = ctx.repos.reviewIds(id);
+    } catch (err) {
+      // Fail closed: a query error never reads as "no reviews".
+      return reply.code(500).send({ error: `couldn't list the reviews of ${label} (${(err as Error).message}), so nothing was removed` });
+    }
+    if (reviewIds.some((r) => readSubmitLease(ctx.db, r) !== null)) {
+      return reply.code(409).send({ error: `a review of ${label} is being submitted, so nothing was removed. Try again when it has finished.` });
+    }
+    let reviewsRemoved = 0;
+    for (const reviewId of reviewIds) {
+      try {
+        if (await removeReview(reviewId)) reviewsRemoved += 1;
+      } catch (err) {
+        const remain = reviewIds.length - reviewsRemoved;
+        return reply.code(500).send({
+          error: `removed ${reviewsRemoved} of ${reviewIds.length} reviews of ${label}, then failed (${(err as Error).message}); ${remain} remain and the repo was kept. Try again to finish.`,
+        });
+      }
+    }
     try {
       const { removedClone } = removeRepo(ctx.dataDir, ctx.repos, id);
-      return { ok: true, removedClone } satisfies RemoveRepoResponse;
+      return { ok: true, reviewsRemoved, removedClone } satisfies RemoveRepoResponse;
     } catch (err) {
       if (err instanceof CloneError) {
         return reply.code(err.status).send({ error: err.message });

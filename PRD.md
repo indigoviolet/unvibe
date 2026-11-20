@@ -430,7 +430,7 @@ ann:<id>#r<n>                               one reply in that thread (stable per
 
 **Explaining is manual.**
 1. Fetching and comparing happen whenever the review is opened, or when the user clicks refresh. They cost no agent time.
-2. **Explain changes since X** runs only when the user picks a commit in the review bar's "Explain changes since…" menu — any PR commit oldest first (the head is shown disabled), or their last GitHub review; X is always the picked commit and the end is always the head. It uses a fork of a new base and sees only the X→head hunks. It writes the Changes section at the top of the guide — one grouped panel with a "Changes `<from>` → `<to>` · `<date>`" header, collapsing to its header — and leaves the old guide untouched. A re-run replaces the panel whole.
+2. **Explain changes since X** runs only when the user picks a commit in the review bar's "Explain changes since…" menu — any PR commit newest first (the head is shown disabled), or their last GitHub review; X is always the picked commit and the end is always the head. It uses a fork of a new base and sees only the X→head hunks. It writes the Changes section at the top of the guide — one grouped panel with a "Changes `<from>` → `<to>` · `<date>`" header, collapsing to its header — and leaves the old guide untouched. A re-run replaces the panel whole.
 
 Uncommitted local edits can be treated as an extra version.
 

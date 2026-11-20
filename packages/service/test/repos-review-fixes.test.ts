@@ -32,6 +32,7 @@ import {
 } from "../src/repos/index.js";
 import { RepoStore } from "../src/repos/store.js";
 import { createApp } from "../src/server.js";
+import { writeSubmitLease } from "../src/submit/lease.js";
 import { isGitFetch } from "./git-args.js";
 
 const real = new RealCommandRunner();
@@ -130,8 +131,8 @@ async function makePathRepo(dir: string): Promise<void> {
   await git("commit", "-m", "init");
 }
 
-describe("remove refuses while reviews exist (both kinds)", () => {
-  it("a user checkout with reviews is not forgotten", async () => {
+describe("remove takes the repo's reviews with it (#428)", () => {
+  it("a user checkout: its reviews go, the folder is untouched", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-repo-"));
     await makePathRepo(dir);
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-managed-"));
@@ -155,12 +156,42 @@ describe("remove refuses while reviews exist (both kinds)", () => {
       expect([201, 202]).toContain(created.statusCode);
 
       const del = await app.inject({ method: "DELETE", url: `/api/repos/${repo.id}`, headers: authed() });
-      expect(del.statusCode).toBe(409);
-      expect((del.json() as { error: string }).error).toMatch(/still has 1 review/);
-      // Row kept, checkout untouched, review still refreshable.
+      expect(del.statusCode).toBe(200);
+      expect(del.json()).toEqual({ ok: true, reviewsRemoved: 1, removedClone: false });
       const list = await app.inject({ method: "GET", url: "/api/repos", headers: authed() });
-      expect(reposOf(list.json()).some((r) => r.id === repo.id)).toBe(true);
+      expect(reposOf(list.json()).some((r) => r.id === repo.id)).toBe(false);
+      const reviews = await app.inject({ method: "GET", url: "/api/reviews", headers: authed() });
+      expect((reviews.json() as { reviews: { repoId: string }[] }).reviews.some((r) => r.repoId === repo.id)).toBe(false);
+      // The user's folder is never touched.
       expect(fs.existsSync(path.join(dir, ".git"))).toBe(true);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("refuses while one of its reviews is being submitted, removing nothing", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-repo-"));
+    await makePathRepo(dir);
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "unvibe-managed-"));
+    const { runner } = makeRunner({ ghOther: { stdout: "[]", stderr: "", code: 0 } });
+    const { app, ctx } = await createApp("tok", { runner, dataDir, autoPipeline: false });
+    try {
+      const added = await app.inject({ method: "POST", url: "/api/repos", headers: authed(), payload: { path: dir } });
+      const repo = reposOf(added.json()).find((r) => r.id !== "demo")!;
+      const created = await app.inject({
+        method: "POST",
+        url: "/api/reviews",
+        headers: authed(),
+        payload: { repoId: repo.id, branch: "main" },
+      });
+      const reviewId = (created.json() as { review: { id: string } }).review.id;
+      writeSubmitLease(ctx.db, { reviewId, startedAt: Date.now(), commitId: "", body: "", comments: [] });
+
+      const del = await app.inject({ method: "DELETE", url: `/api/repos/${repo.id}`, headers: authed() });
+      expect(del.statusCode).toBe(409);
+      expect((del.json() as { error: string }).error).toMatch(/being submitted, so nothing was removed/);
+      const review = await app.inject({ method: "GET", url: `/api/reviews/${reviewId}`, headers: authed() });
+      expect(review.statusCode).toBe(200);
     } finally {
       await app.close();
     }

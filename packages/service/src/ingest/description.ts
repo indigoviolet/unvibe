@@ -210,6 +210,8 @@ export interface CommitMessage {
   sha: string;
   subject: string;
   body: string;
+  /** Committer date as ms epoch (issue #431: stored on `ReviewCommit`). */
+  committedAt: number;
 }
 
 /** Render branch commit messages (read-only description tab, PRD §4.11). */

@@ -147,6 +147,80 @@ test.describe("tour update banners", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Timeline menu with many commits (issue #431): the guide entry leads
+// and the guide row is in view on open, newest first. Single 1440px
+// light Default frame.
+// ---------------------------------------------------------------------------
+
+test.describe("tour timeline long menu", () => {
+  let repoDir = "", dataDir = "";
+  let svc: RunningService | null = null;
+  let reviewId = "";
+
+  test.beforeAll(async () => {
+    mkdirSync(path.join(SHOTS, "367"), { recursive: true });
+    repoDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour431-repo-"));
+    await git(repoDir, "init", "-b", "main");
+    await git(repoDir, "config", "user.email", "t@example.com");
+    await git(repoDir, "config", "user.name", "T");
+    writeFileSync(path.join(repoDir, "src-app.py"), V1);
+    await git(repoDir, "add", ".");
+    await git(repoDir, "commit", "-m", "base");
+    await git(repoDir, "checkout", "-b", "feature");
+    for (let i = 0; i < 22; i++) {
+      writeFileSync(path.join(repoDir, "src-app.py"), `${V1}\n# filler ${i}\n`);
+      await git(repoDir, "add", "src-app.py");
+      await git(repoDir, "commit", "-m", `feature piece ${i}`);
+    }
+    dataDir = mkdtempSync(path.join(os.tmpdir(), "unvibe-tour431-data-"));
+    svc = await startService(dataDir, { agent: "replay", label: "tour431" });
+    reviewId = await createScratchReview(svc, repoDir);
+    const deadline = Date.now() + 90_000;
+    for (;;) {
+      const snap = await apiJson(svc, "GET", `/api/reviews/${reviewId}`);
+      const pages = (snap.json as { pages?: { cards: unknown[] }[] }).pages ?? [];
+      if (pages.some((p) => p.cards.length > 0)) break;
+      if (Date.now() > deadline) throw new Error("guide cards did not appear");
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    // Three commits past the guide: a long list with the guide a few
+    // rows back, in view on open without scrolling.
+    for (let i = 22; i < 25; i++) {
+      writeFileSync(path.join(repoDir, "src-app.py"), `${V1}\n# filler ${i}\n`);
+      await git(repoDir, "add", "src-app.py");
+      await git(repoDir, "commit", "-m", `feature piece ${i}`);
+    }
+  });
+  test.afterAll(async () => {
+    await svc?.stop().catch(() => {});
+    rmSync(repoDir, { recursive: true, force: true });
+    rmSync(dataDir, { recursive: true, force: true });
+  });
+
+  test("long timeline menu with the guide entry and the guide row in view", async ({ page }) => {
+    test.setTimeout(240_000);
+    if (!svc) throw new Error("no service");
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${svc.origin}/review/${reviewId}?token=${svc.token}`);
+    await expect(page.locator("#page .doc")).toBeVisible({ timeout: 60_000 });
+    // The bar auto-refreshes on open: the three commits land without a
+    // Pull click (which would only toast "Already up to date").
+    const menuBtn = page.locator('#reviewbar [data-testid="explain-menu-button"]');
+    await expect(menuBtn).toHaveAttribute("aria-label", "3 new commits since the guide was written", { timeout: 60_000 });
+    await menuBtn.click();
+    const menu = page.getByTestId("explain-menu");
+    await expect(menu.getByRole("menuitem", { name: "Explain changes since the guide" })).toBeVisible({ timeout: 15_000 });
+    await expect(menu.locator("[data-explain-guide]")).toBeVisible({ timeout: 15_000 });
+    const listed = ((await apiJson(svc, "GET", `/api/reviews/${reviewId}`)).json as { commits: { sha: string }[] }).commits;
+    const guideSha = listed[listed.length - 4].sha;
+    await expect(menu.locator(`[data-explain-commit="${guideSha}"]`)).toContainText("guide", { timeout: 15_000 });
+    await page.mouse.move(20, 20);
+    await page.screenshot({ path: path.join(SHOTS, "367", "timeline-menu-long-1440-light.png") });
+    await page.keyboard.press("Escape");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Document review bar across themes (from j222's framed loop).
 // ---------------------------------------------------------------------------
 

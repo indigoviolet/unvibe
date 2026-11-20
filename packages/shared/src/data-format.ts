@@ -1,9 +1,10 @@
 /**
  * Data format (#311): one integer bumped by hand in any change that
  * makes existing stored data unreadable (the no-backward-compatibility
- * rule in the working agreement — record the bump there when this value
- * changes). The service stores it in the data dir (SQLite
- * `user_version`) when it creates data. Data with no stored value, or a
+ * rule in the working agreement). This constant is the source of truth
+ * for the current format; record each bump in the history below. The
+ * service stores it in the data dir (SQLite `user_version`) when it
+ * creates data. Data with no stored value, or a
  * different value, needs a reset: it is moved aside, never converted
  * and never deleted.
  *
@@ -40,8 +41,11 @@
  *   (the head the section was written at) and the snapshot gains
  *   required `guideHead` (the head the guide was written at); stored
  *   reviews without them need a reset.
+ * - 12: history menu commit dates (#431): `ReviewCommit` gains required
+ *   `committedAt` (the commit's date, for the row's relative time);
+ *   stored reviews without it need a reset.
  */
-export const DATA_FORMAT = 11;
+export const DATA_FORMAT = 12;
 
 /** Stored format of a data dir: `null` when no stamp is present. */
 export type DataFormatState = "none" | "match" | "mismatch";
