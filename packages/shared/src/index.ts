@@ -24,3 +24,4 @@ export * from "./webdoc.js";
 export * from "./traces.js";
 export * from "./replay-match.js";
 export * from "./reader-shape.js";
+export * from "./time.js";

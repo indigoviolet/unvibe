@@ -398,7 +398,7 @@ describe("explain uses the requested X, not the stored default (#413)", () => {
           ],
         },
       ],
-      commits: [{ sha: c1, subject: "rework alpha", body: "The reviewer asked for 2.", files: [], hunks: ["h:a:h1"] }],
+      commits: [{ sha: c1, subject: "rework alpha", body: "The reviewer asked for 2.", committedAt: 1000, files: [], hunks: ["h:a:h1"] }],
       existingComments: [
         {
           id: 7,

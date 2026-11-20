@@ -75,20 +75,20 @@ const DIFF_OTHER = [
 describe("buildReviewCommits (#193)", () => {
   it("maps a commit to PR hunks by shared changed lines despite line drift", () => {
     const out = buildReviewCommits(
-      [{ sha: "aaa", subject: "Add compute", body: "why" }],
+      [{ sha: "aaa", subject: "Add compute", body: "why", committedAt: 1000 }],
       new Map([["aaa", parseUnifiedDiff(DIFF_SHIFTED)]]),
       reviewFiles(),
     );
     expect(out).toEqual([
-      { sha: "aaa", subject: "Add compute", body: "why", files: ["src/a.py"], hunks: ["h:a:h1"] },
+      { sha: "aaa", subject: "Add compute", body: "why", committedAt: 1000, files: ["src/a.py"], hunks: ["h:a:h1"] },
     ]);
   });
 
   it("keeps an overwritten commit's files with no surviving hunks", () => {
     const out = buildReviewCommits(
       [
-        { sha: "aaa", subject: "wip", body: "" },
-        { sha: "bbb", subject: "Replace flag", body: "" },
+        { sha: "aaa", subject: "wip", body: "", committedAt: 1000 },
+        { sha: "bbb", subject: "Replace flag", body: "", committedAt: 2000 },
       ],
       new Map([
         ["aaa", parseUnifiedDiff(DIFF_OTHER.replace("old_flag = False", "gone_flag = 1").replace("new_flag = True", "gone_flag = 2"))],
@@ -102,8 +102,8 @@ describe("buildReviewCommits (#193)", () => {
   });
 
   it("keeps the message when no diff was fetched", () => {
-    const out = buildReviewCommits([{ sha: "ccc", subject: "Merge main", body: "" }], new Map(), reviewFiles());
-    expect(out).toEqual([{ sha: "ccc", subject: "Merge main", body: "", files: [], hunks: [] }]);
+    const out = buildReviewCommits([{ sha: "ccc", subject: "Merge main", body: "", committedAt: 3000 }], new Map(), reviewFiles());
+    expect(out).toEqual([{ sha: "ccc", subject: "Merge main", body: "", committedAt: 3000, files: [], hunks: [] }]);
   });
 });
 

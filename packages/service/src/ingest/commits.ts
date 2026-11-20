@@ -66,7 +66,7 @@ export function buildReviewCommits(
         }
       }
     }
-    return { sha: m.sha, subject: m.subject, body: m.body, files: commitFiles, hunks };
+    return { sha: m.sha, subject: m.subject, body: m.body, committedAt: m.committedAt, files: commitFiles, hunks };
   });
 }
 

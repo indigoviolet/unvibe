@@ -322,7 +322,7 @@ export async function readCommitMessages(
   const res = await runGit(runner, [
     "log",
     "--reverse",
-    "--format=%H%x00%s%x00%b%x1e",
+    "--format=%H%x00%s%x00%b%x00%ct%x1e",
     `${mergeBase}..${head}`,
   ], repoPath);
   if (!res.ok) return [];
@@ -330,9 +330,9 @@ export async function readCommitMessages(
   for (const record of res.stdout.split("\x1e")) {
     const trimmed = record.replace(/^\n+/, "");
     if (!trimmed.trim()) continue;
-    const [sha = "", subject = "", body = ""] = trimmed.split("\0");
+    const [sha = "", subject = "", body = "", ct = ""] = trimmed.split("\0");
     if (!sha) continue;
-    commits.push({ sha: sha.trim(), subject: subject.trim(), body: body.trim() });
+    commits.push({ sha: sha.trim(), subject: subject.trim(), body: body.trim(), committedAt: Number(ct.trim()) * 1000 });
   }
   return commits;
 }

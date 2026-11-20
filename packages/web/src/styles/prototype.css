@@ -524,6 +524,11 @@ textarea { min-width: 120px; max-width: 100%; min-height: 40px; max-height: 320p
 .fmenu .tick { width: 1.2em; flex: none; }
 .fmenu .lbl { flex: 1; }
 .fmenu .cnt { color: var(--text-muted); font-size: var(--text-xs); flex: none; }
+/* Timeline menu relative time (#431): plain muted text at the row's
+   right edge — never the grey `.cnt` hint chip, so it doesn't read as
+   another hint. Same size as the hint text, tabular so the edge stays
+   straight. */
+.fmenu .mtime { color: var(--text-muted); font-size: var(--text-xs); flex: none; font-variant-numeric: tabular-nums; }
 /* Filter menu group headings (plotline/score radio rows): quiet labels
    between the checkbox rows and the radio rows. */
 .fmenu .fgroup { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding: 6px 8px 0; }

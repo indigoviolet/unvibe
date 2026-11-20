@@ -1094,7 +1094,10 @@ needed (that deviation is closed, not added).
   cache); unshipped languages stay plain — met
   (`source/diff/highlight/*.test.ts(x)`, `e2e/shiki-highlight.spec.ts`).
 - Timeline menu per §8 (dot + counting tooltip, guide entry,
-  guide/new/latest hints) — met (`e2e/journeys/l7-since.spec.ts`).
+  guide/new/latest hints; #431: newest first, sha in the hunk-header
+  treatment, right-aligned relative time with exact-timestamp tooltip,
+  400px wide) — met (`e2e/journeys/l7-since.spec.ts`,
+  `e2e/journeys/j431-menu-scroll.spec.ts`).
 - Expand beyond hunks, by lines (issue #133, stage 1) — met:
   `GET /api/reviews/:id/file` serves raw ranges at a commit through the
   shared `readCodeSlice` source with a per-request cap
@@ -4698,7 +4701,11 @@ one grouped panel with a commit-range header.
   borderless `button.ib` (Tabler `history`) right after Pull, tooltip
   and aria-label "Explain changes since…". It opens the same `.fmenu`
   portal menu PersonaButton uses: a "Commits" group with every PR
-  commit oldest first as `<sha8> <subject>`, the head commit shown
+  commit newest first, each row showing the sha (the hunk-header
+  `.revc`: mono, muted, slightly smaller), the subject (full subject
+  as a tooltip only while truncated, like #406's PlotName), the hints
+  that apply, and a right-aligned muted relative time (`shortAge`,
+  exact timestamp on hover). The head commit is the first row, shown
   disabled with a quiet "latest" hint (the shared menu code gains the
   disabled-row rule in `prototype.css`; the group label reuses the
   existing `.fgroup`), plus a "Your last GitHub review" row (sha +
@@ -4735,7 +4742,7 @@ one grouped panel with a commit-range header.
   and the snapshot gains required `guideHead`; stored data without
   them needs a reset.
 - **Tests:** rewritten journey `l7-since.spec.ts` (menu lists all
-  commits oldest first with the head disabled and not clickable;
+  commits newest first with the head disabled and not clickable;
   picking runs Explain and the panel appears with a range header;
   collapse folds the panel; a re-run replaces it; after a Pull the
   header notes newer commits and the banner recounts from the
@@ -4748,6 +4755,49 @@ one grouped panel with a commit-range header.
   `since-menu-groups` + `since-unfetchable-menu`, `367` banner +
   `explain-menu` (all at 1440 light). Fake runner only. Full gates
   not yet run.
+
+## Addendum: #431 — History menu newest first, with sha, relative time and a wider menu (branch `fix/431-menu-scroll-guide`)
+
+Owner decisions: the commit list reads newest first (latest at the
+top, so latest / new / guide sit at the top naturally — no scroll
+logic, the menu keeps its single scroll); each row shows the sha
+differently from the subject, a short relative time, and the menu is
+wider so typical subjects fit.
+
+- **Order** (`shell/ExplainMenu.tsx`): the guide entry
+  ("Explain changes since the guide", only with new commits) stays
+  the first item, then the "Commits" group newest first. Hints are
+  unchanged (guide / new / your last review / latest); the head row
+  is now the first commit row and stays disabled.
+- **Sha styling:** the sha renders in the hunk-header treatment —
+  the existing `.revc` (mono, muted, slightly smaller). No
+  dedicated sha class exists anywhere else in the app (shas are
+  plain text in the Changes header and elsewhere), so nothing new
+  was invented.
+- **Relative time:** each row ends with a right-aligned muted
+  `shortAge` (`now`, `5m`, `2h`, `3d`, `1w`, `2mo`, `1y`;
+  `packages/shared/src/time.ts`, unit-tested in
+  `packages/shared/test/time.test.ts`); hovering it shows the exact
+  timestamp in the user's locale via the existing `data-tip`
+  mechanism. The commit date is a required `ReviewCommit.committedAt`
+  (ms epoch, committer date from `git log %ct`), filled at ingest
+  and refresh; the description's `CommitMessage` carries it through.
+- **Width:** the menu is 400px (clamped to the viewport), so typical
+  subjects fit. The subject shows as its row tooltip only while
+  still truncated (measured with ResizeObserver, like #406's
+  PlotName); the hints and the time stay on the row.
+- **Data format 11 → 12:** stored reviews without `committedAt`
+  need a reset (export Outbox drafts first). Makes v0.0.22 a reset
+  release.
+- **Tests:** new journey `e2e/journeys/j431-menu-scroll.spec.ts`
+  (guide a few back on a 25-row list: guide entry and guide row
+  visible on open with no scrolling, newest first with the head
+  disabled, rows show sha/subject/time with the exact-timestamp
+  tooltip; a two-commit list fits whole with every row in view),
+  `ExplainMenu.test.tsx` (newest-first order, sha/time per row),
+  `time.test.ts` (every band), tour frame
+  `367/timeline-menu-long-1440-light.png` (1440 light, 25 rows with
+  the guide a few back). Fake runner only. Full gates not yet run.
 
 ## Addendum: #423 — Remove the Clarity persona (branch `fix/remove-clarity-persona`)
 
