@@ -1380,7 +1380,20 @@ test.describe("L6 demo diff work", () => {
       // bodies under the selection and drop the toolbar).
       const folded = connFileLoc.getByRole("button", { name: "Show code" }).first();
       if (await folded.count()) {
+        // Wait for the unfold to render before counting threads below: the
+        // hunk's seeded suggestion thread pins into its code rows, which
+        // mount after the click. Counting straight after the click read 0
+        // on a slow runner, then the seeded thread rendered and the count
+        // assert saw 1 (a CI-only failure, no activation involved).
+        const hunkKey = await connFileLoc
+          .locator(".dhunk", { has: page.getByRole("button", { name: "Show code" }) })
+          .first()
+          .locator(".dhunk-h")
+          .getAttribute("data-hunk");
         await folded.click();
+        const opened = connFileLoc.locator(".dhunk", { has: page.locator(`.dhunk-h[data-hunk="${hunkKey}"]`) });
+        await expect(opened.getByRole("button", { name: "Fold code" })).toBeVisible({ timeout: 15_000 });
+        await expect(opened.locator("table tr").first()).toBeVisible({ timeout: 15_000 });
       }
       await expect.soft(connFileLoc.locator("p[data-hunksum]").first()).toBeVisible({ timeout: 60_000 });
       const words = (h: string | null): string =>
