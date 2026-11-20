@@ -1,150 +1,17 @@
 {
- "384": {
-  "whatChanged": "A new copy icon in the review's top bar, next to Refresh and Debug (\"Copy guide as Markdown\"), copies the whole guide: the review title, then each card's heading and text at the depth it's shown, always the Guide version. Citations follow each paragraph as GitHub links (plain path:lines for local reviews), inline code is kept, and each diagram becomes a short placeholder. Code blocks, threads, findings, plotlines and \"Updated since\u2026\" sections are left out.",
-  "whatToTry": "Open a review, click the copy icon in the top bar, and paste into a GitHub comment or a Markdown editor."
+ "428": {
+  "whatChanged": "Removing a repo in Settings \u2192 Repos no longer refuses while it has reviews: it removes the repo's reviews too (with the worktrees Unvibe made for them; your folder is never touched). The confirm says what goes: \"Remove <repo> and its N reviews from Unvibe? <path> is not touched.\", and \"N unsent drafts will be lost\" when those reviews hold Outbox drafts.",
+  "whatToTry": "Open Settings \u2192 Repos, click Remove on a repo that has a review: the confirm names the review. Confirm: the repo and the review are gone from Settings and the start page, and the folder is still there.",
+  "caveats": "Refused (nothing removed) while one of the repo's reviews is being submitted."
  },
- "385": {
-  "whatChanged": "\"Waiting on your review\" now also lists open PRs you have already reviewed (GitHub drops the request once you review), in \"Requested of you\" unless a request still puts them in your team group. Typing or picking an author searches GitHub for all their open PRs: requested of you, of your team, and a \"Not requested of you\" group for the rest. Drafts and approved PRs are never filtered out, and \"No open PRs by \u2026\" appears only when the author has none.",
-  "whatToTry": "Open the start page and check that PRs you reviewed still show; then pick an author and look for their PRs that don't request you."
+ "431": {
+  "whatChanged": "The history menu now lists commits most recent first: the latest commit at the top, then the new commits and the one the guide was written at, oldest at the bottom. \"Explain changes since the guide\" stays the first item when there are new commits. Each row shows the short sha in monospace, the subject (full text on hover when cut off) and a short relative time (\"5m\", \"3d\"); hovering the time shows the exact date. The menu is wider so typical subjects fit.",
+  "whatToTry": "Open a review with several commits and click the history icon: the latest commit (disabled) is first, and after a Pull the new and guide rows are right below it.",
+  "caveats": "Data reset needed: data format 12 (commits now carry their date), so existing reviews can't be read by this build. Export any Outbox drafts first, then reset when Unvibe asks (or run `unvibe reset-data`). Resetting moves the old data aside; nothing is deleted."
  },
- "387": {
-  "whatChanged": "The \u2212 \u25cf\u25cf + depth stepper on cards is replaced by one icon button, \"Help me understand\". Each press rewrites the card more slowly than its current text: the skipped steps filled in, terms defined where they first appear, a concrete walk-through with real values, smaller leaps, and the why where only the what was given. It never gets shorter by dropping content, keeps every citation on its paragraph, and keeps the structure, examples and diagrams. Press again to slow it down further; Undo steps back one press at a time. It works the same on thread replies and persona tabs, and Copy as Markdown copies what is shown. The simple / standard / deep levels and the \"deeper\" direction are gone; use Ask to say what is confusing.",
-  "whatToTry": "Open a card that feels too dense, press Help me understand twice, compare, then Undo once."
- },
- "389": {
-  "whatChanged": "Go-deeper cards are no longer written automatically after the guide lands: each one waits as a placeholder until you click its Generate button. To get the old behaviour, turn on automatic go-deeper cards in Settings \u2192 Limits.",
-  "whatToTry": "Open a new review: the go-deeper cards show Generate; click one to write it."
- },
- "392": {
-  "whatChanged": "The browser extension's \"Review in Unvibe\" button now appears only in a pull request page's header. It no longer lands inside GitHub dialogs such as \"Finish your review\", popovers or overlays, and it no longer shows on pages GitHub serves under a PR address that aren't the PR itself, such as the single sign-on screen. There is exactly one button per page.",
-  "whatToTry": "Open a PR on GitHub, start a review and open \"Finish your review\": the button stays in the PR header and none appears in the dialog."
- },
- "393": {
-  "whatChanged": "Guide personas can now own their own prompts. A persona whose folder `prompts/personas/<id>/` contains `reader.md` can write a whole guide; any template in that folder replaces the shared one of the same name (whole file), and the rest fall back to the shared prompts. Each review records which Guide persona wrote it, and every main-agent task on it uses that persona's templates, model and style; card personas run on top of it. The Re-do menu gains \"Re-do with <persona>\" for each such persona (it replaces the review, like Re-do). `mise run persona:fork -- <id> <file.md\u2026>` copies base prompts into a fork, and Settings warns when a forked file's base has changed since. An installed build can be pointed at an edited prompts folder with UNVIBE_PROMPTS_DIR.",
-  "whatToTry": "In a checkout, run mise run persona:fork -- teach reader.md, edit prompts/personas/teach/reader.md, start Unvibe with UNVIBE_PROMPTS_DIR pointing at that prompts folder, add a persona with id teach in Settings \u2192 Personas, then use Re-do \u2192 Re-do with Teach on a review.",
-  "caveats": "Data reset needed: covered by this release's data format 11 reset (see the reset note above). Export unposted Outbox drafts first, then set your models, Guide and personas again afterwards."
- },
- "394": {
-  "whatChanged": "The browser extension no longer resends a side-panel question or an \"open review\" request after it fails or times out. It used to retry under the service's other local address, which could store the same question twice. A failed ask now shows \"request failed\" instead."
- },
- "395": {
-  "whatChanged": "The diff pane's pinned header stack no longer has a thin gap under the toolbar where scrolling text showed through, since the \"Summaries for X of Y hunks\" row was added."
- },
- "396": {
-  "whatChanged": "A fresh install no longer shows the \"This version can't read your existing reviews\" notice on its first start. A data folder without a reviews database is now treated as new, even when it already holds a sign-in token, update logs or channel backups."
- },
- "397": {
-  "whatChanged": "Teach, the teaching-oriented guide style, became the guide's own text in this release (#405): there is no separate Teach persona.",
-  "whatToTry": "",
-  "caveats": ""
- },
- "398": {
-  "whatChanged": "Help me understand now shows the whole rewrite. Before, a press could keep only the card's original paragraph slots, dropping the new lists, steps and example and leaving citation chips on the wrong paragraphs. Now the rewrite replaces the card body in full, each paragraph with its own citations, while diagrams and follow-up suggestions are kept and Undo restores the previous text. The same applies to persona tabs, thread replies and the ? mode's Rewrite cards.",
-  "whatToTry": "On a dense card, press Help me understand: the rewrite may add steps, lists or an example, and each citation chip sits on the paragraph it supports. Press Undo to go back."
- },
- "401": {
-  "whatChanged": "Settings \u2192 Personas has a Default guide picker. The persona you pick there (any enabled persona that can write a guide) writes the guide for new reviews and for a plain Re-do; Re-do with still lets you choose a persona for one run. Each review records which persona wrote it. If the default persona is deleted, disabled or can no longer write a guide, the Guide stands in and Settings says so in one line.",
-  "whatToTry": "Open Settings \u2192 Personas: the Default guide picker lists the Guide and any persona that owns a reader prompt (see #393). Pick one, open a new review and check that it wrote the guide. Then disable it: Settings shows the notice and new reviews fall back to the Guide.",
-  "caveats": "The setting defaults to the Guide, so existing installs pick it up without a reset."
- },
- "402": {
-  "whatChanged": "Guide cards are easier to scan: short paragraphs, sub-headings, bullets and the occasional tinted Background block. This is now how the guide itself writes (#405), not a separate Teach persona.",
-  "whatToTry": "",
-  "caveats": ""
- },
- "403": {
-  "whatChanged": "Settings \u2192 Version: the Show previews box always shows the saved setting. Before, if the service changed under an open Settings page (a channel switch that reset the data, a restart, or a change from the CLI or another tab), the box could stay ticked while previews were hidden. Now every status read and Refresh puts the box back in line with the saved value, and Refresh reloads the status before the channels.",
-  "whatToTry": "Tick Show previews: preview channels appear, the installed one marked Installed. Reload: still ticked. Then turn it off from another tab and press Refresh in the first: the box unticks and only releases are listed.",
-  "caveats": ""
- },
- "404": {
-  "whatChanged": "Settings \u2192 Models: the Small model no longer shows \"Saved model \u2026 is no longer offered\" for a model you never picked. On a fresh install or after a data reset, Small uses the built-in default, and that default was being treated as a saved choice. The error now appears only when a model you actually saved is no longer listed.",
-  "whatToTry": "Reset the data (or start fresh), change the Guide model in Settings \u2192 Personas, then open Models: Small shows no error. Pick a Small model and save it: if that model later disappears from the list, the error does appear.",
-  "caveats": ""
- },
- "405": {
-  "whatChanged": "The guide now writes in the Teach style, and Teach is no longer a separate persona. Its instructions replace the old guide's outright: it teaches the change step by step, in full sentences, spelling out cause and effect and explaining terms where they first appear. The \"How it's built up\" card is gone. Settings \u2192 Personas now lists Guide, Second opinion and Clarity, and Re-do is a plain button again unless you add a persona that can write a whole guide.",
-  "whatToTry": "Open the demo: the guide goes from the problem to the central idea, then decisions, with no \"How it's built up\" card. Start a review of your own and read the guide's style. Settings \u2192 Personas lists three built-in personas.",
-  "caveats": "Existing installs keep a stale \"Teach\" persona in their saved settings. Delete it in Settings \u2192 Personas, or reset the data. Reviews written before this build keep their old guide, including any \"How it's built up\" card."
- },
- "406": {
-  "whatChanged": "Guide \u2192 Plotlines card: picking a plotline now marks its row with an accent rail on the left, and clearing the filter removes it. The plotline summary no longer has a tooltip that repeated its own text. The plotline name shows its full-name tooltip only when the name is actually cut off; hovering a name that fits shows the row's \"Show only \u2026\" hint.",
-  "whatToTry": "Click a plotline in the Plotlines card: the diff filters to it and its row gets the accent rail. Click it again (or clear the filter chip): the rail goes. Hover the summary: no tooltip repeating it.",
-  "caveats": ""
- },
- "407": {
-  "whatChanged": "A visual pass on the top bar and icons. Every icon now comes from Tabler Icons (outline), drawn a little larger (16px) with a slightly heavier line. The top-bar icon buttons (Home, Refresh, Debug, Copy guide, ?, Re-do, Collapse threads, Documents, Settings, the update icon) lose their boxes and match the card action buttons; the PR link chip keeps its box. A pressed segment in a toggle (Guide/Source, unified/split) now shows a light tint with bold text instead of solid black, so Submit review is the only solid dark button in the bar.",
-  "whatToTry": "Open a review: the top bar is lighter, with borderless icon buttons, and the Guide/Source toggle no longer looks like a primary button. Card toolbars and the diff toolbar use the new icons.",
-  "caveats": ""
- },
- "408": {
-  "whatChanged": "The guide now writes a Background block where it fits, instead of almost never. A Background block is how the existing system works, on a quiet tint that a reader who knows the codebase can skip. The problem card usually carries one, and any later card that leans on existing-system knowledge a newcomer lacks may carry one. Still at most one per card, and never about the change itself.",
-  "whatToTry": "Start a new review (or Re-do the guide on one) and read the problem card: when it explains how the existing code works, that part sits in a tinted Background block.",
-  "caveats": "Only guides written after installing this build show it; existing guides keep their text until you Re-do them."
- },
- "410": {
-  "whatChanged": "Browser extension: the \"Review in Unvibe\" button now appears on GitHub's new PR Overview layout (the page with Overview / Commits / Checks / Files changed tabs). It sits at the end of the header's action buttons and stays there, once, as you switch tabs. The classic and Conversation layouts work as before.",
-  "whatToTry": "After installing, reload the extension (chrome://extensions \u2192 Unvibe \u2192 reload), then open a PR in GitHub's new Overview layout: the button is beside Preview / Code. Switch between Overview, Commits and Files changed: still exactly one button.",
-  "caveats": "The extension loads from the installed package, so reload it in chrome://extensions after updating."
- },
- "411": {
-  "whatChanged": "Since section: after an update pass, each Since card now shows its body (what changed and why), not just its title and Answers line. The update prompt never told the model where the card bodies go, so they were dropped. A card that still comes back with no body is now treated as failed instead of being stored as a title. \"Answers\" excerpts now end at a sentence or word, with an ellipsis, instead of mid-word.",
-  "whatToTry": "On a review with new commits, run the update: each Since card shows body text under its title.",
-  "caveats": "Reviews whose Since cards are already title-only need the update run again to gain bodies. No data reset needed."
- },
- "413": {
-  "whatChanged": "Explain changes since a point in the PR, and why. One agent run, only when you ask, writes a \"Changes\" panel at the top of the guide: cards grouped by change, each with a real explanation cited into the diff, and \"Answers\" lines only when a review comment or thread drove the change. Citations in it open and highlight their change in the diff like any other citation. The rest of the guide is left as it was (no more \"Updated since\" notes, stale badges or \"needs recheck\").",
-  "whatToTry": "Use the history icon in the review bar (see #421) to explain changes since a commit; read the panel; click a citation.",
-  "caveats": ""
- },
- "416": {
-  "whatChanged": "On a first visit by link, your saved theme now applies before the page paints. The small theme script used to be refused without a token, so the default theme flashed first.",
-  "whatToTry": "Pick the Studio or Console theme, then open Unvibe from a fresh link: no flash of the default theme.",
-  "caveats": ""
- },
- "418": {
-  "whatChanged": "Explaining terms is now done per card. The card's Help me understand button opens a small menu with two choices. Simplify is today's rewrite. \"Explain terms\u2026\" lets you pick words or phrases in that card: each pick is highlighted and listed in a tray in the card, and Rewrite then rewrites that card, defining each term where it first matters. Each is one agent run on one card, undoable with the card's Undo. The guide-wide \"?\" mode in the top bar is gone.",
-  "whatToTry": "On a card, click Help me understand (the sort icon): pick Simplify for a simpler rewrite. Or pick \"Explain terms\u2026\", select two words in that card, remove one with \u00d7, then Rewrite: only that card changes, explaining the remaining term. Cancel or Escape clears the picks; Undo restores the card.",
-  "caveats": "Behind the Explain terms toggle in Settings \u2192 Experimental (off by default)."
- },
- "420": {
-  "whatChanged": "The review bar's Refresh button is now \"Pull new commits from GitHub\", with a cloud-download icon, because it fetches new commits rather than reloading the page.",
-  "whatToTry": "Hover the cloud icon next to the PR in the review bar: it reads \"Pull new commits from GitHub\". Click it to fetch new commits.",
-  "caveats": ""
- },
- "421": {
-  "whatChanged": "Explain changes now starts from a history icon in the review bar, next to Pull. Its menu lists all the PR's commits, oldest first (the latest is shown but can't be picked), plus your last GitHub review when there is one. Picking one runs Explain right away. The result is one panel at the top of the guide, styled like the Contents box, headed with its commit range (\"Changes <from> \u2192 <to> \u00b7 <date>\"), and it collapses to that header. It notes when the PR has newer commits than the panel. When new commits arrive, the history icon shows a dot and its tooltip reads \"N new commits since the guide was written\". The in-guide pickers are gone. When your last GitHub review is at a commit already in the list, that commit is marked \"your last review\" instead of appearing twice; the separate row stays only for a review whose commit is no longer in the PR.",
-  "whatToTry": "Open a review with several commits: click the history icon, pick an earlier commit, and read the Changes panel. Collapse it. Pick another commit: the panel is replaced. Pull new commits: the history icon shows a dot, and its menu starts with \"Explain changes since the guide\" and marks the commits guide, new and latest.",
-  "caveats": "Data reset needed: data format 11, so existing reviews can't be read by this build. Export any Outbox drafts first, then reset when Unvibe asks (or run `unvibe reset-data`). Resetting moves the old data aside; nothing is deleted."
- },
- "422": {
-  "whatChanged": "New Settings \u2192 Experimental section with two toggles, both off by default. \"Explain terms\": when off, a card's Help me understand button runs Simplify in one click (no menu); when on, it offers Simplify or Explain terms (pick words in the card to explain). \"Markdown docs\": when off, document reviews are hidden: no Documents link in the top bar, the Documents page shows a notice instead of the form and list (the web pages group stays), document review links show the same notice, and creating a document review is refused. Existing document reviews stay stored. Changes apply without a restart.",
-  "whatToTry": "Open Settings \u2192 Experimental. With both off: Help me understand on a card simplifies at once, and the top bar has no Documents link. Turn each on and check the menu and Documents come back.",
-  "caveats": "Explain terms and Markdown docs are now behind Settings \u2192 Experimental and off by default: turn them on there to keep using them."
- },
- "423": {
-  "whatChanged": "The built-in Clarity persona is gone. The built-in personas are Guide and Second opinion.",
-  "whatToTry": "Settings \u2192 Personas lists Guide and Second opinion on a fresh install.",
-  "caveats": "A leftover \"Clarity\" or \"Teach\" persona from earlier versions stays until you delete it in Settings \u2192 Personas."
- },
- "424": {
-  "whatChanged": "The start page's PR rows no longer show a \"new commits\" tag; a row linked to a review shows only its \"review\" tag. The reviews list keeps its \" \u00b7 new commits\" note.",
-  "whatToTry": "Open the start page with a review whose PR has new commits: the PR row shows \"review\" only.",
-  "caveats": ""
- },
- "426": {
-  "whatChanged": "Source pane: the \"Summaries for N of M hunks \u00b7 Summarize more\" row now has the same gap below it as above, instead of sitting flush against the first file header.",
-  "whatToTry": "Open a review whose diff has hunks without summaries: the row sits clear of the first file header, also once the stack pins while you scroll.",
-  "caveats": "The new-commits banner still has no bottom margin; it is being redesigned (removed) separately."
- },
- "427": {
-  "whatChanged": "One timeline menu replaces the version UI. The review bar no longer has a version switcher (and the read-only old-version view is gone), and the Source pane no longer shows the new-commits banner or its range-diff. The history icon shows a dot when the PR has commits newer than the guide; its tooltip says how many. Its menu starts with \"Explain changes since the guide\" (only with new commits), then lists the commits oldest first with guide / new / your last review / latest hints.",
-  "whatToTry": "Open a review, Pull after a new commit lands: the history icon gets a dot and \"1 new commit since the guide was written\". Open it: pick \"Explain changes since the guide\", or any commit. Re-do the guide: the dot clears and \"guide\" moves to the newest commit.",
-  "caveats": "Old ?version= links now open the current version. The large-demo cache predates data format 11 and needs a rebuild before the large demo opens."
- },
- "429": {
-  "whatChanged": "The side panel cites code as repo-relative paths (src/auth.ts) even when the repo folder is reached through a symlink; before, such repos (for example under macOS /var) cited \"../../private/\u2026\" paths.",
-  "whatToTry": "Ask the side panel about code in a repo whose folder path goes through a symlink: citations read src/\u2026",
+ "430": {
+  "whatChanged": "A guide that stops early is no longer shown as finished. After the guide is written, Unvibe checks it has \"The problem\" and \"The central idea\" cards with real content and at least three Go deeper directions. If something is missing it asks once, in the same session, for exactly the missing parts and adds them. If the guide is still incomplete, the guide page says \"The guide stopped early; Re-do to write the rest.\" with a Re-do button.",
+  "whatToTry": "Nothing to set up: open reviews as usual. If a guide ever stops after its first card, it is completed automatically, or the guide page tells you to Re-do.",
   "caveats": ""
  }
 }
