@@ -272,7 +272,7 @@ export function ExplainMenu({ reviewId }: { reviewId: string }): React.JSX.Eleme
                     {isNewCommit ? <span className="cnt">new</span> : null}
                     {isPrior ? <span className="cnt">your last review</span> : null}
                     {isHead ? <span className="cnt">latest</span> : null}
-                    <span className="cnt" data-tip={exactTime(c.committedAt)}>{shortAge(c.committedAt)}</span>
+                    <span className="mtime" data-tip={exactTime(c.committedAt)}>{shortAge(c.committedAt)}</span>
                   </button>
                 );
               })}

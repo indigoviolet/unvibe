@@ -143,7 +143,7 @@ test.describe("J431 long commit list, guide a few back", () => {
     await expect(guideRow.locator(".revc")).toHaveText(guide.sha.slice(0, 8));
     await expect(guideRow).toContainText("feature piece 21");
     await expect(guideRow).toContainText("guide");
-    const age = guideRow.locator(".cnt").last();
+    const age = guideRow.locator(".mtime");
     await expect(age).toHaveText(shortAge(guide.committedAt));
     await expect(age).toHaveAttribute("data-tip", exactTime(guide.committedAt));
     await page.keyboard.press("Escape");
@@ -193,7 +193,7 @@ test.describe("J431 short commit list", () => {
       expect(box.y).toBeGreaterThanOrEqual(menuBox.y - 1);
       expect(box.y + box.height).toBeLessThanOrEqual(menuBox.y + menuBox.height + 1);
       await expect(row.locator(".revc")).toHaveText(c.sha.slice(0, 8));
-      await expect(row.locator(".cnt").last()).toHaveText(shortAge(c.committedAt));
+      await expect(row.locator(".mtime")).toHaveText(shortAge(c.committedAt));
     }
     await page.keyboard.press("Escape");
   });

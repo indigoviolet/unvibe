@@ -222,10 +222,9 @@ describe("ExplainMenu (#421, #427)", () => {
     // and a right-aligned relative time with the exact timestamp.
     const headRow = rows[0];
     expect(headRow.querySelector(".revc")?.textContent).toBe(HEAD.slice(0, 8));
-    const hints = headRow.querySelectorAll(".cnt");
-    const age = hints[hints.length - 1];
-    expect(age.textContent).toBe("1h");
-    expect(age.getAttribute("data-tip")).toContain("2026");
+    const age = headRow.querySelector(".mtime");
+    expect(age?.textContent).toBe("1h");
+    expect(age?.getAttribute("data-tip")).toContain("2026");
   });
 
   it("still leads with the guide entry when the guide's commit left the list (#431)", async () => {
