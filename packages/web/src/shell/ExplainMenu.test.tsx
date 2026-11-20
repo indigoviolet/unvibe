@@ -20,7 +20,7 @@ const MID = "c".repeat(40);
 const HEAD = "b".repeat(40);
 
 async function seed(opts: {
-  commits: { sha: string; subject: string }[];
+  commits: { sha: string; subject: string; committedAt?: number }[];
   prNumber?: number;
   guideSha?: string;
 }): Promise<void> {
@@ -39,7 +39,7 @@ async function seed(opts: {
       },
       version: { ...snap.version, n: 1, headSha: HEAD },
       guideHead: { version: 1, sha: opts.guideSha ?? HEAD },
-      commits: opts.commits.map((c) => ({ sha: c.sha, subject: c.subject, body: "", files: [], hunks: [] })),
+      commits: opts.commits.map((c) => ({ sha: c.sha, subject: c.subject, body: "", committedAt: c.committedAt ?? 1000, files: [], hunks: [] })),
       ingest: { status: "ready" },
     }),
   );
@@ -84,7 +84,7 @@ describe("ExplainMenu (#421, #427)", () => {
     expect(menu).not.toHaveTextContent("your last review");
   });
 
-  it("is an icon-only bar button opening the shared menu with every commit oldest first and the head disabled", async () => {
+  it("is an icon-only bar button opening the shared menu with every commit newest first and the head disabled", async () => {
     await seed({ commits: [{ sha: OLD, subject: "older work" }, { sha: HEAD, subject: "head work" }], guideSha: HEAD });
     render(<ExplainMenu reviewId={REVIEW_ID} />);
     const btn = screen.getByTestId("explain-menu-button");
@@ -97,10 +97,12 @@ describe("ExplainMenu (#421, #427)", () => {
     expect(menu).toHaveAttribute("role", "menu");
     const rows = menu.querySelectorAll("[data-explain-commit]");
     expect(rows).toHaveLength(2);
-    expect(rows[0]).toHaveTextContent(`${OLD.slice(0, 8)} older work`);
+    // Newest first: the head row leads, disabled; the oldest is last.
+    expect(rows[0]).toHaveTextContent(`${HEAD.slice(0, 8)} head work`);
     const headRow = screen.getByTestId("explain-menu").querySelector(`[data-explain-commit="${HEAD}"]`);
     expect(headRow).toBeDisabled();
     expect(headRow).toHaveTextContent("latest");
+    expect(rows[1]).toHaveTextContent(`${OLD.slice(0, 8)} older work`);
   });
 
   it("picking a commit runs Explain at once; the button is busy while it runs; the empty result toasts", async () => {
@@ -184,5 +186,64 @@ describe("ExplainMenu (#421, #427)", () => {
     expect(menu.querySelector("[data-explain-guide]")).toBeNull();
     expect(menu.querySelector(`[data-explain-commit="${HEAD}"]`)).toHaveTextContent("guide");
     expect(menu.querySelector(`[data-explain-commit="${HEAD}"]`)).toHaveTextContent("latest");
+  });
+
+  it("lists commits newest first with the guide entry first (#431)", async () => {
+    const at = Date.now() - 3600_000;
+    const many = Array.from({ length: 6 }, (_, i) => ({
+      sha: `${i.toString(16).padStart(2, "0")}${"e".repeat(38)}`,
+      subject: `work ${i}`,
+      committedAt: at - i * 60_000,
+    }));
+    const guideSha = many[1].sha;
+    await seed({ commits: [...many, { sha: HEAD, subject: "head work", committedAt: at }], guideSha });
+    render(<ExplainMenu reviewId={REVIEW_ID} />);
+    fireEvent.click(screen.getByTestId("explain-menu-button"));
+    const menu = screen.getByTestId("explain-menu");
+    // The guide entry is the first item, then the Commits label, then
+    // the rows newest first: head (latest, disabled), new rows, the
+    // guide row, the oldest last. No inner scroll container: the menu
+    // keeps its single scroll.
+    const items = menu.querySelectorAll(':scope > [role="menuitem"], :scope > .fgroup');
+    expect(items[0]).toHaveTextContent("Explain changes since the guide");
+    expect(items[1]).toHaveTextContent("Commits");
+    expect(menu.querySelector(".fcommits")).toBeNull();
+    const rows = menu.querySelectorAll("[data-explain-commit]");
+    expect(rows).toHaveLength(7);
+    expect(rows[0]).toHaveTextContent("head work");
+    expect(rows[0]).toHaveTextContent("latest");
+    expect(rows[0]).toBeDisabled();
+    expect(rows[1]).toHaveTextContent("work 5");
+    expect(rows[1]).toHaveTextContent("new");
+    expect(rows[5]).toHaveTextContent("work 1");
+    expect(rows[5]).toHaveTextContent("guide");
+    expect(rows[6]).toHaveTextContent("work 0");
+    // Each row shows the sha in the hunk-header treatment, the subject,
+    // and a right-aligned relative time with the exact timestamp.
+    const headRow = rows[0];
+    expect(headRow.querySelector(".revc")?.textContent).toBe(HEAD.slice(0, 8));
+    const hints = headRow.querySelectorAll(".cnt");
+    const age = hints[hints.length - 1];
+    expect(age.textContent).toBe("1h");
+    expect(age.getAttribute("data-tip")).toContain("2026");
+  });
+
+  it("still leads with the guide entry when the guide's commit left the list (#431)", async () => {
+    await seed({
+      commits: [{ sha: OLD, subject: "older work" }, { sha: HEAD, subject: "head work" }],
+      guideSha: "f".repeat(40),
+    });
+    render(<ExplainMenu reviewId={REVIEW_ID} />);
+    fireEvent.click(screen.getByTestId("explain-menu-button"));
+    const menu = screen.getByTestId("explain-menu");
+    // The whole listed range counts (the old banner's fallback): the
+    // guide entry still leads, newest first, with no guide hint anywhere.
+    const items = menu.querySelectorAll(':scope > [role="menuitem"]');
+    expect(items[0]).toHaveTextContent("Explain changes since the guide");
+    const rows = menu.querySelectorAll("[data-explain-commit]");
+    expect(rows[0]).toHaveTextContent("head work");
+    expect(
+      [...menu.querySelectorAll("[data-explain-commit] .cnt")].map((el) => el.textContent),
+    ).not.toContain("guide");
   });
 });
