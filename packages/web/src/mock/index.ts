@@ -1425,6 +1425,7 @@ function currentSnapshot(reviewId = "demo"): ReviewSnapshot {
               sha: MOCK_VERSION.headSha,
               subject: "Unfold obsolete line folding",
               body: "",
+              committedAt: Date.parse("2026-11-02T10:00:00Z"),
               files: [],
               hunks: [],
             },
