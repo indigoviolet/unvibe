@@ -1,0 +1,39 @@
+{
+  "channel": "release",
+  "version": "0.0.22",
+  "previousVersion": "0.0.21",
+  "commit": "a526e3616d3cdd94da80632a7a9ae83470dead57",
+  "previousCommit": "v0.0.21",
+  "dataFormat": 12,
+  "previousDataFormat": 11,
+  "dataResetNeeded": true,
+  "generatedAt": "2026-11-20T07:42:32.424Z",
+  "items": [
+    {
+      "number": 428,
+      "title": "Settings: removing a repo removes its reviews too",
+      "summary": "Removing a repo in Settings → Repos no longer refuses while it has reviews: it removes the repo's reviews too (with the worktrees Unvibe made for them; your folder is never touched). The confirm says what goes: \"Remove <repo> and its N reviews from Unvibe? <path> is not touched.\", and \"N unsent drafts will be lost\" when those reviews hold Outbox drafts.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/428",
+      "whatChanged": "Removing a repo in Settings → Repos no longer refuses while it has reviews: it removes the repo's reviews too (with the worktrees Unvibe made for them; your folder is never touched). The confirm says what goes: \"Remove <repo> and its N reviews from Unvibe? <path> is not touched.\", and \"N unsent drafts will be lost\" when those reviews hold Outbox drafts.",
+      "whatToTry": "Open Settings → Repos, click Remove on a repo that has a review: the confirm names the review. Confirm: the repo and the review are gone from Settings and the start page, and the folder is still there.",
+      "caveats": "Refused (nothing removed) while one of the repo's reviews is being submitted."
+    },
+    {
+      "number": 430,
+      "title": "Reader reply that stops after the first card is accepted as a finished guide",
+      "summary": "A guide that stops early is no longer shown as finished. After the guide is written, Unvibe checks it has \"The problem\" and \"The central idea\" cards with real content and at least three Go deeper directions. If something is missing it asks once, in the same session, for exactly the missing parts and adds them. If the guide is still incomplete, the guide page says \"The guide stopped early; Re-do to write the rest.\" with a Re-do button.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/430",
+      "whatChanged": "A guide that stops early is no longer shown as finished. After the guide is written, Unvibe checks it has \"The problem\" and \"The central idea\" cards with real content and at least three Go deeper directions. If something is missing it asks once, in the same session, for exactly the missing parts and adds them. If the guide is still incomplete, the guide page says \"The guide stopped early; Re-do to write the rest.\" with a Re-do button.",
+      "whatToTry": "Nothing to set up: open reviews as usual. If a guide ever stops after its first card, it is completed automatically, or the guide page tells you to Re-do."
+    },
+    {
+      "number": 431,
+      "title": "History menu: list commits most recent first",
+      "summary": "The history menu now lists commits most recent first: the latest commit at the top, then the new commits and the one the guide was written at, oldest at the bottom. \"Explain changes since the guide\" stays the first item when there are new commits. Each row shows the short sha in monospace, the subject (full text on hover when cut off) and a short relative time (\"5m\", \"3d\"); hovering the time shows the exact date. The menu is wider so typical subjects fit.",
+      "url": "https://github.com/indigoviolet/unvibe/issues/431",
+      "whatChanged": "The history menu now lists commits most recent first: the latest commit at the top, then the new commits and the one the guide was written at, oldest at the bottom. \"Explain changes since the guide\" stays the first item when there are new commits. Each row shows the short sha in monospace, the subject (full text on hover when cut off) and a short relative time (\"5m\", \"3d\"); hovering the time shows the exact date. The menu is wider so typical subjects fit.",
+      "whatToTry": "Open a review with several commits and click the history icon: the latest commit (disabled) is first, and after a Pull the new and guide rows are right below it.",
+      "caveats": "Data reset needed: data format 12 (commits now carry their date), so existing reviews can't be read by this build. Export any Outbox drafts first, then reset when Unvibe asks (or run `unvibe reset-data`). Resetting moves the old data aside; nothing is deleted."
+    }
+  ]
+}
