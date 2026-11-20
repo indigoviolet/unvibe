@@ -64,7 +64,7 @@ async function waitReaderDone(ctx: { jobs: { get(id: string): Job | undefined } 
   await waitFor(() => ["done", "error", "cancelled"].includes(ctx.jobs.get(jobId)?.state ?? ""));
 }
 
-function rootCards(ctx: { reviews: { getSnapshot(id: string): ReviewSnapshot | undefined } }, id: string) {
+function rootCards(ctx: { reviews: { getSnapshot(id: string): ReviewSnapshot | null } }, id: string) {
   return ctx.reviews.getSnapshot(id)!.pages.find((p) => p.id === "root")!.cards;
 }
 
