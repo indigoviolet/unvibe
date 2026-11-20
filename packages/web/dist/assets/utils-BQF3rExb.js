@@ -1,0 +1,1 @@
+function o(t,n,a){let e,r;try{r=t()}catch(i){e=i}finally{if(n(e,r),e&&!a)throw e;return r}}async function l(t,n,a){let e,r;try{r=await t()}catch(i){e=i}finally{if(await n(e,r),e&&!a)throw e;return r}}function f(t){return typeof t=="function"&&typeof t.__original=="function"&&typeof t.__unwrap=="function"&&t.__wrapped===!0}export{l as a,f as i,o as s};

@@ -1,0 +1,1 @@
+var o;(function(L){L[L.STABLE=1]="STABLE",L[L.OLD=2]="OLD",L[L.DUPLICATE=3]="DUPLICATE"})(o||(o={}));function t(L,r){let f=o.OLD;const s=r==null?void 0:r.split(",").map(e=>e.trim()).filter(e=>e!=="");for(const e of s??[])if(e.toLowerCase()===L+"/dup"){f=o.DUPLICATE;break}else e.toLowerCase()===L&&(f=o.STABLE);return f}export{o as S,t as s};
