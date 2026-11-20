@@ -29,7 +29,7 @@ import type {
   ReviewSnapshot,
   TokenUsage,
 } from "@unvibe/shared";
-import { canonicalizeTarget, collectTargets, DEFAULT_GUIDE_TITLE, DEFAULT_HIDE_LEVEL, formatGlossaryForPrompt, isDocumentReview, JOB_PRIORITY, normalizeGlossary, normalizePlotlines, parseCards, parseCardsPartial, parseHunkReply, parseId, PLOTLINE_ASSIGN_CAP, resolveHunkScore, selectHunkSummaryTargets, shouldHideAtLevel, splitReply } from "@unvibe/shared";
+import { canonicalizeTarget, checkReaderShape, collectTargets, DEFAULT_GUIDE_TITLE, DEFAULT_HIDE_LEVEL, formatGlossaryForPrompt, isDocumentReview, JOB_PRIORITY, normalizeGlossary, normalizePlotlines, parseCards, parseCardsPartial, parseHunkReply, parseId, PLOTLINE_ASSIGN_CAP, READER_MIN_GO_DEEPER, resolveHunkScore, selectHunkSummaryTargets, shouldHideAtLevel, splitReply } from "@unvibe/shared";
 import { postureFor } from "@unvibe/shared";
 import { GUIDE_PERSONA_ID } from "@unvibe/shared";
 import { validateTarget } from "../validate/index.js";
@@ -244,6 +244,60 @@ function reportToolFrom(ctx?: {
 }): ToolCallback | undefined {
   const fn = ctx?.reportTool;
   return fn ? (name, detail, extra) => fn(name, detail, extra) : undefined;
+}
+
+/**
+ * Issue #430: a reader turn that stopped early leaves a partial guide.
+ * The repair turn names exactly what is missing; when the repair is
+ * still incomplete the guide is stored but the job is marked degraded
+ * with this plain message, so the review shows the existing Re-do offer
+ * instead of presenting the partial guide as done. Stored on the job's
+ * `degradedReason` (the existing Debug-page surface); no new banner.
+ */
+export const READER_STOPPED_EARLY_MESSAGE = "The guide stopped early; Re-do to write the rest.";
+
+/**
+ * Issue #430: the shape half of the reader repair request, naming
+ * exactly what is missing (cards and/or the Go deeper directions).
+ * Combined with the citation half below when both fired; a shape-only
+ * repair carries this alone.
+ */
+export function readerShapeRepairRequest(missingProblem: boolean, missingCentral: boolean, goDeeperHave: number): string {
+  const cards: string[] = [];
+  if (missingProblem) cards.push("The problem");
+  if (missingCentral) cards.push("The central idea");
+  const needDirections = goDeeperHave < READER_MIN_GO_DEEPER;
+  if (cards.length > 0) {
+    return (
+      `You stopped early. Write the missing cards: ${cards.join(", ")}` +
+      `${needDirections ? ", and the Go deeper directions (3–5)" : ""} in the trailing json block.`
+    );
+  }
+  return `You stopped early. Write the Go deeper directions (3–5) in the trailing json block.`;
+}
+
+/**
+ * Issue #430: merge a shape-repair reply into the first reply's cards.
+ * The repair wins on a repeated title (a resent card carries the
+ * corrected text); titles the first reply already covered are never
+ * duplicated, and genuinely new cards append after the first reply's in
+ * the repair's order (prompt order). Pending cards always come from the
+ * repair's data block (taken by the caller).
+ */
+export function mergeShapeRepairCards(first: ParsedCard[], second: ParsedCard[]): ParsedCard[] {
+  const norm = (t: string | null): string => (t ?? "").trim().toLowerCase();
+  const merged = [...first];
+  const indexByTitle = new Map(merged.map((c, i) => [norm(c.title), i] as const));
+  for (const c of second) {
+    const at = indexByTitle.get(norm(c.title));
+    if (at === undefined) {
+      indexByTitle.set(norm(c.title), merged.length);
+      merged.push(c);
+    } else {
+      merged[at] = c;
+    }
+  }
+  return merged;
 }
 
 export type TurnDisposition =
@@ -2099,6 +2153,16 @@ export class Pipeline {
             if (firstDisp.kind === "fail-conn") throw new DegradedConnError(firstDisp.message);
             if (firstDisp.kind === "fail-empty") throw new DegradedTurnError(firstDisp.message);
             if (firstDisp.kind === "keep") degradedReason = firstDisp.reason;
+            // Issue #430: after the reply parses, check its required
+            // shape (problem + central cards with bodies, 3+ Go-deeper
+            // directions). A malformed data block has no checkable shape;
+            // that path repairs the block alone below and re-checks after.
+            const firstShape =
+              brokenDataError === undefined
+                ? checkReaderShape(cards, data?.pendingCards, {
+                    requireGoDeeper: requestedKeys.includes("pendingCards"),
+                  })
+                : null;
             if (brokenDataError !== undefined) {
               // #213: one repair turn, same session, just the data block.
               // Issue #252: the field list mirrors what the prompt
@@ -2130,6 +2194,15 @@ export class Pipeline {
               const repaired = splitReply(repair.text);
               if (repaired.ok) {
                 finalData = repaired.data as ReplyData;
+                // Issue #430: the data-block repair spent the single
+                // repair turn, so a still-incomplete guide is stored and
+                // marked degraded — never a second turn.
+                const afterShape = checkReaderShape(cards, (repaired.data as ReplyData)?.pendingCards, {
+                  requireGoDeeper: requestedKeys.includes("pendingCards"),
+                });
+                if (!afterShape.complete && degradedReason === undefined) {
+                  degradedReason = READER_STOPPED_EARLY_MESSAGE;
+                }
               } else {
                 // Name only what the prompt requested (see above). The
                 // Changes-since-X section only when this run had a commit baseline.
@@ -2143,22 +2216,40 @@ export class Pipeline {
                   "The reader's trailing data block did not parse and the repair reply did not parse either, " +
                   `so the guide has no ${missing.join(", ").replace(/, ([^,]*)$/, " or $1")}.`;
               }
-            } else if (validation.needsRepairTurn && degradedReason === undefined) {
+            } else if ((validation.needsRepairTurn || (firstShape && !firstShape.complete)) && degradedReason === undefined) {
+              // Issue #430: the citation repair and the shape repair share
+              // this single turn — a reader run never sends two. When only
+              // citations failed the prompt below is byte-identical to the
+              // old one; when the shape is incomplete it names exactly what
+              // is missing, and the merge below appends the missing cards
+              // (repair wins on a repeated title) and takes the pending
+              // cards from the repair's data block.
+              const needsShapeRepair = firstShape !== null && !firstShape.complete;
               const anchorProblem =
                 validation.anchor && !validation.anchor.ok
                   ? `\nAnchor problem: ${validation.anchor.reason}. Reply with the same cards and a corrected anchor host (the host block's ID).\n`
                   : "";
-              // Issue #417: the repair turn carries the reader replay
-              // marker, so the replay runner resolves it to a recording
-              // instead of the unknown placeholder.
-              const repairPrompt = withReplayMark(
+              const citationRequest =
                 `Some citations in your previous reply could not be verified:\n` +
                 validation.tokens
                   .filter((t) => t.status === "unverified")
                   .map((t) => `- ${t.target}: ${t.reason ?? "unknown"}`)
                   .join("\n") +
-                anchorProblem +
-                `\nReply with the same cards and corrected citation tokens. End with the same trailing JSON block.`,
+                anchorProblem;
+              const shapeRequest =
+                needsShapeRepair && firstShape
+                  ? readerShapeRepairRequest(firstShape.missingProblem, firstShape.missingCentral, firstShape.goDeeperHave)
+                  : "";
+              const closing = needsShapeRepair
+                ? `\nReply with the corrected cards plus the missing ones. End with the same trailing JSON block.`
+                : `\nReply with the same cards and corrected citation tokens. End with the same trailing JSON block.`;
+              // Issue #417: the repair turn carries the reader replay
+              // marker, so the replay runner resolves it to a recording
+              // instead of the unknown placeholder.
+              const repairPrompt = withReplayMark(
+                validation.needsRepairTurn
+                  ? `${citationRequest}${shapeRequest !== "" ? `\n\n${shapeRequest}` : ""}${closing}`
+                  : `${shapeRequest}\nReply with only the missing cards and the trailing JSON block.`,
                 isReplayRunner(this.opts.runner) ? { kind: "reader" } : undefined,
               );
               // #124: the repair prompt names the failed citations, so keep
@@ -2177,18 +2268,63 @@ export class Pipeline {
               usage.outputTokens += repair.usage.outputTokens;
               ctx.reportUsage(repair.usage);
               await this.recordUsage(reviewId, repair.usage);
-              const second = await this.parseAndValidateWithCode(reviewId, repair.text, []);
-              finalCards = second.cards;
-              finalData = second.data;
-              finalValidation = second.validation;
+              if (!needsShapeRepair) {
+                const second = await this.parseAndValidateWithCode(reviewId, repair.text, []);
+                finalCards = second.cards;
+                finalData = second.data;
+                finalValidation = second.validation;
+                const secondDisp = this.turnDisposition(
+                  reviewId,
+                  mcpBefore,
+                  second.data,
+                  second.cards.flatMap((c) => c.blocks).length,
+                );
+                if (secondDisp.kind === "fail-conn") throw new DegradedConnError(secondDisp.message);
+                if (secondDisp.kind === "fail-empty") throw new DegradedTurnError(secondDisp.message);
+                if (secondDisp.kind === "keep" && degradedReason === undefined) degradedReason = secondDisp.reason;
+              }
+              // Issue #430 shape path: a failed repair parse must not fail
+              // the turn and discard the first reply's usable cards — store
+              // them and mark the job degraded instead.
+              let secondCards = cards;
+              let secondData = data;
+              let secondValidation = validation;
+              let secondFailed = false;
+              try {
+                const second = await this.parseAndValidateWithCode(reviewId, repair.text, []);
+                secondCards = mergeShapeRepairCards(cards, second.cards);
+                // The pending cards come from the repair's data block;
+                // when the repair carries no block there is nothing to
+                // take, so the first reply's block stands.
+                secondData = second.data ?? data;
+                secondValidation = second.validation;
+              } catch {
+                secondFailed = true;
+              }
+              finalCards = secondCards;
+              finalData = secondData;
+              finalValidation = secondValidation;
               const secondDisp = this.turnDisposition(
                 reviewId,
                 mcpBefore,
-                second.data,
-                second.cards.flatMap((c) => c.blocks).length,
+                secondData,
+                secondCards.flatMap((c) => c.blocks).length,
               );
               if (secondDisp.kind === "fail-conn") throw new DegradedConnError(secondDisp.message);
-              if (secondDisp.kind === "fail-empty") throw new DegradedTurnError(secondDisp.message);
+              if (secondFailed && degradedReason === undefined) degradedReason = READER_STOPPED_EARLY_MESSAGE;
+              if (secondDisp.kind === "fail-empty" && degradedReason === undefined) {
+                degradedReason = READER_STOPPED_EARLY_MESSAGE;
+              }
+              if (secondDisp.kind === "keep" && degradedReason === undefined) degradedReason = secondDisp.reason;
+              const afterShape = checkReaderShape(secondCards, secondData?.pendingCards, {
+                requireGoDeeper: requestedKeys.includes("pendingCards"),
+              });
+              // Still incomplete after the repair: store the guide but mark
+              // the job degraded with the plain message, so the review
+              // shows the existing Re-do offer instead of a done guide.
+              // The model's own degraded reason is kept only when the shape
+              // is now complete (the plain message describes the remedy).
+              if (!afterShape.complete && degradedReason === undefined) degradedReason = READER_STOPPED_EARLY_MESSAGE;
               if (secondDisp.kind === "keep" && degradedReason === undefined) degradedReason = secondDisp.reason;
             }
             if (degradedReason !== undefined) {
