@@ -4186,7 +4186,7 @@ test.describe("since-commit tour (#351 step 2)", () => {
       snap.review.versions = [v1, v2];
       snap.review.currentVersion = 2;
       snap.version = v2;
-      snap.commits = [{ sha: commit352, subject: "Rework beta and add gamma", body: "", files: [], hunks: [] }];
+      snap.commits = [{ sha: commit352, subject: "Rework beta and add gamma", body: "", committedAt: now - 3600_000, files: [], hunks: [] }];
       snap.sinceBaseline = { kind: "commit", sha: commit352 };
       snap.sinceHunks = { added: [addedId], changed: [changedId] };
       const para = (id: string, text: string, citations: string[]): unknown => ({
