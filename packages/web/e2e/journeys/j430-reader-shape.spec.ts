@@ -169,6 +169,8 @@ test.describe("J430 required reader shape", () => {
     await expect(page.locator("#C-problem")).toBeVisible({ timeout: 30_000 });
     await expect(page.locator("#C-central")).toBeVisible({ timeout: 30_000 });
     await expect(page.locator("#page")).not.toContainText("[replay placeholder");
+    // The complete guide carries no stopped-early notice.
+    await expect(page.getByTestId("reader-stopped-early")).toHaveCount(0);
   });
 
   test("still-incomplete repair stores the guide as degraded with Re-do", async ({ page }) => {
@@ -188,13 +190,28 @@ test.describe("J430 required reader shape", () => {
     await page.goto(`${s.origin}/review/${betaId}?token=${s.token}`);
     await expect(page.locator("#C-problem")).toBeVisible({ timeout: 30_000 });
     await expect(page.locator("#C-central")).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Re-do guide" })).toBeVisible();
+    await expect(page.locator("#reviewbar").getByRole("button", { name: "Re-do guide" })).toBeVisible();
 
-    // The incomplete notice surfaces where degraded readers surface: the
-    // Debug page's Jobs tab, on the existing degraded line — no new banner.
+    // The guide page carries the one-line stopped-early notice.
+    const notice = page.getByTestId("reader-stopped-early");
+    await expect(notice).toContainText(STOPPED_EARLY, { timeout: 30_000 });
+
+    // The incomplete notice also surfaces where degraded readers surface:
+    // the Debug page's Jobs tab, on the existing degraded line — no new
+    // banner. Before the Re-do below replaces this review.
     await page.goto(`${s.origin}/review/${betaId}/debug?token=${s.token}`);
     await expect(
       page.getByText(`Degraded (answer kept): ${STOPPED_EARLY}`, { exact: false }),
     ).toBeVisible({ timeout: 30_000 });
+
+    // Its Re-do reuses the existing flow: confirm starts a new review.
+    await page.goto(`${s.origin}/review/${betaId}?token=${s.token}`);
+    await expect(notice).toContainText(STOPPED_EARLY, { timeout: 30_000 });
+    await notice.getByRole("button", { name: "Re-do guide" }).click();
+    const pill = notice.locator(".uic-pill");
+    await expect(pill).toContainText("Confirm re-do guide", { timeout: 15_000 });
+    await pill.getByRole("button", { name: "Confirm re-do guide" }).click();
+    await expect.poll(() => page.url(), { timeout: 60_000 }).not.toContain(betaId);
+    await expect(page.locator("#reviewbar")).toBeVisible({ timeout: 30_000 });
   });
 });

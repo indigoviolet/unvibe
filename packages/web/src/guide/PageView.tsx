@@ -23,6 +23,7 @@ import { Badge, Card as UiCard, ListRow } from "../ui/index.js";
 import { InlineCode, stripCodeSpans } from "../components/inlineCode.js";
 import { inflightLabel } from "./inflight.js";
 import { useReviewIdentity } from "../shell/reviewIdentity.js";
+import { StoppedEarlyNotice } from "./StoppedEarlyNotice.js";
 
 interface Props {
   reviewId: string;
@@ -445,6 +446,7 @@ export function PageView({ reviewId, page, lookupPage, onOpenPage, onJumpToCard 
       <div className="title-row">
         <h1 className="title">{rootTitle}</h1>
       </div>
+      {page.kind === "root" ? <StoppedEarlyNotice reviewId={reviewId} /> : null}
       {isFinding && page.summary ? <div className="meta">{page.summary}</div> : null}
       {page.kind === "root" && review ? (
         <SinceSection renderCard={(card) => renderCard(card, 0)} />

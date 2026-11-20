@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 import type { AgentEvent, Job, ReviewSnapshot } from "@unvibe/shared";
 import { FakeAgentRunner } from "../src/agent/fake.js";
-import { READER_STOPPED_EARLY_MESSAGE } from "../src/pipeline/runner.js";
+import { READER_STOPPED_EARLY_MESSAGE } from "@unvibe/shared";
 import { createApp } from "../src/server.js";
 
 const authed = { authorization: "Bearer tok" };

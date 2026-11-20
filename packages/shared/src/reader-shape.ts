@@ -20,6 +20,14 @@ import type { Block } from "./entities.js";
 /** Minimum Go-deeper directions the reader prompt asks for (3–5). */
 export const READER_MIN_GO_DEEPER = 3;
 
+/**
+ * Issue #430: the reader job's degraded reason when the guide stopped
+ * early and the repair is still incomplete. Stored on the job and shown
+ * on the guide page with the existing Re-do offer — never presented as
+ * done. The web app compares against this constant, never the text.
+ */
+export const READER_STOPPED_EARLY_MESSAGE = "The guide stopped early; Re-do to write the rest.";
+
 /** One parsed reader card: the title plus its blocks. */
 export interface ReaderShapeCard {
   title: string | null;

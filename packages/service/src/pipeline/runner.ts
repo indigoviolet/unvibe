@@ -29,7 +29,7 @@ import type {
   ReviewSnapshot,
   TokenUsage,
 } from "@unvibe/shared";
-import { canonicalizeTarget, checkReaderShape, collectTargets, DEFAULT_GUIDE_TITLE, DEFAULT_HIDE_LEVEL, formatGlossaryForPrompt, isDocumentReview, JOB_PRIORITY, normalizeGlossary, normalizePlotlines, parseCards, parseCardsPartial, parseHunkReply, parseId, PLOTLINE_ASSIGN_CAP, READER_MIN_GO_DEEPER, resolveHunkScore, selectHunkSummaryTargets, shouldHideAtLevel, splitReply } from "@unvibe/shared";
+import { canonicalizeTarget, checkReaderShape, collectTargets, DEFAULT_GUIDE_TITLE, DEFAULT_HIDE_LEVEL, formatGlossaryForPrompt, isDocumentReview, JOB_PRIORITY, normalizeGlossary, normalizePlotlines, parseCards, parseCardsPartial, parseHunkReply, parseId, PLOTLINE_ASSIGN_CAP, READER_MIN_GO_DEEPER, READER_STOPPED_EARLY_MESSAGE, resolveHunkScore, selectHunkSummaryTargets, shouldHideAtLevel, splitReply } from "@unvibe/shared";
 import { postureFor } from "@unvibe/shared";
 import { GUIDE_PERSONA_ID } from "@unvibe/shared";
 import { validateTarget } from "../validate/index.js";
@@ -245,16 +245,6 @@ function reportToolFrom(ctx?: {
   const fn = ctx?.reportTool;
   return fn ? (name, detail, extra) => fn(name, detail, extra) : undefined;
 }
-
-/**
- * Issue #430: a reader turn that stopped early leaves a partial guide.
- * The repair turn names exactly what is missing; when the repair is
- * still incomplete the guide is stored but the job is marked degraded
- * with this plain message, so the review shows the existing Re-do offer
- * instead of presenting the partial guide as done. Stored on the job's
- * `degradedReason` (the existing Debug-page surface); no new banner.
- */
-export const READER_STOPPED_EARLY_MESSAGE = "The guide stopped early; Re-do to write the rest.";
 
 /**
  * Issue #430: the shape half of the reader repair request, naming

@@ -367,9 +367,13 @@ needed (that deviation is closed, not added).
    turn; the missing cards append in prompt order and the directions come
    from the repair's data block. A repair that is still incomplete stores
    the guide but marks the reader job degraded with the plain message
-   "The guide stopped early; Re-do to write the rest.", surfaced on the
-   existing Debug-page degraded line with the existing Re-do offer, never
-   presented as done (`reader-shape-430.test.ts`, the `j430` journey).
+   "The guide stopped early; Re-do to write the rest." The guide page
+   shows that line under the title in the existing hint style with the
+   existing Re-do control (same confirm path), detected from the shared
+   constant, so the partial guide is never presented as done; the
+   Debug-page degraded line carries the same reason
+   (`reader-shape-430.test.ts`, the `j430` journey, the `stopped-early`
+   tour frame).
    The instructions example now shows more than one card (problem plus
    central idea) before the trailing block. The instructions and reader prompts
    now state the exact `diff:<fileKey>:<start>[-<end>]` grammar with

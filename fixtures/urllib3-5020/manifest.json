@@ -37,7 +37,7 @@
     {
       "kind": "reader",
       "key": "shape-repair-b",
-      "pattern": "You stopped early",
+      "pattern": "shape_beta\\.py:999",
       "file": "reader-shape-still-short-b.md"
     },
     {
